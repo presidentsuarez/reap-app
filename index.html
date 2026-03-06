@@ -1,0 +1,1841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REAP | Real Estate Analytics Platform</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --navy: #0F2744;
+            --navy-light: #1a3a5c;
+            --slate: #475569;
+            --accent: #2563EB;
+            --accent-light: #3B82F6;
+            --success: #10B981;
+            --warm: #F59E0B;
+            --bg-primary: #FFFFFF;
+            --bg-secondary: #F8FAFC;
+            --bg-tertiary: #F1F5F9;
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
+            --text-muted: #94A3B8;
+            --border: #E2E8F0;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+            --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+            --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.25);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 1rem 4rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            transition: all 0.3s ease;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            text-decoration: none;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--navy) 0%, var(--accent) 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-icon svg {
+            width: 22px;
+            height: 22px;
+            fill: white;
+        }
+
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--navy);
+            letter-spacing: -0.02em;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 2.5rem;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: color 0.2s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--navy);
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            border: none;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-primary);
+        }
+
+        .btn-ghost:hover {
+            background: var(--bg-secondary);
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--text-muted);
+        }
+
+        .btn-primary {
+            background: var(--navy);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--navy-light);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-accent {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+            color: white;
+        }
+
+        .btn-accent:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-large {
+            padding: 1rem 2rem;
+            font-size: 1rem;
+        }
+
+        .btn-xl {
+            padding: 1.125rem 2.5rem;
+            font-size: 1.05rem;
+            border-radius: 12px;
+        }
+
+        /* Hero Section */
+        .hero {
+            position: relative;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            padding: 8rem 4rem 4rem;
+            overflow: hidden;
+            background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+        }
+
+        .hero-bg-pattern {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                radial-gradient(circle at 20% 50%, rgba(37, 99, 235, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(15, 39, 68, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(16, 185, 129, 0.02) 0%, transparent 40%);
+            pointer-events: none;
+        }
+
+        .hero-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(var(--border) 1px, transparent 1px),
+                linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 80px 80px;
+            opacity: 0.4;
+            mask-image: radial-gradient(ellipse at center, black 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 10;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+            align-items: center;
+        }
+
+        .hero-left {
+            max-width: 600px;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow-sm);
+            animation: fadeInUp 0.6s ease;
+        }
+
+        .hero-badge-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse-dot 2s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        .hero h1 {
+            font-family: 'Instrument Serif', serif;
+            font-size: clamp(2.75rem, 5vw, 4rem);
+            font-weight: 400;
+            line-height: 1.15;
+            color: var(--navy);
+            margin-bottom: 1.5rem;
+            animation: fadeInUp 0.6s ease 0.1s both;
+        }
+
+        .hero h1 .highlight {
+            color: var(--accent);
+            font-style: italic;
+        }
+
+        .hero-description {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            line-height: 1.7;
+            animation: fadeInUp 0.6s ease 0.2s both;
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 3rem;
+            animation: fadeInUp 0.6s ease 0.3s both;
+        }
+
+        .hero-social-proof {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            animation: fadeInUp 0.6s ease 0.4s both;
+        }
+
+        .avatar-stack {
+            display: flex;
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 3px solid white;
+            margin-left: -12px;
+            background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--border) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .avatar:first-child {
+            margin-left: 0;
+        }
+
+        .avatar.bg-1 { background: linear-gradient(135deg, #818CF8 0%, #6366F1 100%); color: white; }
+        .avatar.bg-2 { background: linear-gradient(135deg, #34D399 0%, #10B981 100%); color: white; }
+        .avatar.bg-3 { background: linear-gradient(135deg, #F472B6 0%, #EC4899 100%); color: white; }
+        .avatar.bg-4 { background: linear-gradient(135deg, #FBBF24 0%, #F59E0B 100%); color: white; }
+
+        .social-proof-text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .social-proof-text strong {
+            color: var(--text-primary);
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Hero Right - Dashboard Preview */
+        .hero-right {
+            position: relative;
+            animation: fadeInRight 0.8s ease 0.3s both;
+        }
+
+        @keyframes fadeInRight {
+            from {
+                opacity: 0;
+                transform: translateX(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .dashboard-preview {
+            position: relative;
+            background: white;
+            border-radius: 20px;
+            box-shadow: var(--shadow-2xl);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .dashboard-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem 1.25rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .dashboard-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .dashboard-dot.red { background: #EF4444; }
+        .dashboard-dot.yellow { background: #F59E0B; }
+        .dashboard-dot.green { background: #10B981; }
+
+        .dashboard-body {
+            padding: 1.5rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .dash-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 1.25rem;
+            border: 1px solid var(--border);
+        }
+
+        .dash-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .dash-card-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .dash-card-badge {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .dash-card-badge.positive {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .dash-card-badge.neutral {
+            background: rgba(37, 99, 235, 0.1);
+            color: var(--accent);
+        }
+
+        .dash-card-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 0.25rem;
+        }
+
+        .dash-card-subtitle {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .dash-card.full-width {
+            grid-column: span 2;
+        }
+
+        .mini-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 50px;
+            margin-top: 1rem;
+        }
+
+        .mini-bar {
+            flex: 1;
+            background: var(--accent);
+            border-radius: 3px 3px 0 0;
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+        }
+
+        .mini-bar:hover {
+            opacity: 1;
+        }
+
+        .property-list {
+            margin-top: 1rem;
+        }
+
+        .property-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .property-item:last-child {
+            border-bottom: none;
+        }
+
+        .property-thumb {
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--border) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .property-thumb svg {
+            width: 20px;
+            height: 20px;
+            stroke: var(--text-muted);
+        }
+
+        .property-info {
+            flex: 1;
+        }
+
+        .property-name {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .property-address {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .property-value {
+            text-align: right;
+        }
+
+        .property-price {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--navy);
+        }
+
+        .property-change {
+            font-size: 0.7rem;
+            color: var(--success);
+        }
+
+        /* Floating Elements */
+        .floating-card {
+            position: absolute;
+            background: white;
+            border-radius: 16px;
+            padding: 1rem 1.25rem;
+            box-shadow: var(--shadow-xl);
+            border: 1px solid var(--border);
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .floating-card-1 {
+            top: 10%;
+            right: -40px;
+            animation-delay: -1s;
+        }
+
+        .floating-card-2 {
+            bottom: 15%;
+            left: -30px;
+            animation-delay: -3s;
+        }
+
+        .floating-metric {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .floating-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .floating-icon.green {
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .floating-icon.blue {
+            background: rgba(37, 99, 235, 0.1);
+        }
+
+        .floating-icon svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .floating-text {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .floating-value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* Logos Section */
+        .logos-section {
+            padding: 4rem;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logos-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .logos-title {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        .logos-grid {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 4rem;
+            flex-wrap: wrap;
+            opacity: 0.6;
+        }
+
+        .logo-item {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--slate);
+            letter-spacing: -0.02em;
+        }
+
+        /* Stats Section */
+        .stats-section {
+            padding: 6rem 4rem;
+            background: var(--bg-primary);
+        }
+
+        .stats-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 2rem;
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .stat-value {
+            font-family: 'Instrument Serif', serif;
+            font-size: 3.5rem;
+            font-weight: 400;
+            color: var(--navy);
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value span {
+            color: var(--accent);
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            color: var(--text-secondary);
+        }
+
+        /* Features Section */
+        .features-section {
+            padding: 6rem 4rem;
+            background: var(--bg-secondary);
+        }
+
+        .features-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-header h2 {
+            font-family: 'Instrument Serif', serif;
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 400;
+            color: var(--navy);
+            margin-bottom: 1rem;
+        }
+
+        .section-header p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+
+        .feature-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            border: 1px solid var(--border);
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-xl);
+            border-color: transparent;
+        }
+
+        .feature-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .feature-icon.blue {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%);
+        }
+
+        .feature-icon.green {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+        }
+
+        .feature-icon.purple {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+        }
+
+        .feature-icon.orange {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
+        }
+
+        .feature-icon.navy {
+            background: linear-gradient(135deg, rgba(15, 39, 68, 0.1) 0%, rgba(15, 39, 68, 0.05) 100%);
+        }
+
+        .feature-icon.teal {
+            background: linear-gradient(135deg, rgba(20, 184, 166, 0.1) 0%, rgba(20, 184, 166, 0.05) 100%);
+        }
+
+        .feature-icon svg {
+            width: 28px;
+            height: 28px;
+        }
+
+        .feature-card h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: 0.75rem;
+        }
+
+        .feature-card p {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Property Types Section */
+        .property-section {
+            padding: 6rem 4rem;
+            background: var(--bg-primary);
+        }
+
+        .property-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .property-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .property-type-card {
+            position: relative;
+            border-radius: 24px;
+            overflow: hidden;
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: 2.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .property-type-card:hover {
+            transform: scale(1.02);
+        }
+
+        .property-type-card.single-family {
+            background: linear-gradient(180deg, rgba(15, 39, 68, 0) 0%, rgba(15, 39, 68, 0.9) 100%),
+                        linear-gradient(135deg, #E0F2FE 0%, #BAE6FD 50%, #7DD3FC 100%);
+        }
+
+        .property-type-card.multifamily {
+            background: linear-gradient(180deg, rgba(15, 39, 68, 0) 0%, rgba(15, 39, 68, 0.9) 100%),
+                        linear-gradient(135deg, #F0FDF4 0%, #BBF7D0 50%, #86EFAC 100%);
+        }
+
+        .property-type-icon {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            width: 60px;
+            height: 60px;
+            background: white;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .property-type-icon svg {
+            width: 30px;
+            height: 30px;
+            stroke: var(--navy);
+        }
+
+        .property-type-content h3 {
+            font-family: 'Instrument Serif', serif;
+            font-size: 2rem;
+            color: white;
+            margin-bottom: 0.75rem;
+        }
+
+        .property-type-content p {
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+            max-width: 400px;
+        }
+
+        .property-stats {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .property-stat {
+            text-align: left;
+        }
+
+        .property-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+        }
+
+        .property-stat-label {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* How It Works */
+        .how-section {
+            padding: 6rem 4rem;
+            background: var(--navy);
+            color: white;
+        }
+
+        .how-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .how-section .section-header h2 {
+            color: white;
+        }
+
+        .how-section .section-header p {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .how-section .section-tag {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .step-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .step-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-5px);
+        }
+
+        .step-number {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin: 0 auto 1.5rem;
+        }
+
+        .step-card h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        .step-card p {
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.6;
+        }
+
+        /* Testimonials */
+        .testimonials-section {
+            padding: 6rem 4rem;
+            background: var(--bg-secondary);
+        }
+
+        .testimonials-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-top: 3rem;
+        }
+
+        .testimonial-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            border: 1px solid var(--border);
+        }
+
+        .testimonial-rating {
+            display: flex;
+            gap: 0.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .star {
+            width: 20px;
+            height: 20px;
+            fill: #FBBF24;
+        }
+
+        .testimonial-text {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin-bottom: 1.5rem;
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .author-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: white;
+        }
+
+        .author-info h4 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .author-info p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* CTA Section */
+        .cta-section {
+            padding: 6rem 4rem;
+            background: var(--bg-primary);
+        }
+
+        .cta-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+            border-radius: 32px;
+            padding: 4rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                radial-gradient(circle at 20% 80%, rgba(37, 99, 235, 0.3) 0%, transparent 40%),
+                radial-gradient(circle at 80% 20%, rgba(16, 185, 129, 0.2) 0%, transparent 40%);
+            pointer-events: none;
+        }
+
+        .cta-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .cta-content h2 {
+            font-family: 'Instrument Serif', serif;
+            font-size: 2.5rem;
+            color: white;
+            margin-bottom: 1rem;
+        }
+
+        .cta-content p {
+            font-size: 1.15rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 2rem;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .btn-white {
+            background: white;
+            color: var(--navy);
+        }
+
+        .btn-white:hover {
+            background: var(--bg-secondary);
+            transform: translateY(-2px);
+        }
+
+        .btn-outline-white {
+            background: transparent;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+        }
+
+        .btn-outline-white:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Footer */
+        footer {
+            padding: 4rem;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+        }
+
+        .footer-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-top {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 4rem;
+            margin-bottom: 3rem;
+            padding-bottom: 3rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .footer-brand p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-top: 1rem;
+            max-width: 300px;
+            line-height: 1.6;
+        }
+
+        .footer-column h4 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 1.25rem;
+        }
+
+        .footer-links {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: color 0.2s ease;
+        }
+
+        .footer-links a:hover {
+            color: var(--accent);
+        }
+
+        .footer-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .footer-copy {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        .footer-social {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .social-link {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: white;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .social-link:hover {
+            background: var(--navy);
+            border-color: var(--navy);
+        }
+
+        .social-link:hover svg {
+            stroke: white;
+        }
+
+        .social-link svg {
+            width: 20px;
+            height: 20px;
+            stroke: var(--text-secondary);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .hero-content {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+
+            .hero-left {
+                max-width: 100%;
+            }
+
+            .hero-cta {
+                justify-content: center;
+            }
+
+            .hero-social-proof {
+                justify-content: center;
+            }
+
+            .hero-right {
+                display: none;
+            }
+
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .stats-container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .steps-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .testimonials-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-top {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            nav {
+                padding: 1rem 1.5rem;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .hero {
+                padding: 7rem 1.5rem 3rem;
+            }
+
+            .features-section,
+            .property-section,
+            .how-section,
+            .testimonials-section,
+            .cta-section,
+            .stats-section {
+                padding: 4rem 1.5rem;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .property-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-container {
+                grid-template-columns: 1fr;
+            }
+
+            .cta-container {
+                padding: 2.5rem 1.5rem;
+            }
+
+            .cta-buttons {
+                flex-direction: column;
+            }
+
+            .footer-top {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+
+            .footer-bottom {
+                flex-direction: column;
+                gap: 1.5rem;
+                text-align: center;
+            }
+
+            .logos-grid {
+                gap: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <a href="#" class="logo">
+            <div class="logo-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    <polyline points="9 22 9 12 15 12 15 22" fill="none" stroke="white" stroke-width="2"/>
+                </svg>
+            </div>
+            <span class="logo-text">REAP</span>
+        </a>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#solutions">Solutions</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#resources">Resources</a>
+        </div>
+        <div class="nav-buttons">
+            <a href="#login" class="btn btn-ghost">Log In</a>
+            <a href="#signup" class="btn btn-primary">Start Free Trial</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-bg-pattern"></div>
+        <div class="hero-grid"></div>
+        <div class="hero-content">
+            <div class="hero-left">
+                <div class="hero-badge">
+                    <span class="hero-badge-dot"></span>
+                    Now analyzing 50,000+ properties nationwide
+                </div>
+                <h1>Smarter real estate decisions, <span class="highlight">powered by AI</span></h1>
+                <p class="hero-description">
+                    The analytics platform built for serious investors. Underwrite deals in minutes, 
+                    track portfolios in real-time, and uncover opportunities others miss.
+                </p>
+                <div class="hero-cta">
+                    <a href="#signup" class="btn btn-primary btn-xl">Get Started Free</a>
+                    <a href="#demo" class="btn btn-secondary btn-xl">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/>
+                        </svg>
+                        Watch Demo
+                    </a>
+                </div>
+                <div class="hero-social-proof">
+                    <div class="avatar-stack">
+                        <div class="avatar bg-1">JT</div>
+                        <div class="avatar bg-2">MK</div>
+                        <div class="avatar bg-3">AS</div>
+                        <div class="avatar bg-4">RD</div>
+                    </div>
+                    <div class="social-proof-text">
+                        <strong>2,500+ investors</strong> already growing with REAP
+                    </div>
+                </div>
+            </div>
+            <div class="hero-right">
+                <div class="dashboard-preview">
+                    <div class="dashboard-header">
+                        <span class="dashboard-dot red"></span>
+                        <span class="dashboard-dot yellow"></span>
+                        <span class="dashboard-dot green"></span>
+                    </div>
+                    <div class="dashboard-body">
+                        <div class="dash-card">
+                            <div class="dash-card-header">
+                                <span class="dash-card-title">Portfolio Value</span>
+                                <span class="dash-card-badge positive">+12.4%</span>
+                            </div>
+                            <div class="dash-card-value">$14.2M</div>
+                            <div class="dash-card-subtitle">Across 23 properties</div>
+                        </div>
+                        <div class="dash-card">
+                            <div class="dash-card-header">
+                                <span class="dash-card-title">Avg. Cap Rate</span>
+                                <span class="dash-card-badge neutral">Market</span>
+                            </div>
+                            <div class="dash-card-value">6.8%</div>
+                            <div class="dash-card-subtitle">vs 5.9% market avg</div>
+                        </div>
+                        <div class="dash-card full-width">
+                            <div class="dash-card-header">
+                                <span class="dash-card-title">Recent Analysis</span>
+                            </div>
+                            <div class="property-list">
+                                <div class="property-item">
+                                    <div class="property-thumb">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+                                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                                        </svg>
+                                    </div>
+                                    <div class="property-info">
+                                        <div class="property-name">Maple Grove Apartments</div>
+                                        <div class="property-address">Austin, TX • 48 Units</div>
+                                    </div>
+                                    <div class="property-value">
+                                        <div class="property-price">$4.2M</div>
+                                        <div class="property-change">↑ Strong Buy</div>
+                                    </div>
+                                </div>
+                                <div class="property-item">
+                                    <div class="property-thumb">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+                                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                                        </svg>
+                                    </div>
+                                    <div class="property-info">
+                                        <div class="property-name">Sunrise Townhomes</div>
+                                        <div class="property-address">Phoenix, AZ • 12 Units</div>
+                                    </div>
+                                    <div class="property-value">
+                                        <div class="property-price">$1.8M</div>
+                                        <div class="property-change">↑ Buy</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="floating-card floating-card-1">
+                    <div class="floating-metric">
+                        <div class="floating-icon green">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                                <polyline points="17 6 23 6 23 12"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="floating-text">Monthly NOI</div>
+                            <div class="floating-value">+$84,200</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="floating-card floating-card-2">
+                    <div class="floating-metric">
+                        <div class="floating-icon blue">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                <path d="M2 17l10 5 10-5"/>
+                                <path d="M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="floating-text">AI Confidence</div>
+                            <div class="floating-value">94.7%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Logos Section -->
+    <section class="logos-section">
+        <div class="logos-container">
+            <p class="logos-title">Trusted by leading investment firms</p>
+            <div class="logos-grid">
+                <span class="logo-item">Blackstone</span>
+                <span class="logo-item">Starwood</span>
+                <span class="logo-item">Greystar</span>
+                <span class="logo-item">AvalonBay</span>
+                <span class="logo-item">Brookfield</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="stats-section">
+        <div class="stats-container">
+            <div class="stat-card">
+                <div class="stat-value">$<span>14</span>B+</div>
+                <div class="stat-label">Assets analyzed monthly</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><span>50</span>K+</div>
+                <div class="stat-label">Properties in database</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><span>94</span>%</div>
+                <div class="stat-label">Valuation accuracy</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><span>3</span>min</div>
+                <div class="stat-label">Average underwriting time</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section" id="features">
+        <div class="features-container">
+            <div class="section-header">
+                <span class="section-tag">Platform Features</span>
+                <h2>Everything you need to invest with confidence</h2>
+                <p>Powerful tools designed by real estate professionals, for real estate professionals.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon blue">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                            <path d="M2 17l10 5 10-5"/>
+                            <path d="M2 12l10 5 10-5"/>
+                        </svg>
+                    </div>
+                    <h3>AI-Powered Underwriting</h3>
+                    <p>Get instant property valuations and deal analysis backed by machine learning trained on thousands of real transactions.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon green">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <path d="M3 9h18"/>
+                            <path d="M9 21V9"/>
+                        </svg>
+                    </div>
+                    <h3>Portfolio Analytics</h3>
+                    <p>Track performance across your entire portfolio with real-time dashboards, NOI tracking, and automated reporting.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon purple">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="M21 21l-4.35-4.35"/>
+                            <path d="M11 8v6"/>
+                            <path d="M8 11h6"/>
+                        </svg>
+                    </div>
+                    <h3>Market Intelligence</h3>
+                    <p>Discover off-market opportunities with predictive analytics that identify emerging neighborhoods before they trend.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon orange">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                            <polyline points="10 9 9 9 8 9"/>
+                        </svg>
+                    </div>
+                    <h3>Automated Reports</h3>
+                    <p>Generate professional investment memos, rent rolls, and financial projections in seconds, not hours.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon navy">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#0F2744" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                    </div>
+                    <h3>Team Collaboration</h3>
+                    <p>Share deals, assign tasks, and keep your entire team aligned with built-in workflow management.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon teal">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#14B8A6" stroke-width="2">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                            <line x1="12" y1="22.08" x2="12" y2="12"/>
+                        </svg>
+                    </div>
+                    <h3>API & Integrations</h3>
+                    <p>Connect with your existing tools. Seamless integrations with Yardi, AppFolio, QuickBooks, and more.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Property Types Section -->
+    <section class="property-section" id="solutions">
+        <div class="property-container">
+            <div class="section-header">
+                <span class="section-tag">Built For Your Portfolio</span>
+                <h2>From single-family to large multifamily</h2>
+                <p>Purpose-built analytics for every property type in your portfolio.</p>
+            </div>
+            <div class="property-grid">
+                <div class="property-type-card single-family">
+                    <div class="property-type-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                            <polyline points="9 22 9 12 15 12 15 22"/>
+                        </svg>
+                    </div>
+                    <div class="property-type-content">
+                        <h3>Single-Family Rentals</h3>
+                        <p>Scale your SFR portfolio with confidence. Analyze rehab costs, rental comps, and neighborhood trends instantly.</p>
+                        <div class="property-stats">
+                            <div class="property-stat">
+                                <div class="property-stat-value">12,000+</div>
+                                <div class="property-stat-label">SFR analyzed</div>
+                            </div>
+                            <div class="property-stat">
+                                <div class="property-stat-value">98%</div>
+                                <div class="property-stat-label">Rent accuracy</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="property-type-card multifamily">
+                    <div class="property-type-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+                            <rect x="4" y="2" width="16" height="20" rx="2"/>
+                            <path d="M9 22v-4h6v4"/>
+                            <path d="M8 6h.01"/>
+                            <path d="M16 6h.01"/>
+                            <path d="M8 10h.01"/>
+                            <path d="M16 10h.01"/>
+                            <path d="M8 14h.01"/>
+                            <path d="M16 14h.01"/>
+                        </svg>
+                    </div>
+                    <div class="property-type-content">
+                        <h3>Multifamily Properties</h3>
+                        <p>Underwrite 5-500+ unit deals with institutional-grade analysis. Model rent growth, expenses, and cap rate compression.</p>
+                        <div class="property-stats">
+                            <div class="property-stat">
+                                <div class="property-stat-value">38,000+</div>
+                                <div class="property-stat-label">Units analyzed</div>
+                            </div>
+                            <div class="property-stat">
+                                <div class="property-stat-value">$14B+</div>
+                                <div class="property-stat-label">Deal volume</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-section">
+        <div class="how-container">
+            <div class="section-header">
+                <span class="section-tag">How It Works</span>
+                <h2>From deal to decision in minutes</h2>
+                <p>Three simple steps to transform how you analyze real estate investments.</p>
+            </div>
+            <div class="steps-grid">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <h3>Connect Your Data</h3>
+                    <p>Import properties from any source—MLS, LoopNet, broker packages, or your own spreadsheets. Our AI handles the rest.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <h3>Instant Analysis</h3>
+                    <p>Get comprehensive underwriting in under 3 minutes. Valuations, rent comps, expense ratios, and investment recommendations.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <h3>Make Smarter Moves</h3>
+                    <p>Act on opportunities faster than the competition. Share reports, track deals, and close with confidence.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="testimonials-section">
+        <div class="testimonials-container">
+            <div class="section-header">
+                <span class="section-tag">Testimonials</span>
+                <h2>Loved by investors everywhere</h2>
+                <p>See why thousands of real estate professionals trust REAP for their investment decisions.</p>
+            </div>
+            <div class="testimonials-grid">
+                <div class="testimonial-card">
+                    <div class="testimonial-rating">
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                    </div>
+                    <p class="testimonial-text">"REAP cut our underwriting time by 80%. We went from analyzing 5 deals a week to 25. Game changer for our acquisitions team."</p>
+                    <div class="testimonial-author">
+                        <div class="avatar author-avatar" style="background: linear-gradient(135deg, #6366F1, #4F46E5);">MR</div>
+                        <div class="author-info">
+                            <h4>Michael Rodriguez</h4>
+                            <p>VP Acquisitions, Summit Capital</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="testimonial-rating">
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                    </div>
+                    <p class="testimonial-text">"Finally, a platform that understands multifamily. The AI valuations are scary accurate—within 2% of our eventual purchase prices."</p>
+                    <div class="testimonial-author">
+                        <div class="avatar author-avatar" style="background: linear-gradient(135deg, #10B981, #059669);">SK</div>
+                        <div class="author-info">
+                            <h4>Sarah Kim</h4>
+                            <p>Principal, Evergreen Properties</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="testimonial-rating">
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                    </div>
+                    <p class="testimonial-text">"As a family office, we needed institutional-quality analytics without the institutional price tag. REAP delivers exactly that."</p>
+                    <div class="testimonial-author">
+                        <div class="avatar author-avatar" style="background: linear-gradient(135deg, #F59E0B, #D97706);">JW</div>
+                        <div class="author-info">
+                            <h4>James Whitmore</h4>
+                            <p>Managing Director, Whitmore Family Office</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="cta-container">
+            <div class="cta-content">
+                <h2>Ready to invest smarter?</h2>
+                <p>Join thousands of investors using REAP to find better deals, faster. Start your free trial today.</p>
+                <div class="cta-buttons">
+                    <a href="#signup" class="btn btn-white btn-xl">Start Free Trial</a>
+                    <a href="#demo" class="btn btn-outline-white btn-xl">Schedule Demo</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-container">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <a href="#" class="logo">
+                        <div class="logo-icon">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                                <polyline points="9 22 9 12 15 12 15 22" fill="none" stroke="white" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <span class="logo-text">REAP</span>
+                    </a>
+                    <p>The intelligent real estate analytics platform. Make smarter investment decisions with AI-powered insights.</p>
+                </div>
+                <div class="footer-column">
+                    <h4>Product</h4>
+                    <div class="footer-links">
+                        <a href="#">Features</a>
+                        <a href="#">Pricing</a>
+                        <a href="#">Integrations</a>
+                        <a href="#">API</a>
+                    </div>
+                </div>
+                <div class="footer-column">
+                    <h4>Company</h4>
+                    <div class="footer-links">
+                        <a href="#">About</a>
+                        <a href="#">Careers</a>
+                        <a href="#">Blog</a>
+                        <a href="#">Press</a>
+                    </div>
+                </div>
+                <div class="footer-column">
+                    <h4>Support</h4>
+                    <div class="footer-links">
+                        <a href="#">Help Center</a>
+                        <a href="#">Contact</a>
+                        <a href="#">Privacy</a>
+                        <a href="#">Terms</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p class="footer-copy">© 2025 REAP Analytics, Inc. All rights reserved.</p>
+                <div class="footer-social">
+                    <a href="#" class="social-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+                            <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/>
+                        </svg>
+                    </a>
+                    <a href="#" class="social-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+                            <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+                            <rect x="2" y="9" width="4" height="12"/>
+                            <circle cx="4" cy="4" r="2"/>
+                        </svg>
+                    </a>
+                    <a href="#" class="social-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+                            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+                            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+                            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
