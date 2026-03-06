@@ -1,8 +1,14 @@
 import { useState, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 const SPREADSHEET_ID = "1GclfTHS19k1yyUYucyHBKbwWk4NarxybcA5zQEr6o8Y";
 const API_KEY = "AIzaSyBOauOqljEA4HpUmSjwAxKe79OsUldNBS8";
 const SHEET_NAME = "Deals";
+
+const supabase = createClient(
+  "https://cpgwnrpaflaftlxrzlar.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwZ3ducnBhZmxhZnRseHJ6bGFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3NTY3MzIsImV4cCI6MjA4ODMzMjczMn0.VHU2LCWEIwsLMc7JOeNCLOfIgrzM1b9brfesk9NFFP0"
+);
 
 const STATUS_CONFIG = {
   "New":                          { color: "#16a34a", bg: "rgba(22,163,74,0.08)",   dot: "#16a34a" },
@@ -311,12 +317,118 @@ function DealDetailView({ deal, onBack }) {
   );
 }
 
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handleLogin = async () => {
+    setLoading(true); setError("");
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError(error.message);
+    else onAuth(data.user);
+    setLoading(false);
+  };
+
+  const handleSignup = async () => {
+    setLoading(true); setError("");
+    const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name } } });
+    if (error) setError(error.message);
+    else setSuccess("Check your email to confirm your account, then log in.");
+    setLoading(false);
+  };
+
+  const handleForgot = async () => {
+    if (!email) { setError("Enter your email first"); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) setError(error.message);
+    else setSuccess("Password reset email sent.");
+    setLoading(false);
+  };
+
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        .auth-input:focus { border-color: #16a34a !important; box-shadow: 0 0 0 3px rgba(22,163,74,0.12) !important; outline: none; }
+        input::placeholder { color: #94a3b8; }
+      `}</style>
+      <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #f0fdf4 0%, #f8fafc 50%, #dcfce7 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ width: "100%", maxWidth: 420 }}>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", boxShadow: "0 4px 14px rgba(22,163,74,0.35)" }}>
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            </div>
+            <h1 style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>REAP | Ai</h1>
+            <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>
+              {mode === "login" ? "Sign in to your account" : mode === "signup" ? "Create your account" : "Reset your password"}
+            </p>
+          </div>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.06)", border: "1px solid #e2e8f0" }}>
+            {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#dc2626", fontFamily: "'DM Sans', sans-serif" }}>{error}</div>}
+            {success && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#15803d", fontFamily: "'DM Sans', sans-serif" }}>{success}</div>}
+            {mode === "signup" && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 6 }}>Full Name</label>
+                <input className="auth-input" value={name} onChange={e => setName(e.target.value)} placeholder="Javier Suarez" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", transition: "all 0.15s" }} />
+              </div>
+            )}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 6 }}>Email</label>
+              <input className="auth-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", transition: "all 0.15s" }} />
+            </div>
+            {mode !== "forgot" && (
+              <div style={{ marginBottom: mode === "login" ? 8 : 20 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 6 }}>Password</label>
+                <input className="auth-input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && mode === "login" && handleLogin()} style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", transition: "all 0.15s" }} />
+              </div>
+            )}
+            {mode === "login" && (
+              <div style={{ textAlign: "right", marginBottom: 20 }}>
+                <button onClick={() => { setMode("forgot"); setError(""); setSuccess(""); }} style={{ background: "none", border: "none", color: "#16a34a", fontSize: 12, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", fontWeight: 600 }}>Forgot password?</button>
+              </div>
+            )}
+            <button onClick={mode === "login" ? handleLogin : mode === "signup" ? handleSignup : handleForgot} disabled={loading} style={{ width: "100%", background: loading ? "#86efac" : "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "11px 0", color: "#fff", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)", marginBottom: 20 }}>
+              {loading ? "Please wait..." : mode === "login" ? "Sign In" : mode === "signup" ? "Create Account" : "Send Reset Email"}
+            </button>
+            <div style={{ textAlign: "center", fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "#64748b" }}>
+              {mode === "login" && <>Don't have an account?{" "}<button onClick={() => { setMode("signup"); setError(""); setSuccess(""); }} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 600, cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Sign up</button></>}
+              {mode === "signup" && <>Already have an account?{" "}<button onClick={() => { setMode("login"); setError(""); setSuccess(""); }} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 600, cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Sign in</button></>}
+              {mode === "forgot" && <button onClick={() => { setMode("login"); setError(""); setSuccess(""); }} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 600, cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Back to sign in</button>}
+            </div>
+          </div>
+          <p style={{ textAlign: "center", marginTop: 20, fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>© 2026 REAP | Ai · Suarez Global</p>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function ReapApp() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [activeNav, setActiveNav] = useState("pipeline");
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const fetchDeals = async () => {
     setLoading(true);
@@ -394,6 +506,19 @@ export default function ReapApp() {
     { id: "team", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
   ];
 
+  if (authLoading) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
+      <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+
+  if (!session) return <AuthScreen onAuth={(user) => setSession({ user })} />;
+
+  const userEmail = session?.user?.email || "";
+  const userName = session?.user?.user_metadata?.full_name || userEmail;
+  const initials = userName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+
   return (
     <>
       <style>{`
@@ -414,7 +539,11 @@ export default function ReapApp() {
             <button key={item.id} onClick={() => setActiveNav(item.id)} style={{ width: 40, height: 40, borderRadius: 10, border: "none", background: activeNav === item.id ? "#f0fdf4" : "transparent", color: activeNav === item.id ? "#16a34a" : "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}>{item.icon}</button>
           ))}
           <div style={{ flex: 1 }} />
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #3b82f6, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>JS</div>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            title="Sign out"
+            style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #3b82f6, #2563eb)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}
+          >{initials}</button>
         </div>
 
         {/* Main */}
