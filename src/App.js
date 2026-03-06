@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 
 const SPREADSHEET_ID = "1GclfTHS19k1yyUYucyHBKbwWk4NarxybcA5zQEr6o8Y";
-const API_KEY = "AIzaSyAAsYRQSyEr5X0sO4C5h9B_0w4LK0C-wWo";
+const API_KEY = "AIzaSyBOauOqljEA4HpUmSjwAxKe79OsUldNBS8";
 const SHEET_NAME = "Deals";
 
 const STATUS_CONFIG = {
