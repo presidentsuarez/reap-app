@@ -325,6 +325,11 @@ function AuthScreen({ onAuth }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [pageLoaded, setPageLoaded] = useState(false);
+  const [hoverBtn, setHoverBtn] = useState(false);
+  const [hoverGoogle, setHoverGoogle] = useState(false);
+
+  useEffect(() => { const t = setTimeout(() => setPageLoaded(true), 100); return () => clearTimeout(t); }, []);
 
   const handleLogin = async () => {
     setLoading(true); setError("");
@@ -351,59 +356,245 @@ function AuthScreen({ onAuth }) {
     setLoading(false);
   };
 
+  const switchMode = (m) => { setMode(m); setError(""); setSuccess(""); setEmail(""); setPassword(""); setName(""); };
+
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        .auth-input:focus { border-color: #16a34a !important; box-shadow: 0 0 0 3px rgba(22,163,74,0.12) !important; outline: none; }
-        input::placeholder { color: #94a3b8; }
+        body { margin: 0; overflow: hidden; }
+        input::placeholder { color: #8A9B91; }
+        .reap-input:focus { border-color: #22C55E !important; box-shadow: 0 0 0 3px rgba(34,197,94,0.12) !important; outline: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes float1 { 0%,100% { transform: translate(0,0) scale(1); } 33% { transform: translate(30px,-20px) scale(1.05); } 66% { transform: translate(-20px,15px) scale(0.95); } }
+        @keyframes float2 { 0%,100% { transform: translate(0,0) scale(1); } 33% { transform: translate(-25px,20px) scale(1.08); } 66% { transform: translate(15px,-25px) scale(0.92); } }
+        @keyframes float3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(20px,10px); } }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes cardFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+        @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 20px rgba(34,197,94,0.15); } 50% { box-shadow: 0 0 40px rgba(34,197,94,0.3); } }
+        @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        .stat-card { animation: cardFloat 4s ease-in-out infinite; }
+        .stat-card:nth-child(2) { animation-delay: 0.5s; }
+        .stat-card:nth-child(3) { animation-delay: 1s; }
+        .stat-card:hover { background: rgba(255,255,255,0.12) !important; border-color: rgba(255,255,255,0.2) !important; transform: translateY(-4px) scale(1.02) !important; }
+        .reap-link:hover { opacity: 0.8; }
       `}</style>
-      <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #f0fdf4 0%, #f8fafc 50%, #dcfce7 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <div style={{ width: "100%", maxWidth: 420 }}>
-          <div style={{ textAlign: "center", marginBottom: 32 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", boxShadow: "0 4px 14px rgba(22,163,74,0.35)" }}>
-              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-            </div>
-            <h1 style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>REAP | Ai</h1>
-            <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>
-              {mode === "login" ? "Sign in to your account" : mode === "signup" ? "Create your account" : "Reset your password"}
-            </p>
-          </div>
-          <div style={{ background: "#fff", borderRadius: 16, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.06)", border: "1px solid #e2e8f0" }}>
-            {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#dc2626", fontFamily: "'DM Sans', sans-serif" }}>{error}</div>}
-            {success && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#15803d", fontFamily: "'DM Sans', sans-serif" }}>{success}</div>}
-            {mode === "signup" && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 6 }}>Full Name</label>
-                <input className="auth-input" value={name} onChange={e => setName(e.target.value)} placeholder="Javier Suarez" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", transition: "all 0.15s" }} />
+      <div style={{ display: "flex", minHeight: "100vh", height: "100vh", fontFamily: "'DM Sans', sans-serif", background: "#F8FAF9", overflow: "hidden" }}>
+
+        {/* ─── LEFT PANEL ─── */}
+        <div style={{
+          flex: "0 0 50%", position: "relative", overflow: "hidden",
+          background: "linear-gradient(160deg, #051E15 0%, #0B3D2C 35%, #0E4D37 70%, #0A3425 100%)",
+          backgroundSize: "200% 200%", animation: "gradientShift 12s ease infinite",
+          display: "flex", flexDirection: "column", justifyContent: "space-between",
+          padding: "48px 56px",
+        }}>
+          {/* Animated gradient orbs */}
+          <div style={{ position: "absolute", top: -100, right: -60, width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle, rgba(34,197,94,0.18) 0%, transparent 65%)", pointerEvents: "none", animation: "float1 8s ease-in-out infinite" }} />
+          <div style={{ position: "absolute", bottom: -60, left: -40, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle, rgba(34,197,94,0.1) 0%, transparent 65%)", pointerEvents: "none", animation: "float2 10s ease-in-out infinite" }} />
+          <div style={{ position: "absolute", top: "40%", left: "50%", width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 65%)", pointerEvents: "none", animation: "float3 7s ease-in-out infinite" }} />
+
+          {/* Grid pattern */}
+          <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.025) 1px, transparent 0)", backgroundSize: "28px 28px", pointerEvents: "none" }} />
+
+          {/* Top: Logo */}
+          <div style={{ position: "relative", zIndex: 1, opacity: pageLoaded ? 1 : 0, transform: pageLoaded ? "translateY(0)" : "translateY(-12px)", transition: "all 0.6s ease" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: "#22C55E", display: "flex", alignItems: "center", justifyContent: "center", animation: "pulseGlow 3s ease-in-out infinite" }}>
+                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
               </div>
-            )}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 6 }}>Email</label>
-              <input className="auth-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", transition: "all 0.15s" }} />
-            </div>
-            {mode !== "forgot" && (
-              <div style={{ marginBottom: mode === "login" ? 8 : 20 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 6 }}>Password</label>
-                <input className="auth-input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && mode === "login" && handleLogin()} style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", transition: "all 0.15s" }} />
-              </div>
-            )}
-            {mode === "login" && (
-              <div style={{ textAlign: "right", marginBottom: 20 }}>
-                <button onClick={() => { setMode("forgot"); setError(""); setSuccess(""); }} style={{ background: "none", border: "none", color: "#16a34a", fontSize: 12, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", fontWeight: 600 }}>Forgot password?</button>
-              </div>
-            )}
-            <button onClick={mode === "login" ? handleLogin : mode === "signup" ? handleSignup : handleForgot} disabled={loading} style={{ width: "100%", background: loading ? "#86efac" : "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "11px 0", color: "#fff", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)", marginBottom: 20 }}>
-              {loading ? "Please wait..." : mode === "login" ? "Sign In" : mode === "signup" ? "Create Account" : "Send Reset Email"}
-            </button>
-            <div style={{ textAlign: "center", fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "#64748b" }}>
-              {mode === "login" && <>Don't have an account?{" "}<button onClick={() => { setMode("signup"); setError(""); setSuccess(""); }} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 600, cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Sign up</button></>}
-              {mode === "signup" && <>Already have an account?{" "}<button onClick={() => { setMode("login"); setError(""); setSuccess(""); }} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 600, cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Sign in</button></>}
-              {mode === "forgot" && <button onClick={() => { setMode("login"); setError(""); setSuccess(""); }} style={{ background: "none", border: "none", color: "#16a34a", fontWeight: 600, cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Back to sign in</button>}
+              <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>REAP</span>
             </div>
           </div>
-          <p style={{ textAlign: "center", marginTop: 20, fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>© 2026 REAP | Ai · Suarez Global</p>
+
+          {/* Middle: Headline + Stats */}
+          <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <div style={{ opacity: pageLoaded ? 1 : 0, transform: pageLoaded ? "translateY(0)" : "translateY(20px)", transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s" }}>
+              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 42, fontWeight: 600, color: "#fff", lineHeight: 1.12, margin: 0, letterSpacing: "-0.025em" }}>
+                Smarter real estate<br />decisions, powered<br /><span style={{ color: "#22C55E" }}>by AI</span>
+              </h1>
+              <p style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.65, margin: "18px 0 0 0", maxWidth: 380 }}>
+                Underwrite deals in minutes, track portfolios in real-time, and uncover opportunities others miss.
+              </p>
+            </div>
+
+            {/* Stat cards */}
+            <div style={{ display: "flex", gap: 12, marginTop: 40, opacity: pageLoaded ? 1 : 0, transform: pageLoaded ? "translateY(0)" : "translateY(20px)", transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.6s" }}>
+              {[
+                { label: "Deal Volume", value: "$1.33B+", accent: false },
+                { label: "Deals Analyzed", value: "1,041+", accent: false },
+                { label: "Avg. Underwriting", value: "3 min", accent: true },
+              ].map((stat, i) => (
+                <div key={i} className="stat-card" style={{
+                  background: "rgba(255,255,255,0.06)", backdropFilter: "blur(20px)",
+                  border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14,
+                  padding: "16px 20px", cursor: "default", transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+                  flex: 1,
+                }}>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>{stat.label}</div>
+                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 24, fontWeight: 500, color: stat.accent ? "#22C55E" : "#fff", letterSpacing: "-0.02em" }}>{stat.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom: Trust bar */}
+          <div style={{ position: "relative", zIndex: 1, opacity: pageLoaded ? 1 : 0, transition: "opacity 1s ease 1.2s" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex" }}>
+                {["JT", "MK", "AS", "RD"].map((initials, i) => (
+                  <div key={i} style={{
+                    width: 28, height: 28, borderRadius: "50%",
+                    background: ["rgba(34,197,94,0.35)", "rgba(59,130,246,0.35)", "rgba(168,85,247,0.35)", "rgba(249,115,22,0.35)"][i],
+                    border: "2px solid rgba(11,61,44,0.8)", display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.85)",
+                    fontFamily: "'DM Sans', sans-serif", marginLeft: i > 0 ? -7 : 0,
+                  }}>{initials}</div>
+                ))}
+              </div>
+              <span style={{ fontSize: 12.5, color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif" }}>
+                <strong style={{ color: "rgba(255,255,255,0.65)" }}>2,500+</strong> investors already growing with REAP
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── RIGHT PANEL ─── */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "40px 56px", position: "relative", overflow: "auto" }}>
+          <div style={{
+            width: "100%", maxWidth: 400,
+            opacity: pageLoaded ? 1 : 0,
+            transform: pageLoaded ? "translateX(0)" : "translateX(24px)",
+            transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.35s",
+          }}>
+            {/* Header */}
+            <div style={{ marginBottom: 32 }}>
+              <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 600, color: "#1A2E22", margin: 0, letterSpacing: "-0.02em" }}>
+                {mode === "login" && "Welcome back"}
+                {mode === "signup" && "Create your account"}
+                {mode === "forgot" && "Reset your password"}
+              </h2>
+              <p style={{ fontSize: 14.5, color: "#8A9B91", margin: "8px 0 0 0", lineHeight: 1.5 }}>
+                {mode === "login" && "Sign in to access your deal pipeline and analytics."}
+                {mode === "signup" && "Start analyzing deals in under 3 minutes."}
+                {mode === "forgot" && "Enter your email and we'll send you a reset link."}
+              </p>
+            </div>
+
+            {/* Messages */}
+            {error && (
+              <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13.5, color: "#DC2626", fontFamily: "'DM Sans', sans-serif", animation: "fadeUp 0.3s ease" }}>{error}</div>
+            )}
+            {success && (
+              <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13.5, color: "#0B3D2C", fontFamily: "'DM Sans', sans-serif", animation: "fadeUp 0.3s ease" }}>{success}</div>
+            )}
+
+            {/* Form */}
+            <div>
+              {mode === "signup" && (
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 500, color: "#4A5E52", marginBottom: 6, letterSpacing: "0.01em" }}>Full name</label>
+                  <input className="reap-input" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Javier Suarez" style={{ width: "100%", padding: "13px 16px", fontSize: 15, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #DCE4DF", borderRadius: 10, outline: "none", transition: "all 0.2s", background: "#fff", color: "#1A2E22", boxSizing: "border-box" }} />
+                </div>
+              )}
+
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 500, color: "#4A5E52", marginBottom: 6, letterSpacing: "0.01em" }}>Email address</label>
+                <input className="reap-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" style={{ width: "100%", padding: "13px 16px", fontSize: 15, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #DCE4DF", borderRadius: 10, outline: "none", transition: "all 0.2s", background: "#fff", color: "#1A2E22", boxSizing: "border-box" }} />
+              </div>
+
+              {mode !== "forgot" && (
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <label style={{ fontSize: 13, fontWeight: 500, color: "#4A5E52", letterSpacing: "0.01em" }}>Password</label>
+                    {mode === "login" && (
+                      <button onClick={() => switchMode("forgot")} className="reap-link" style={{ background: "none", border: "none", fontSize: 13, color: "#0B3D2C", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, cursor: "pointer", padding: 0, transition: "opacity 0.15s" }}>Forgot password?</button>
+                    )}
+                  </div>
+                  <input className="reap-input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && mode === "login" && handleLogin()} style={{ width: "100%", padding: "13px 16px", fontSize: 15, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #DCE4DF", borderRadius: 10, outline: "none", transition: "all 0.2s", background: "#fff", color: "#1A2E22", boxSizing: "border-box" }} />
+                </div>
+              )}
+
+              {/* Submit */}
+              <button
+                onClick={mode === "login" ? handleLogin : mode === "signup" ? handleSignup : handleForgot}
+                disabled={loading}
+                onMouseEnter={() => setHoverBtn(true)}
+                onMouseLeave={() => setHoverBtn(false)}
+                style={{
+                  width: "100%", padding: "14px 20px", marginTop: 24,
+                  background: loading ? "#0E4D37" : hoverBtn ? "#0E4D37" : "#0B3D2C",
+                  color: "#fff", fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
+                  border: "none", borderRadius: 10,
+                  cursor: loading ? "not-allowed" : "pointer",
+                  transition: "all 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  letterSpacing: "0.01em",
+                  transform: hoverBtn && !loading ? "translateY(-2px)" : "translateY(0)",
+                  boxShadow: hoverBtn && !loading ? "0 6px 20px rgba(11,61,44,0.35)" : "0 2px 8px rgba(11,61,44,0.15)",
+                }}
+              >
+                {loading && (
+                  <svg width={18} height={18} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}>
+                    <circle cx={12} cy={12} r={10} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={3} />
+                    <path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round" />
+                  </svg>
+                )}
+                {mode === "login" && (loading ? "Signing in..." : "Sign in")}
+                {mode === "signup" && (loading ? "Creating account..." : "Create account")}
+                {mode === "forgot" && (loading ? "Sending link..." : "Send reset link")}
+              </button>
+
+              {/* Divider */}
+              <div style={{ display: "flex", alignItems: "center", gap: 16, margin: "24px 0" }}>
+                <div style={{ flex: 1, height: 1, background: "#E8ECE9" }} />
+                <span style={{ fontSize: 11, color: "#8A9B91", fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>or</span>
+                <div style={{ flex: 1, height: 1, background: "#E8ECE9" }} />
+              </div>
+
+              {/* Google OAuth */}
+              <button
+                onMouseEnter={() => setHoverGoogle(true)}
+                onMouseLeave={() => setHoverGoogle(false)}
+                style={{
+                  width: "100%", padding: "13px 20px",
+                  background: hoverGoogle ? "#F1F5F3" : "#fff",
+                  border: `1.5px solid ${hoverGoogle ? "#B8C4BC" : "#DCE4DF"}`,
+                  borderRadius: 10, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                  fontSize: 14, fontWeight: 500, fontFamily: "'DM Sans', sans-serif", color: "#1A2E22",
+                  transition: "all 0.2s",
+                  transform: hoverGoogle ? "translateY(-1px)" : "translateY(0)",
+                  boxShadow: hoverGoogle ? "0 4px 12px rgba(0,0,0,0.06)" : "none",
+                }}>
+                <svg width={18} height={18} viewBox="0 0 24 24">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                Continue with Google
+              </button>
+
+              {/* Switch mode */}
+              <div style={{ marginTop: 28, textAlign: "center", fontSize: 14, color: "#8A9B91", fontFamily: "'DM Sans', sans-serif" }}>
+                {mode === "login" && (<>Don't have an account?{" "}<button onClick={() => switchMode("signup")} className="reap-link" style={{ background: "none", border: "none", color: "#0B3D2C", fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 14, padding: 0, transition: "opacity 0.15s" }}>Start free trial</button></>)}
+                {mode === "signup" && (<>Already have an account?{" "}<button onClick={() => switchMode("login")} className="reap-link" style={{ background: "none", border: "none", color: "#0B3D2C", fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 14, padding: 0, transition: "opacity 0.15s" }}>Sign in</button></>)}
+                {mode === "forgot" && (<button onClick={() => switchMode("login")} className="reap-link" style={{ background: "none", border: "none", color: "#0B3D2C", fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 14, padding: 0, transition: "opacity 0.15s" }}>← Back to sign in</button>)}
+              </div>
+            </div>
+          </div>
+
+          {/* Footer - properly positioned */}
+          <div style={{ position: "absolute", bottom: 24, left: 56, right: 56, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#B0BAB4", fontFamily: "'DM Sans', sans-serif" }}>
+            <span>© 2026 REAP Analytics, Inc.</span>
+            <div style={{ display: "flex", gap: 20 }}>
+              <a href="https://getreap.ai" className="reap-link" style={{ color: "#B0BAB4", textDecoration: "none", transition: "opacity 0.15s" }}>Privacy</a>
+              <a href="https://getreap.ai" className="reap-link" style={{ color: "#B0BAB4", textDecoration: "none", transition: "opacity 0.15s" }}>Terms</a>
+            </div>
+          </div>
         </div>
       </div>
     </>
