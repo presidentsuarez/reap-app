@@ -680,7 +680,40 @@ function DealDetailView({ deal, onBack, isMobile }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
-  const tabs = ["overview", "financials", "documents", "activity"];
+  const tabs = ["overview", "financials", "ai summary", "documents", "activity"];
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const generateSummary = async () => {
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      const res = await fetch(SHEETS_WRITE_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "generate_summary", deal }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setSummary(result.summary);
+      } else {
+        setSummaryError(result.error || "Failed to generate summary");
+      }
+    } catch (err) {
+      setSummaryError("Network error: " + err.message);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  const copySummary = () => {
+    if (summary) {
+      navigator.clipboard.writeText(summary.replace(/\*\*/g, ""));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const handleScroll = useCallback(() => {
     if (scrollRef.current) setScrolled(scrollRef.current.scrollTop > 60);
@@ -802,6 +835,114 @@ function DealDetailView({ deal, onBack, isMobile }) {
 
         {activeTab === "financials" && (
           <FinancialsTab deal={deal} isMobile={isMobile} />
+        )}
+        {activeTab === "ai summary" && (
+          <div>
+            {!summary && !summaryLoading && (
+              <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? "32px 20px" : "48px 40px", textAlign: "center" }}>
+                <div style={{ width: 64, height: 64, borderRadius: 16, background: "linear-gradient(135deg, rgba(22,163,74,0.1), rgba(22,163,74,0.05))", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+                  <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                </div>
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 8px", letterSpacing: "-0.02em" }}>AI Executive Summary</h3>
+                <p style={{ fontSize: 14, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 24px", maxWidth: 400, marginLeft: "auto", marginRight: "auto", lineHeight: 1.6 }}>
+                  Generate an institutional-quality investment memo using AI. It analyzes all deal metrics and creates a professional summary ready for investors.
+                </p>
+                <button onClick={generateSummary} style={{
+                  background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 10,
+                  padding: "12px 28px", color: "#fff", fontSize: 14, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                  boxShadow: "0 2px 12px rgba(22,163,74,0.35)",
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                  Generate Summary
+                </button>
+                {summaryError && (
+                  <p style={{ fontSize: 13, color: "#dc2626", fontFamily: "'DM Sans', sans-serif", margin: "16px 0 0" }}>{summaryError}</p>
+                )}
+              </div>
+            )}
+
+            {summaryLoading && (
+              <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: "48px 40px", textAlign: "center" }}>
+                <div style={{ width: 40, height: 40, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Generating Executive Summary...</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>AI is analyzing deal metrics. This takes 10-15 seconds.</p>
+              </div>
+            )}
+
+            {summary && !summaryLoading && (
+              <div>
+                {/* Action Bar */}
+                <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+                  <button onClick={copySummary} style={{
+                    background: copied ? "#16a34a" : "#fff", border: "1px solid " + (copied ? "#16a34a" : "#e2e8f0"),
+                    borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600,
+                    color: copied ? "#fff" : "#475569", cursor: "pointer",
+                    fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6,
+                    transition: "all 0.2s",
+                  }}>
+                    {copied ? (
+                      <><svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>Copied!</>
+                    ) : (
+                      <><svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy to Clipboard</>
+                    )}
+                  </button>
+                  <button onClick={() => { setSummary(null); generateSummary(); }} style={{
+                    background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8,
+                    padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569",
+                    cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                    display: "flex", alignItems: "center", gap: 6,
+                  }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Regenerate
+                  </button>
+                </div>
+
+                {/* Summary Content */}
+                <div style={{
+                  background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0",
+                  padding: isMobile ? "24px 20px" : "32px 36px",
+                  boxShadow: "0 1px 8px rgba(0,0,0,0.04)",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>REAP AI Executive Summary</p>
+                      <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>{deal.address} · Generated {new Date().toLocaleDateString()}</p>
+                    </div>
+                  </div>
+
+                  {summary.split("\n").map((line, i) => {
+                    const trimmed = line.trim();
+                    if (!trimmed) return <div key={i} style={{ height: 12 }} />;
+                    if (trimmed.startsWith("**") && trimmed.endsWith("**")) {
+                      return (
+                        <h3 key={i} style={{
+                          fontSize: 15, fontWeight: 700, color: "#0f172a",
+                          fontFamily: "'DM Sans', sans-serif", margin: "24px 0 10px",
+                          paddingBottom: 8, borderBottom: "1px solid #f1f5f9",
+                          letterSpacing: "-0.01em",
+                        }}>
+                          {trimmed.replace(/\*\*/g, "")}
+                        </h3>
+                      );
+                    }
+                    return (
+                      <p key={i} style={{
+                        fontSize: 14, color: "#475569", fontFamily: "'DM Sans', sans-serif",
+                        lineHeight: 1.75, margin: "0 0 8px",
+                      }}>
+                        {trimmed.replace(/\*\*/g, "")}
+                      </p>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         )}
         {activeTab === "documents" && (
           <div style={{ color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: 40, textAlign: "center", background: "#fff", borderRadius: 12, border: "1px dashed #e2e8f0" }}>
