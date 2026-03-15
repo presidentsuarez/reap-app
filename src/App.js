@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-const SPREADSHEET_ID = "1GclfTHS19k1yyUYucyHBKbwWk4NarxybcA5zQEr6o8Y";
-const API_KEY = "AIzaSyBOauOqljEA4HpUmSjwAxKe79OsUldNBS8";
+const SPREADSHEET_ID = process.env.REACT_APP_SPREADSHEET_ID;
+const API_KEY = process.env.REACT_APP_SHEETS_API_KEY;
 const SHEET_NAME = "Deals";
 
 const supabase = createClient(
-  "https://cpgwnrpaflaftlxrzlar.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwZ3ducnBhZmxhZnRseHJ6bGFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3NTY3MzIsImV4cCI6MjA4ODMzMjczMn0.VHU2LCWEIwsLMc7JOeNCLOfIgrzM1b9brfesk9NFFP0"
+  process.env.REACT_APP_SUPABASE_URL,
+  process.env.REACT_APP_SUPABASE_ANON_KEY
 );
 
 const STATUS_CONFIG = {
