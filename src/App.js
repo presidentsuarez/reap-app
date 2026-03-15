@@ -5,6 +5,7 @@ import { loadStripe } from "@stripe/stripe-js";
 const SPREADSHEET_ID = process.env.REACT_APP_SPREADSHEET_ID;
 const API_KEY = process.env.REACT_APP_SHEETS_API_KEY;
 const SHEET_NAME = "Deals";
+const SHEETS_WRITE_URL = process.env.REACT_APP_SHEETS_WRITE_URL;
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
@@ -44,6 +45,27 @@ const fmtNum = (n) => {
   return isNaN(num) ? "—" : num.toLocaleString();
 };
 
+const fmtPct = (n) => {
+  if (!n || n === "—") return "—";
+  const num = parseFloat(String(n).replace(/[%,$]/g, ""));
+  if (isNaN(num)) return "—";
+  return `${num.toFixed(1)}%`;
+};
+
+const fmtDate = (d) => {
+  if (!d) return "—";
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return d;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
+const fmtUserName = (email) => {
+  if (!email) return "—";
+  if (!email.includes("@")) return email;
+  const local = email.split("@")[0];
+  return local.split(/[._-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+};
+
 function StatusBadge({ status }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG["Sideline"];
   return (
@@ -62,18 +84,19 @@ function StatusBadge({ status }) {
 }
 
 function MetricCard({ label, value, sub, highlight, good }) {
+  const hasValue = value && value !== "—" && value !== "$NaN" && value !== "NaN%";
   return (
     <div style={{
-      background: highlight ? "linear-gradient(135deg, #f0fdf4, #dcfce7)" : "#ffffff",
-      border: `1px solid ${highlight ? "#86efac" : "#e2e8f0"}`,
+      background: highlight && hasValue ? "linear-gradient(135deg, #f0fdf4, #dcfce7)" : "#ffffff",
+      border: `1px solid ${highlight && hasValue ? "#86efac" : "#e2e8f0"}`,
       borderRadius: 12, padding: "18px 20px",
       display: "flex", flexDirection: "column", gap: 5,
-      boxShadow: highlight ? "0 2px 12px rgba(22,163,74,0.1)" : "0 1px 4px rgba(0,0,0,0.04)",
+      boxShadow: highlight && hasValue ? "0 2px 12px rgba(22,163,74,0.1)" : "0 1px 4px rgba(0,0,0,0.04)",
     }}>
       <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.07em", textTransform: "uppercase", fontWeight: 700 }}>{label}</span>
-      <span style={{ fontSize: 22, fontWeight: 700, color: highlight ? "#15803d" : "#0f172a", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em" }}>{value || "—"}</span>
+      <span style={{ fontSize: 22, fontWeight: 700, color: highlight && hasValue ? "#15803d" : "#0f172a", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em" }}>{hasValue ? value : "—"}</span>
       {sub && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{sub}</span>}
-      {good !== undefined && value && value !== "—" && (
+      {good && hasValue && (
         <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 3 }}>
           <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="18 15 12 9 6 15"/></svg>
           Strong
@@ -151,6 +174,298 @@ function SkeletonCards() {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════
+   NEW DEAL MODAL — Step 23
+   ═══════════════════════════════════════════════════════════ */
+
+function NewDealModal({ isOpen, onClose, onSave, saving, isMobile, userEmail }) {
+  const [form, setForm] = useState({
+    dealName: "",
+    address: "",
+    city: "",
+    state: "",
+    zip: "",
+    type: "Multifamily",
+    sqft: "",
+    units: "",
+    yearBuilt: "",
+    askingPrice: "",
+    ourOffer: "",
+    lotAcres: "",
+    class: "",
+  });
+
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
+  const handleSave = () => {
+    if (!form.dealName && !form.address) return;
+    onSave(form);
+  };
+
+  if (!isOpen) return null;
+
+  const inputStyle = {
+    width: "100%", padding: "12px 14px", fontSize: 14,
+    fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0",
+    borderRadius: 10, outline: "none", transition: "border-color 0.2s",
+    background: "#fff", color: "#0f172a", boxSizing: "border-box",
+  };
+
+  const labelStyle = {
+    display: "block", fontSize: 11, fontWeight: 700, color: "#94a3b8",
+    marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase",
+    fontFamily: "'DM Sans', sans-serif",
+  };
+
+  const selectStyle = { ...inputStyle, appearance: "none", backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2394a3b8' fill='none' stroke-width='1.5'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 14px center" };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", animation: "fadeIn 0.2s ease" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }} />
+      <div style={{
+        position: "relative", background: "#fff", width: isMobile ? "100%" : 540,
+        maxHeight: isMobile ? "92vh" : "85vh", overflow: "auto",
+        borderRadius: isMobile ? "20px 20px 0 0" : 20,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+        animation: isMobile ? "slideUp 0.3s cubic-bezier(0.25, 1, 0.5, 1)" : "fadeIn 0.25s ease",
+      }}>
+        {/* Header */}
+        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "#fff", zIndex: 1, borderRadius: isMobile ? "20px 20px 0 0" : "20px 20px 0 0" }}>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>New Deal</h2>
+            <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>Add a property to your pipeline</p>
+          </div>
+          <button onClick={onClose} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        {/* Form */}
+        <div style={{ padding: "20px 24px 24px" }}>
+          {/* Property Info Section */}
+          <p style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            Property Details <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+          </p>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Deal Name *</label>
+            <input style={inputStyle} value={form.dealName} onChange={e => set("dealName", e.target.value)} placeholder="e.g. Maple Grove Apartments" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Property Address *</label>
+            <input style={inputStyle} value={form.address} onChange={e => set("address", e.target.value)} placeholder="e.g. 5416 N 9th St, Tampa, FL 33604" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={labelStyle}>City</label>
+              <input style={inputStyle} value={form.city} onChange={e => set("city", e.target.value)} placeholder="Tampa" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+            </div>
+            <div>
+              <label style={labelStyle}>State</label>
+              <input style={inputStyle} value={form.state} onChange={e => set("state", e.target.value)} placeholder="FL" maxLength={2} onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+            </div>
+            <div>
+              <label style={labelStyle}>Zip</label>
+              <input style={inputStyle} value={form.zip} onChange={e => set("zip", e.target.value)} placeholder="33604" maxLength={5} onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={labelStyle}>Property Type</label>
+              <select style={selectStyle} value={form.type} onChange={e => set("type", e.target.value)}>
+                <option>Multifamily</option>
+                <option>Single Family</option>
+                <option>Mixed Use</option>
+                <option>Office</option>
+                <option>Retail</option>
+                <option>Industrial</option>
+                <option>Land</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Class</label>
+              <select style={selectStyle} value={form.class} onChange={e => set("class", e.target.value)}>
+                <option value="">—</option>
+                <option>A</option>
+                <option>B</option>
+                <option>C</option>
+                <option>D</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
+            <div>
+              <label style={labelStyle}>Sq Ft</label>
+              <input style={inputStyle} type="number" value={form.sqft} onChange={e => set("sqft", e.target.value)} placeholder="12,000" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+            </div>
+            <div>
+              <label style={labelStyle}>Units</label>
+              <input style={inputStyle} type="number" value={form.units} onChange={e => set("units", e.target.value)} placeholder="24" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+            </div>
+            <div>
+              <label style={labelStyle}>Year Built</label>
+              <input style={inputStyle} type="number" value={form.yearBuilt} onChange={e => set("yearBuilt", e.target.value)} placeholder="1985" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+            </div>
+          </div>
+
+          {/* Financials Section */}
+          <p style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            Financials <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+          </p>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={labelStyle}>Asking Price</label>
+              <input style={inputStyle} value={form.askingPrice} onChange={e => set("askingPrice", e.target.value)} placeholder="$1,200,000" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+            </div>
+            <div>
+              <label style={labelStyle}>Our Offer</label>
+              <input style={inputStyle} value={form.ourOffer} onChange={e => set("ourOffer", e.target.value)} placeholder="$950,000" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
+            <div>
+              <label style={labelStyle}>Lot Size (Acres)</label>
+              <input style={inputStyle} value={form.lotAcres} onChange={e => set("lotAcres", e.target.value)} placeholder="0.45" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+            </div>
+            <div />
+          </div>
+
+          {/* Save Button */}
+          <button onClick={handleSave} disabled={saving || (!form.dealName && !form.address)} style={{
+            width: "100%", padding: "14px 24px",
+            background: saving ? "#15803d" : "linear-gradient(135deg, #16a34a, #15803d)",
+            color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
+            border: "none", borderRadius: 12, cursor: saving ? "not-allowed" : "pointer",
+            transition: "all 0.25s", letterSpacing: "0.01em",
+            boxShadow: "0 4px 14px rgba(22,163,74,0.25)",
+            opacity: (!form.dealName && !form.address) ? 0.5 : 1,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          }}>
+            {saving && (
+              <svg width={18} height={18} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}>
+                <circle cx={12} cy={12} r={10} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={3} />
+                <path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round" />
+              </svg>
+            )}
+            {saving ? "Saving deal..." : "Add Deal to Pipeline"}
+          </button>
+        </div>
+      </div>
+      <style>{`
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      `}</style>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FINANCIALS TAB — Step 27
+   ═══════════════════════════════════════════════════════════ */
+
+function FinancialsTab({ deal, isMobile }) {
+  const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
+
+  return (
+    <>
+      {/* Proforma Income & Expenses */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+          Proforma Income & Expenses <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+          <MetricCard label="Revenue (Annual)" value={fmt(deal.proformaRevenueAnnual)} highlight />
+          <MetricCard label="Revenue (Monthly)" value={fmt(deal.proformaRevenueMonthly)} />
+          <MetricCard label="Revenue $/sqft" value={deal.proformaRentPerSF ? `$${deal.proformaRentPerSF}` : "—"} />
+          <MetricCard label="Vacancy" value={fmtPct(deal.proformaVacancy)} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+          <MetricCard label="Expenses (Annual)" value={fmt(deal.proformaExpensesAnnual)} />
+          <MetricCard label="Expenses (Monthly)" value={fmt(deal.proformaExpensesMonthly)} />
+          <MetricCard label="Expense Ratio" value={fmtPct(deal.proformaExpensesPct)} />
+          <MetricCard label="Expenses $/sqft" value={deal.proformaExpensesPerSF ? `$${deal.proformaExpensesPerSF}` : "—"} />
+        </div>
+      </section>
+
+      {/* NOI & Cash Flow */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+          NOI & Cash Flow <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+          <MetricCard label="Net Operating Income" value={fmt(deal.noiAnnual)} highlight good />
+          <MetricCard label="NOI (Monthly)" value={fmt(deal.noiMonthly)} />
+          <MetricCard label="NOI $/sqft" value={deal.noiPerSF ? `$${deal.noiPerSF}` : "—"} />
+          <MetricCard label="Cash Flow (Pre-Tax)" value={fmt(deal.cashFlowMonthly)} sub="monthly" highlight />
+        </div>
+      </section>
+
+      {/* Key Investment Metrics */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+          Key Metrics <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+          <MetricCard label="Cap Rate" value={fmtPct(deal.capRate)} good highlight />
+          <MetricCard label="DSCR" value={deal.dscr || "—"} good={parseFloat(deal.dscr) >= 1.25} />
+          <MetricCard label="ROI" value={fmtPct(deal.roi)} good highlight />
+          <MetricCard label="AAR" value={fmtPct(deal.aar)} good />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+          <MetricCard label="Cost to Value" value={fmtPct(deal.ctv)} />
+          <MetricCard label="Profitability" value={fmtPct(deal.profitability)} good />
+          <MetricCard label="REAP Score" value={deal.reapScore || "—"} highlight={parseFloat(deal.reapScore) >= 70} />
+          <MetricCard label="Equity Multiple" value={deal.equityMultiple || "—"} />
+        </div>
+      </section>
+
+      {/* Bridge Loan */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+          Bridge Loan <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+          <MetricCard label="Loan Total" value={fmt(deal.bridgeLoanTotal)} />
+          <MetricCard label="Interest Rate" value={fmtPct(deal.bridgeInterestRate)} />
+          <MetricCard label="Interest Cost (Mo)" value={fmt(deal.bridgeInterestMonthly)} />
+          <MetricCard label="Points" value={fmtPct(deal.bridgePoints)} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+          <MetricCard label="LTC" value={fmtPct(deal.bridgeLTC)} />
+          <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} />
+          <MetricCard label="Equity Required" value={fmt(deal.equityRequired)} />
+          <MetricCard label="Bridge Total Cost" value={fmt(deal.bridgeTotalCost)} />
+        </div>
+      </section>
+
+      {/* Refinance */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+          Refinance <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+          <MetricCard label="Refi Loan Amount" value={fmt(deal.refiLoanAmount)} />
+          <MetricCard label="% of ARV" value={fmtPct(deal.refiPctARV)} />
+          <MetricCard label="Refi Interest Rate" value={fmtPct(deal.refiInterestRate)} />
+          <MetricCard label="Cash Flow (Refi)" value={fmt(deal.refiCashFlow)} sub="annual" highlight />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+          <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good />
+          <MetricCard label="Profit at Refi" value={fmt(deal.profitAtRefi)} highlight />
+          <MetricCard label="Equity After Refi" value={fmt(deal.equityAfterRefi)} />
+          <MetricCard label="Refi Valuation" value={fmt(deal.refiValuation)} />
+        </div>
+      </section>
+    </>
+  );
+}
+
+
 function DealCard({ deal, onSelect }) {
   const [pressed, setPressed] = useState(false);
   return (
@@ -175,7 +490,7 @@ function DealCard({ deal, onSelect }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.address || "—"}</p>
-          <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{deal.type || "—"} · {deal.date || "—"}</p>
+          <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{deal.type || "—"} · {fmtDate(deal.date)}</p>
         </div>
         <div style={{ flexShrink: 0, marginLeft: 10 }}><StatusBadge status={deal.status} /></div>
       </div>
@@ -200,7 +515,7 @@ function DealCard({ deal, onSelect }) {
   );
 }
 
-function PipelineView({ deals, loading, error, onRetry, onSelectDeal, isMobile }) {
+function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal, isMobile }) {
   const [search, setSearch] = useState("");
   const [hoveredRow, setHoveredRow] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -275,7 +590,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, isMobile }
               <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search deals..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
             </div>
-            <button style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "9px 18px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap" }}>
+            <button onClick={onNewDeal} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "9px 18px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap" }}>
               <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
               New Deal
             </button>
@@ -283,7 +598,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, isMobile }
         </div>
       )}
 
-      {/* Summary Strip — tappable to filter on mobile */}
+      {/* Summary Strip */}
       <div style={{ background: "#fff", borderBottom: "1px solid #f1f5f9", padding: isMobile ? "0" : "12px 32px", display: "flex", gap: 0, overflowX: isMobile ? "auto" : "visible", WebkitOverflowScrolling: "touch" }}>
         {statusFilters.map((s, i) => {
           const count = deals.filter(s.match).length;
@@ -334,8 +649,8 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, isMobile }
                   <tr><td colSpan={9} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
                 ) : filtered.map((deal, i) => (
                   <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
-                    <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", background: "#f1f5f9", padding: "3px 8px", borderRadius: 6, fontWeight: 500 }}>{deal.user || "—"}</span></td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{deal.date || "—"}</td>
+                    <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", background: "#f1f5f9", padding: "3px 8px", borderRadius: 6, fontWeight: 500 }}>{fmtUserName(deal.user)}</span></td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtDate(deal.date)}</td>
                     <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
                     <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</td>
@@ -353,7 +668,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, isMobile }
 
       {/* Mobile FAB */}
       {isMobile && (
-        <button style={{ position: "fixed", bottom: 80, right: 16, zIndex: 99, width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px rgba(22,163,74,0.45)", WebkitTapHighlightColor: "transparent" }}>
+        <button onClick={onNewDeal} style={{ position: "fixed", bottom: 80, right: 16, zIndex: 99, width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px rgba(22,163,74,0.45)", WebkitTapHighlightColor: "transparent" }}>
           <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
         </button>
       )}
@@ -381,7 +696,7 @@ function DealDetailView({ deal, onBack, isMobile }) {
 
   return (
     <div ref={scrollRef} style={{ flex: 1, overflow: "auto", background: "#f8fafc" }}>
-      {/* Sticky collapsed header — mobile only, appears on scroll */}
+      {/* Sticky collapsed header — mobile only */}
       {isMobile && (
         <div style={{
           position: "sticky", top: 0, zIndex: 20,
@@ -416,7 +731,7 @@ function DealDetailView({ deal, onBack, isMobile }) {
             <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 10px", letterSpacing: "-0.02em", wordBreak: "break-word" }}>{deal.address || "—"}</h1>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <StatusBadge status={deal.status} />
-              {deal.user && <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Assigned to {deal.user}</span>}
+              {deal.user && <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Assigned to {fmtUserName(deal.user)}</span>}
             </div>
           </div>
           <button style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: isMobile ? "10px 18px" : "10px 22px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap", alignSelf: isMobile ? "stretch" : "auto", textAlign: "center" }}>Submit Offer</button>
@@ -476,19 +791,17 @@ function DealDetailView({ deal, onBack, isMobile }) {
                 <MetricCard label="Projected Profit" value={fmt(deal.profit)} highlight />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
-                <MetricCard label="ROI" value={deal.roi ? `${deal.roi}%` : "—"} good highlight />
-                <MetricCard label="Cost / Value" value={deal.ctv ? `${deal.ctv}%` : "—"} good />
-                <MetricCard label="Avg Annual Return" value={deal.aar ? `${deal.aar}%` : "—"} good />
-                <MetricCard label="Profitability" value={deal.profitability ? `${deal.profitability}%` : "—"} good />
+                <MetricCard label="ROI" value={fmtPct(deal.roi)} good highlight />
+                <MetricCard label="Cost / Value" value={fmtPct(deal.ctv)} good />
+                <MetricCard label="Avg Annual Return" value={fmtPct(deal.aar)} good />
+                <MetricCard label="Profitability" value={fmtPct(deal.profitability)} good />
               </div>
             </section>
           </>
         )}
 
         {activeTab === "financials" && (
-          <div style={{ color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: 40, textAlign: "center", background: "#fff", borderRadius: 12, border: "1px dashed #e2e8f0" }}>
-            Cash flow model, rent rolls, and pro forma will appear here.
-          </div>
+          <FinancialsTab deal={deal} isMobile={isMobile} />
         )}
         {activeTab === "documents" && (
           <div style={{ color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: 40, textAlign: "center", background: "#fff", borderRadius: 12, border: "1px dashed #e2e8f0" }}>
@@ -688,32 +1001,23 @@ function AuthScreen({ onAuth }) {
           backgroundSize: "200% 200%", animation: "gradientShift 12s ease infinite",
           position: "relative", overflow: "auto", padding: "0 0 40px",
         }}>
-          {/* Orbs */}
           <div style={{ position: "fixed", top: -80, right: -60, width: 280, height: 280, borderRadius: "50%", background: "radial-gradient(circle, rgba(34,197,94,0.15) 0%, transparent 65%)", pointerEvents: "none", animation: "float1 8s ease-in-out infinite" }} />
           <div style={{ position: "fixed", bottom: -40, left: -40, width: 220, height: 220, borderRadius: "50%", background: "radial-gradient(circle, rgba(34,197,94,0.08) 0%, transparent 65%)", pointerEvents: "none", animation: "float2 10s ease-in-out infinite" }} />
-
-          {/* Grid pattern */}
           <div style={{ position: "fixed", inset: 0, backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.02) 1px, transparent 0)", backgroundSize: "24px 24px", pointerEvents: "none" }} />
 
-          {/* Top branding section */}
           <div style={{ position: "relative", zIndex: 1, padding: "48px 28px 0", textAlign: "center",
             opacity: pageLoaded ? 1 : 0, transform: pageLoaded ? "translateY(0)" : "translateY(16px)",
             transition: "all 0.7s cubic-bezier(0.16, 1, 0.3, 1)",
           }}>
-            {/* Logo */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 20 }}>
               <div style={{ width: 32, height: 32, borderRadius: 8, background: "#22C55E", display: "flex", alignItems: "center", justifyContent: "center", animation: "pulseGlow 3s ease-in-out infinite" }}>
                 <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
               </div>
               <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>REAP</span>
             </div>
-
-            {/* Headline */}
             <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 600, color: "#fff", lineHeight: 1.15, margin: "0 auto", letterSpacing: "-0.02em", maxWidth: 300 }}>
               Smarter real estate decisions, powered <span style={{ color: "#22C55E" }}>by AI</span>
             </h1>
-
-            {/* Mini stats */}
             <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 24,
               opacity: pageLoaded ? 1 : 0, transition: "opacity 0.8s ease 0.4s",
             }}>
@@ -735,7 +1039,6 @@ function AuthScreen({ onAuth }) {
             </div>
           </div>
 
-          {/* Form card */}
           <div style={{
             position: "relative", zIndex: 1,
             margin: "28px 20px 0", padding: "28px 24px 32px",
@@ -745,7 +1048,6 @@ function AuthScreen({ onAuth }) {
             transform: pageLoaded ? "translateY(0)" : "translateY(24px)",
             transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s",
           }}>
-            {/* Form header */}
             <div style={{ marginBottom: 24 }}>
               <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 600, color: "#1A2E22", margin: 0, letterSpacing: "-0.02em" }}>
                 {mode === "login" && "Welcome back"}
@@ -761,7 +1063,6 @@ function AuthScreen({ onAuth }) {
             {formContent}
           </div>
 
-          {/* Mobile footer */}
           <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "center", gap: 20, marginTop: 28, fontSize: 12, color: "rgba(255,255,255,0.3)", fontFamily: "'DM Sans', sans-serif" }}>
             <span>© 2026 REAP Analytics</span>
             <a href="https://getreap.ai" style={{ color: "rgba(255,255,255,0.3)", textDecoration: "none" }}>Privacy</a>
@@ -772,8 +1073,6 @@ function AuthScreen({ onAuth }) {
       ) : (
         /* ─── DESKTOP LAYOUT ─── */
         <div style={{ display: "flex", minHeight: "100vh", height: "100vh", fontFamily: "'DM Sans', sans-serif", background: "#F8FAF9", overflow: "hidden" }}>
-
-          {/* ─── LEFT PANEL ─── */}
           <div style={{
             flex: "0 0 50%", position: "relative", overflow: "hidden",
             background: "linear-gradient(160deg, #051E15 0%, #0B3D2C 35%, #0E4D37 70%, #0A3425 100%)",
@@ -781,15 +1080,11 @@ function AuthScreen({ onAuth }) {
             display: "flex", flexDirection: "column", justifyContent: "space-between",
             padding: "48px 56px",
           }}>
-            {/* Animated gradient orbs */}
             <div style={{ position: "absolute", top: -100, right: -60, width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle, rgba(34,197,94,0.18) 0%, transparent 65%)", pointerEvents: "none", animation: "float1 8s ease-in-out infinite" }} />
             <div style={{ position: "absolute", bottom: -60, left: -40, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle, rgba(34,197,94,0.1) 0%, transparent 65%)", pointerEvents: "none", animation: "float2 10s ease-in-out infinite" }} />
             <div style={{ position: "absolute", top: "40%", left: "50%", width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 65%)", pointerEvents: "none", animation: "float3 7s ease-in-out infinite" }} />
-
-            {/* Grid pattern */}
             <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.025) 1px, transparent 0)", backgroundSize: "28px 28px", pointerEvents: "none" }} />
 
-            {/* Top: Logo */}
             <div style={{ position: "relative", zIndex: 1, opacity: pageLoaded ? 1 : 0, transform: pageLoaded ? "translateY(0)" : "translateY(-12px)", transition: "all 0.6s ease" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
                 <div style={{ width: 34, height: 34, borderRadius: 8, background: "#22C55E", display: "flex", alignItems: "center", justifyContent: "center", animation: "pulseGlow 3s ease-in-out infinite" }}>
@@ -799,7 +1094,6 @@ function AuthScreen({ onAuth }) {
               </div>
             </div>
 
-            {/* Middle: Headline + Stats */}
             <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <div style={{ opacity: pageLoaded ? 1 : 0, transform: pageLoaded ? "translateY(0)" : "translateY(20px)", transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s" }}>
                 <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 42, fontWeight: 600, color: "#fff", lineHeight: 1.12, margin: 0, letterSpacing: "-0.025em" }}>
@@ -810,7 +1104,6 @@ function AuthScreen({ onAuth }) {
                 </p>
               </div>
 
-              {/* Stat cards */}
               <div style={{ display: "flex", gap: 12, marginTop: 40, opacity: pageLoaded ? 1 : 0, transform: pageLoaded ? "translateY(0)" : "translateY(20px)", transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.6s" }}>
                 {[
                   { label: "Deal Volume", value: "$1.33B+", accent: false },
@@ -823,59 +1116,43 @@ function AuthScreen({ onAuth }) {
                     padding: "16px 20px", cursor: "default", transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
                     flex: 1,
                   }}>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>{stat.label}</div>
-                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 24, fontWeight: 500, color: stat.accent ? "#22C55E" : "#fff", letterSpacing: "-0.02em" }}>{stat.value}</div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>{stat.label}</div>
+                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, fontWeight: 500, color: stat.accent ? "#22C55E" : "#fff" }}>{stat.value}</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Bottom: Trust bar */}
-            <div style={{ position: "relative", zIndex: 1, opacity: pageLoaded ? 1 : 0, transition: "opacity 1s ease 1.2s" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ display: "flex" }}>
-                  {["JT", "MK", "AS", "RD"].map((initials, i) => (
-                    <div key={i} style={{
-                      width: 28, height: 28, borderRadius: "50%",
-                      background: ["rgba(34,197,94,0.35)", "rgba(59,130,246,0.35)", "rgba(168,85,247,0.35)", "rgba(249,115,22,0.35)"][i],
-                      border: "2px solid rgba(11,61,44,0.8)", display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.85)",
-                      fontFamily: "'DM Sans', sans-serif", marginLeft: i > 0 ? -7 : 0,
-                    }}>{initials}</div>
-                  ))}
-                </div>
-                <span style={{ fontSize: 12.5, color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif" }}>
-                  <strong style={{ color: "rgba(255,255,255,0.65)" }}>2,500+</strong> investors already growing with REAP
-                </span>
-              </div>
+            <div style={{ position: "relative", zIndex: 1, fontSize: 13, color: "rgba(255,255,255,0.3)", fontFamily: "'DM Sans', sans-serif" }}>
+              Trusted by real estate professionals nationwide.
             </div>
           </div>
 
-          {/* ─── RIGHT PANEL ─── */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "40px 56px", position: "relative", overflow: "auto" }}>
+          <div style={{
+            flex: "0 0 50%", display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "48px 56px", position: "relative", overflow: "auto",
+          }}>
             <div style={{
-              width: "100%", maxWidth: 400,
+              width: "100%", maxWidth: 420,
               opacity: pageLoaded ? 1 : 0,
-              transform: pageLoaded ? "translateX(0)" : "translateX(24px)",
-              transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.35s",
+              transform: pageLoaded ? "translateY(0)" : "translateY(16px)",
+              transition: "all 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.4s",
             }}>
-              {/* Header */}
-              <div style={{ marginBottom: 32 }}>
-                <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 600, color: "#1A2E22", margin: 0, letterSpacing: "-0.02em" }}>
+              <div style={{ marginBottom: 36 }}>
+                <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 32, fontWeight: 600, color: "#1A2E22", margin: 0, letterSpacing: "-0.025em" }}>
                   {mode === "login" && "Welcome back"}
                   {mode === "signup" && "Create your account"}
                   {mode === "forgot" && "Reset your password"}
                 </h2>
-                <p style={{ fontSize: 14.5, color: "#8A9B91", margin: "8px 0 0 0", lineHeight: 1.5 }}>
-                  {mode === "login" && "Sign in to access your deal pipeline and analytics."}
+                <p style={{ fontSize: 15, color: "#8A9B91", margin: "8px 0 0 0", lineHeight: 1.5 }}>
+                  {mode === "login" && "Sign in to access your deal pipeline."}
                   {mode === "signup" && "Start analyzing deals in under 3 minutes."}
-                  {mode === "forgot" && "Enter your email and we'll send you a reset link."}
+                  {mode === "forgot" && "We'll send you a reset link."}
                 </p>
               </div>
               {formContent}
             </div>
 
-            {/* Desktop footer */}
             <div style={{ position: "absolute", bottom: 24, left: 56, right: 56, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#B0BAB4", fontFamily: "'DM Sans', sans-serif" }}>
               <span>© 2026 REAP Analytics, Inc.</span>
               <div style={{ display: "flex", gap: 20 }}>
@@ -910,7 +1187,6 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading }) {
         maxWidth: 480, width: "100%", textAlign: "center",
         boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
       }}>
-        {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 28 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: "#22C55E", display: "flex", alignItems: "center", justifyContent: "center", animation: "pulseGlow 3s ease-in-out infinite" }}>
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
@@ -920,29 +1196,17 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading }) {
 
         {expired ? (
           <>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: "#0f172a", margin: "0 0 12px", letterSpacing: "-0.02em" }}>
-              Your free trial has ended
-            </h1>
-            <p style={{ fontSize: 15, color: "#64748b", margin: "0 0 32px", lineHeight: 1.6 }}>
-              Upgrade to REAP Starter to keep analyzing deals, generating AI summaries, and closing faster.
-            </p>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: "#0f172a", margin: "0 0 12px", letterSpacing: "-0.02em" }}>Your free trial has ended</h1>
+            <p style={{ fontSize: 15, color: "#64748b", margin: "0 0 32px", lineHeight: 1.6 }}>Upgrade to REAP Starter to keep analyzing deals, generating AI summaries, and closing faster.</p>
           </>
         ) : (
           <>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: "#0f172a", margin: "0 0 12px", letterSpacing: "-0.02em" }}>
-              Upgrade to REAP Starter
-            </h1>
-            <p style={{ fontSize: 15, color: "#64748b", margin: "0 0 32px", lineHeight: 1.6 }}>
-              You have <strong style={{ color: "#16a34a" }}>{daysLeft} day{daysLeft !== 1 ? "s" : ""}</strong> left on your free trial. Upgrade now to lock in your access.
-            </p>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: "#0f172a", margin: "0 0 12px", letterSpacing: "-0.02em" }}>Upgrade to REAP Starter</h1>
+            <p style={{ fontSize: 15, color: "#64748b", margin: "0 0 32px", lineHeight: 1.6 }}>You have <strong style={{ color: "#16a34a" }}>{daysLeft} day{daysLeft !== 1 ? "s" : ""}</strong> left on your free trial. Upgrade now to lock in your access.</p>
           </>
         )}
 
-        {/* Pricing card */}
-        <div style={{
-          background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", border: "2px solid #16a34a",
-          borderRadius: 16, padding: "28px 24px", marginBottom: 28,
-        }}>
+        <div style={{ background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", border: "2px solid #16a34a", borderRadius: 16, padding: "28px 24px", marginBottom: 28 }}>
           <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>STARTER</div>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 4, marginBottom: 12 }}>
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 48, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.03em" }}>$99</span>
@@ -958,35 +1222,19 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading }) {
           </div>
         </div>
 
-        <button
-          onClick={onCheckout}
-          disabled={checkoutLoading}
-          onMouseEnter={() => setHoverBtn(true)}
-          onMouseLeave={() => setHoverBtn(false)}
-          style={{
-            width: "100%", padding: "16px 24px",
-            background: checkoutLoading ? "#15803d" : hoverBtn ? "#15803d" : "linear-gradient(135deg, #16a34a, #15803d)",
-            color: "#fff", fontSize: 16, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
-            border: "none", borderRadius: 12, cursor: checkoutLoading ? "not-allowed" : "pointer",
-            transition: "all 0.25s", letterSpacing: "0.01em",
-            transform: hoverBtn && !checkoutLoading ? "translateY(-2px)" : "translateY(0)",
-            boxShadow: hoverBtn && !checkoutLoading ? "0 8px 24px rgba(22,163,74,0.4)" : "0 4px 14px rgba(22,163,74,0.25)",
-          }}
-        >
+        <button onClick={onCheckout} disabled={checkoutLoading} onMouseEnter={() => setHoverBtn(true)} onMouseLeave={() => setHoverBtn(false)} style={{
+          width: "100%", padding: "16px 24px",
+          background: checkoutLoading ? "#15803d" : hoverBtn ? "#15803d" : "linear-gradient(135deg, #16a34a, #15803d)",
+          color: "#fff", fontSize: 16, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
+          border: "none", borderRadius: 12, cursor: checkoutLoading ? "not-allowed" : "pointer",
+          transition: "all 0.25s", letterSpacing: "0.01em",
+          transform: hoverBtn && !checkoutLoading ? "translateY(-2px)" : "translateY(0)",
+          boxShadow: hoverBtn && !checkoutLoading ? "0 8px 24px rgba(22,163,74,0.4)" : "0 4px 14px rgba(22,163,74,0.25)",
+        }}>
           {checkoutLoading ? "Redirecting to checkout..." : "Subscribe — $99/month"}
         </button>
-
-        <p style={{ fontSize: 12, color: "#94a3b8", margin: "16px 0 0", lineHeight: 1.5 }}>
-          Secure payment via Stripe. Cancel anytime.
-        </p>
-
-        <button onClick={() => supabase.auth.signOut()} style={{
-          background: "none", border: "none", color: "#94a3b8", fontSize: 13,
-          fontFamily: "'DM Sans', sans-serif", cursor: "pointer", marginTop: 20,
-          padding: "8px 16px", transition: "color 0.2s",
-        }}>
-          Sign out
-        </button>
+        <p style={{ fontSize: 12, color: "#94a3b8", margin: "16px 0 0", lineHeight: 1.5 }}>Secure payment via Stripe. Cancel anytime.</p>
+        <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", marginTop: 20, padding: "8px 16px", transition: "color 0.2s" }}>Sign out</button>
       </div>
     </div>
   );
@@ -1006,6 +1254,8 @@ export default function ReapApp() {
   const [trialDaysLeft, setTrialDaysLeft] = useState(TRIAL_DAYS);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showNewDeal, setShowNewDeal] = useState(false);
+  const [savingDeal, setSavingDeal] = useState(false);
 
   // Check for payment success redirect
   useEffect(() => {
@@ -1013,7 +1263,6 @@ export default function ReapApp() {
     if (params.get("payment") === "success") {
       localStorage.setItem("reap_subscribed", "true");
       setIsSubscribed(true);
-      // Clean URL
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
@@ -1021,18 +1270,13 @@ export default function ReapApp() {
   // Check subscription + trial status
   useEffect(() => {
     if (session?.user) {
-      // Check localStorage for subscription
       const subscribed = localStorage.getItem("reap_subscribed") === "true";
       setIsSubscribed(subscribed);
-
-      // Calculate trial days left from signup date
       const createdAt = new Date(session.user.created_at);
       const now = new Date();
       const daysSinceSignup = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
       const daysLeft = Math.max(0, TRIAL_DAYS - daysSinceSignup);
       setTrialDaysLeft(daysLeft);
-
-      // Show paywall if trial expired and not subscribed
       if (daysLeft <= 0 && !subscribed) {
         setShowPaywall(true);
       } else {
@@ -1063,11 +1307,15 @@ export default function ReapApp() {
     return () => subscription.unsubscribe();
   }, []);
 
+  /* ═══════════════════════════════════════════════════════
+     FETCH DEALS — expanded range for all financial columns
+     ═══════════════════════════════════════════════════════ */
   const fetchDeals = async () => {
     setLoading(true);
     setError(null);
     try {
-      const range = `${SHEET_NAME}!A:Z`;
+      // Fetch ALL columns (267 columns = roughly A:JK)
+      const range = `${SHEET_NAME}!A1:KZ`;
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`API error: ${res.status}`);
@@ -1078,7 +1326,7 @@ export default function ReapApp() {
       const headers = rows[0];
       const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
 
-      // Map column indices
+      // Core fields
       const colUser = idx("User");
       const colDate = idx("Date / Added");
       const colStatus = idx("Deal / Status");
@@ -1100,28 +1348,108 @@ export default function ReapApp() {
       const colCity = idx("City");
       const colState = idx("State");
 
+      // Financial fields (Step 27)
+      const colCapRate = idx("Asking / Cap Rate");
+      const colDSCR = idx("DSCR");
+      const colNOIAnnual = idx("Proforma / Net Operating Income - Annual(NOI)");
+      const colNOIMonthly = idx("Proforma / Net Operating Income - Monthly");
+      const colNOIPerSF = idx("Proforma / Net Operating Income  $ per SQFT (NOI)");
+      const colCashFlowMonthly = idx("Cash Flow Pre Tax (Monthly)");
+      const colProformaRevenueAnnual = idx("Proforma / Revenue - Annual");
+      const colProformaRevenueMonthly = idx("Proforma / Revenue - Monthly");
+      const colProformaRentPerSF = idx("Proforma / Rent per SF");
+      const colProformaExpensesPct = idx("Proforma / Expenses (%)");
+      const colProformaExpensesAnnual = idx("Proforma / Expenses - Annual ($)");
+      const colProformaExpensesMonthly = idx("Proforma / Expenses - Monthly ($)");
+      const colProformaExpensesPerSF = idx("Proforma / Expenses $ per SFT");
+      const colProformaVacancy = idx("Proforma / Vacancy (%)");
+      const colBridgeLoanTotal = idx("Bridge / Loan Total");
+      const colBridgeInterestRate = idx("Bridge / Interest Rate (%)");
+      const colBridgeInterestMonthly = idx("Bridge / Interest Cost (Monthly)");
+      const colBridgePoints = idx("Bridge / Points (%)");
+      const colBridgeTotalCost = idx("Bridge / Total Cost");
+      const colBridgeLTC = idx("Bridge / Loan to Cost (LTC)");
+      const colBridgeLTV = idx("Bridge / Loan to Value (LTV)");
+      const colEquityRequired = idx("Equity / Required");
+      const colRefiLoanAmount = idx("Refinance / Loan Amount");
+      const colRefiPctARV = idx("Refinance / % of Appraisal (ARV)");
+      const colRefiInterestRate = idx("Refinance / Interest Rate (%)");
+      const colRefiCashFlow = idx("Refinance / Cash Flow (Annual)");
+      const colCashOutRefi = idx("Cash Out at Refi");
+      const colProfitAtRefi = idx("Profit at Refi");
+      const colEquityAfterRefi = idx("Equity / Left in the Deal after Refi ");
+      const colRefiValuation = idx("Refinance Valuation");
+      const colReapScore = idx("REAP / Score");
+      const colEquityMultiple = idx("Equity Multiple");
+
+      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
+
       const parsed = rows.slice(1).map(row => ({
-        user: row[colUser] || "",
-        date: row[colDate] || "",
-        status: row[colStatus] || "",
-        address: row[colAddress] || "",
-        type: row[colType] || "",
-        offer: row[colOffer] || "",
-        netSqft: row[colNetSqft] || "",
-        sqft: row[colSqft] || "",
-        units: row[colUnits] || "",
-        purchasePrice: row[colPurchase] || "",
-        improvementBudget: row[colImprovement] || "",
-        arv: row[colARV] || "",
-        profit: row[colProfit] || "",
-        roi: row[colROI] || "",
-        ctv: row[colCTV] || "",
-        aar: row[colAAR] || "",
-        profitability: row[colProfitability] || "",
-        source: row[colSource] || "",
-        city: row[colCity] || "",
-        state: row[colState] || "",
+        // Core
+        user: g(row, colUser),
+        date: g(row, colDate),
+        status: g(row, colStatus),
+        address: g(row, colAddress),
+        type: g(row, colType),
+        offer: g(row, colOffer),
+        netSqft: g(row, colNetSqft),
+        sqft: g(row, colSqft),
+        units: g(row, colUnits),
+        purchasePrice: g(row, colPurchase),
+        improvementBudget: g(row, colImprovement),
+        arv: g(row, colARV),
+        profit: g(row, colProfit),
+        roi: g(row, colROI),
+        ctv: g(row, colCTV),
+        aar: g(row, colAAR),
+        profitability: g(row, colProfitability),
+        source: g(row, colSource),
+        city: g(row, colCity),
+        state: g(row, colState),
+        // Financials
+        capRate: g(row, colCapRate),
+        dscr: g(row, colDSCR),
+        noiAnnual: g(row, colNOIAnnual),
+        noiMonthly: g(row, colNOIMonthly),
+        noiPerSF: g(row, colNOIPerSF),
+        cashFlowMonthly: g(row, colCashFlowMonthly),
+        proformaRevenueAnnual: g(row, colProformaRevenueAnnual),
+        proformaRevenueMonthly: g(row, colProformaRevenueMonthly),
+        proformaRentPerSF: g(row, colProformaRentPerSF),
+        proformaExpensesPct: g(row, colProformaExpensesPct),
+        proformaExpensesAnnual: g(row, colProformaExpensesAnnual),
+        proformaExpensesMonthly: g(row, colProformaExpensesMonthly),
+        proformaExpensesPerSF: g(row, colProformaExpensesPerSF),
+        proformaVacancy: g(row, colProformaVacancy),
+        bridgeLoanTotal: g(row, colBridgeLoanTotal),
+        bridgeInterestRate: g(row, colBridgeInterestRate),
+        bridgeInterestMonthly: g(row, colBridgeInterestMonthly),
+        bridgePoints: g(row, colBridgePoints),
+        bridgeTotalCost: g(row, colBridgeTotalCost),
+        bridgeLTC: g(row, colBridgeLTC),
+        bridgeLTV: g(row, colBridgeLTV),
+        equityRequired: g(row, colEquityRequired),
+        refiLoanAmount: g(row, colRefiLoanAmount),
+        refiPctARV: g(row, colRefiPctARV),
+        refiInterestRate: g(row, colRefiInterestRate),
+        refiCashFlow: g(row, colRefiCashFlow),
+        cashOutRefi: g(row, colCashOutRefi),
+        profitAtRefi: g(row, colProfitAtRefi),
+        equityAfterRefi: g(row, colEquityAfterRefi),
+        refiValuation: g(row, colRefiValuation),
+        reapScore: g(row, colReapScore),
+        equityMultiple: g(row, colEquityMultiple),
       })).filter(d => d.address);
+
+      // Sort newest first
+      parsed.sort((a, b) => {
+        const da = new Date(a.date);
+        const db = new Date(b.date);
+        if (isNaN(da.getTime()) && isNaN(db.getTime())) return 0;
+        if (isNaN(da.getTime())) return 1;
+        if (isNaN(db.getTime())) return -1;
+        return db - da;
+      });
 
       setDeals(parsed);
     } catch (err) {
@@ -1132,6 +1460,89 @@ export default function ReapApp() {
   };
 
   useEffect(() => { fetchDeals(); }, []);
+
+  /* ═══════════════════════════════════════════════════════
+     SAVE NEW DEAL — Step 24 (writes via Google Apps Script)
+     ═══════════════════════════════════════════════════════ */
+  const handleSaveDeal = async (form) => {
+    setSavingDeal(true);
+    try {
+      const today = new Date().toLocaleDateString("en-US");
+      const dealData = {
+        "Deal / Name": form.dealName,
+        "Property / Address": form.address,
+        "City": form.city,
+        "State": form.state,
+        "Zip Code": form.zip,
+        "Type": form.type,
+        "Class": form.class,
+        "SQFT / Net": form.sqft,
+        "Units": form.units,
+        "Year Built": form.yearBuilt,
+        "Asking / Price": form.askingPrice.replace(/[$,]/g, ""),
+        "Investment / Our Offer": form.ourOffer.replace(/[$,]/g, ""),
+        "Lot / Size Acres": form.lotAcres,
+        "Date / Added": today,
+        "Deal / Status": "New",
+        "User": session?.user?.email || "",
+        "Source": "REAP App",
+      };
+
+      if (SHEETS_WRITE_URL) {
+        const res = await fetch(SHEETS_WRITE_URL, {
+          method: "POST",
+          body: JSON.stringify(dealData),
+        });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || "Write failed");
+      } else {
+        // Fallback: alert user to set up write URL
+        alert("Deal saved locally. To write to Google Sheets, deploy the Apps Script and add REACT_APP_SHEETS_WRITE_URL to your .env file. See google-apps-script.js for instructions.");
+      }
+
+      // Build a local deal object so we can open it immediately
+      const newDeal = {
+        user: session?.user?.email || "",
+        date: today,
+        status: "New",
+        address: form.address,
+        type: form.type,
+        offer: form.ourOffer,
+        netSqft: "",
+        sqft: form.sqft,
+        units: form.units,
+        purchasePrice: "",
+        improvementBudget: "",
+        arv: "",
+        profit: "",
+        roi: "",
+        ctv: "",
+        aar: "",
+        profitability: "",
+        source: "REAP App",
+        city: form.city,
+        state: form.state,
+        askingPrice: form.askingPrice,
+      };
+
+      setShowNewDeal(false);
+
+      // Open the new deal immediately for instant gratification
+      if (isMobile) {
+        setDealTransition(true);
+        setTimeout(() => setSelectedDeal(newDeal), 10);
+      } else {
+        setSelectedDeal(newDeal);
+      }
+
+      // Refresh list in background (new deal will be at top after sort)
+      fetchDeals();
+    } catch (err) {
+      alert("Error saving deal: " + err.message);
+    } finally {
+      setSavingDeal(false);
+    }
+  };
 
   const handleSelectDeal = (deal) => {
     if (isMobile) {
@@ -1183,7 +1594,19 @@ export default function ReapApp() {
         input::placeholder { color: #94a3b8; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
+
+      {/* New Deal Modal */}
+      <NewDealModal
+        isOpen={showNewDeal}
+        onClose={() => setShowNewDeal(false)}
+        onSave={handleSaveDeal}
+        saving={savingDeal}
+        isMobile={isMobile}
+        userEmail={userEmail}
+      />
+
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", background: "#f8fafc", overflow: "hidden" }}>
 
         {/* Trial Banner */}
@@ -1223,7 +1646,6 @@ export default function ReapApp() {
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 64 : 0, paddingTop: !isSubscribed && trialDaysLeft > 0 ? 38 : 0, position: "relative" }}>
           {isMobile ? (
             <>
-              {/* Pipeline — slides left when deal selected */}
               <div style={{
                 position: "absolute", inset: 0, paddingBottom: 64,
                 transform: selectedDeal ? "translateX(-30%)" : "translateX(0)",
@@ -1232,9 +1654,8 @@ export default function ReapApp() {
                 pointerEvents: selectedDeal ? "none" : "auto",
                 display: "flex", flexDirection: "column",
               }}>
-                <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} isMobile={true} />
+                <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} />
               </div>
-              {/* Deal Detail — slides in from right */}
               <div style={{
                 position: "absolute", inset: 0, paddingBottom: 64,
                 transform: dealTransition && selectedDeal ? "translateX(0)" : "translateX(100%)",
@@ -1247,11 +1668,11 @@ export default function ReapApp() {
           ) : (
             selectedDeal
               ? <DealDetailView deal={selectedDeal} onBack={handleBack} isMobile={false} />
-              : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} isMobile={false} />
+              : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
           )}
         </div>
 
-        {/* Mobile Bottom Nav with sliding indicator */}
+        {/* Mobile Bottom Nav */}
         {isMobile && (
           <div style={{
             position: "fixed", bottom: 0, left: 0, right: 0, height: 64,
