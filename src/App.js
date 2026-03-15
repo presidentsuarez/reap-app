@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { loadStripe } from "@stripe/stripe-js";
 
 const SPREADSHEET_ID = process.env.REACT_APP_SPREADSHEET_ID;
 const API_KEY = process.env.REACT_APP_SHEETS_API_KEY;
@@ -9,6 +10,9 @@ const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
   process.env.REACT_APP_SUPABASE_ANON_KEY
 );
+
+const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+const TRIAL_DAYS = 14;
 
 const STATUS_CONFIG = {
   "New":                          { color: "#16a34a", bg: "rgba(22,163,74,0.08)",   dot: "#16a34a" },
@@ -886,6 +890,108 @@ function AuthScreen({ onAuth }) {
   );
 }
 
+function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading }) {
+  const [hoverBtn, setHoverBtn] = useState(false);
+  const isMobile = window.innerWidth < 768;
+  const expired = daysLeft <= 0;
+
+  return (
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: "linear-gradient(170deg, #051E15 0%, #0B3D2C 40%, #0E4D37 80%, #0A3425 100%)",
+      fontFamily: "'DM Sans', sans-serif", padding: 20,
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap');
+        @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 20px rgba(34,197,94,0.15); } 50% { box-shadow: 0 0 40px rgba(34,197,94,0.3); } }
+      `}</style>
+      <div style={{
+        background: "#fff", borderRadius: 24, padding: isMobile ? "32px 24px" : "48px 56px",
+        maxWidth: 480, width: "100%", textAlign: "center",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+      }}>
+        {/* Logo */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 28 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "#22C55E", display: "flex", alignItems: "center", justifyContent: "center", animation: "pulseGlow 3s ease-in-out infinite" }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+          </div>
+          <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.02em" }}>REAP</span>
+        </div>
+
+        {expired ? (
+          <>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: "#0f172a", margin: "0 0 12px", letterSpacing: "-0.02em" }}>
+              Your free trial has ended
+            </h1>
+            <p style={{ fontSize: 15, color: "#64748b", margin: "0 0 32px", lineHeight: 1.6 }}>
+              Upgrade to REAP Starter to keep analyzing deals, generating AI summaries, and closing faster.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: "#0f172a", margin: "0 0 12px", letterSpacing: "-0.02em" }}>
+              Upgrade to REAP Starter
+            </h1>
+            <p style={{ fontSize: 15, color: "#64748b", margin: "0 0 32px", lineHeight: 1.6 }}>
+              You have <strong style={{ color: "#16a34a" }}>{daysLeft} day{daysLeft !== 1 ? "s" : ""}</strong> left on your free trial. Upgrade now to lock in your access.
+            </p>
+          </>
+        )}
+
+        {/* Pricing card */}
+        <div style={{
+          background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", border: "2px solid #16a34a",
+          borderRadius: 16, padding: "28px 24px", marginBottom: 28,
+        }}>
+          <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>STARTER</div>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 4, marginBottom: 12 }}>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 48, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.03em" }}>$99</span>
+            <span style={{ fontSize: 16, color: "#64748b" }}>/month</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, textAlign: "left", marginTop: 16 }}>
+            {["Unlimited deal analysis", "Live financial metrics", "AI Executive Summaries", "Deal pipeline management", "Google Street View integration"].map((feature, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "#1e293b" }}>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>
+                {feature}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button
+          onClick={onCheckout}
+          disabled={checkoutLoading}
+          onMouseEnter={() => setHoverBtn(true)}
+          onMouseLeave={() => setHoverBtn(false)}
+          style={{
+            width: "100%", padding: "16px 24px",
+            background: checkoutLoading ? "#15803d" : hoverBtn ? "#15803d" : "linear-gradient(135deg, #16a34a, #15803d)",
+            color: "#fff", fontSize: 16, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
+            border: "none", borderRadius: 12, cursor: checkoutLoading ? "not-allowed" : "pointer",
+            transition: "all 0.25s", letterSpacing: "0.01em",
+            transform: hoverBtn && !checkoutLoading ? "translateY(-2px)" : "translateY(0)",
+            boxShadow: hoverBtn && !checkoutLoading ? "0 8px 24px rgba(22,163,74,0.4)" : "0 4px 14px rgba(22,163,74,0.25)",
+          }}
+        >
+          {checkoutLoading ? "Redirecting to checkout..." : "Subscribe — $99/month"}
+        </button>
+
+        <p style={{ fontSize: 12, color: "#94a3b8", margin: "16px 0 0", lineHeight: 1.5 }}>
+          Secure payment via Stripe. Cancel anytime.
+        </p>
+
+        <button onClick={() => supabase.auth.signOut()} style={{
+          background: "none", border: "none", color: "#94a3b8", fontSize: 13,
+          fontFamily: "'DM Sans', sans-serif", cursor: "pointer", marginTop: 20,
+          padding: "8px 16px", transition: "color 0.2s",
+        }}>
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ReapApp() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -896,6 +1002,49 @@ export default function ReapApp() {
   const [dealTransition, setDealTransition] = useState(false);
   const [activeNav, setActiveNav] = useState("pipeline");
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [trialDaysLeft, setTrialDaysLeft] = useState(TRIAL_DAYS);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
+
+  // Check for payment success redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("payment") === "success") {
+      localStorage.setItem("reap_subscribed", "true");
+      setIsSubscribed(true);
+      // Clean URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  // Check subscription + trial status
+  useEffect(() => {
+    if (session?.user) {
+      // Check localStorage for subscription
+      const subscribed = localStorage.getItem("reap_subscribed") === "true";
+      setIsSubscribed(subscribed);
+
+      // Calculate trial days left from signup date
+      const createdAt = new Date(session.user.created_at);
+      const now = new Date();
+      const daysSinceSignup = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
+      const daysLeft = Math.max(0, TRIAL_DAYS - daysSinceSignup);
+      setTrialDaysLeft(daysLeft);
+
+      // Show paywall if trial expired and not subscribed
+      if (daysLeft <= 0 && !subscribed) {
+        setShowPaywall(true);
+      } else {
+        setShowPaywall(false);
+      }
+    }
+  }, [session]);
+
+  const handleCheckout = () => {
+    const email = session?.user?.email || "";
+    window.location.href = "https://buy.stripe.com/test_dRm3cubEVgUL5CsdN963K00?prefilled_email=" + encodeURIComponent(email);
+  };
 
   useEffect(() => {
     const handle = () => setIsMobile(window.innerWidth < 768);
@@ -1017,6 +1166,8 @@ export default function ReapApp() {
 
   if (!session) return <AuthScreen onAuth={(user) => setSession({ user })} />;
 
+  if (showPaywall) return <PricingScreen userEmail={session?.user?.email} daysLeft={trialDaysLeft} onCheckout={handleCheckout} checkoutLoading={checkoutLoading} />;
+
   const userEmail = session?.user?.email || "";
   const userName = session?.user?.user_metadata?.full_name || userEmail;
   const initials = userName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
@@ -1034,9 +1185,29 @@ export default function ReapApp() {
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
       `}</style>
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", background: "#f8fafc", overflow: "hidden" }}>
+
+        {/* Trial Banner */}
+        {!isSubscribed && trialDaysLeft > 0 && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, zIndex: 200,
+            background: trialDaysLeft <= 3 ? "linear-gradient(135deg, #dc2626, #b91c1c)" : "linear-gradient(135deg, #16a34a, #15803d)",
+            color: "#fff", fontSize: 13, fontWeight: 600,
+            fontFamily: "'DM Sans', sans-serif",
+            padding: "8px 16px",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+          }}>
+            <span>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""} left on your free trial</span>
+            <button onClick={handleCheckout} style={{
+              background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)",
+              borderRadius: 6, padding: "4px 12px", color: "#fff", fontSize: 12,
+              fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+              transition: "background 0.2s",
+            }}>Upgrade Now</button>
+          </div>
+        )}
         {/* Desktop Sidebar */}
         {!isMobile && (
-          <div style={{ width: 60, background: "#fff", borderRight: "1px solid #e2e8f0", display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 0", gap: 6, flexShrink: 0 }}>
+          <div style={{ width: 60, background: "#fff", borderRight: "1px solid #e2e8f0", display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 0", gap: 6, flexShrink: 0, marginTop: !isSubscribed && trialDaysLeft > 0 ? 42 : 0 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16, boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>
               <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
             </div>
@@ -1049,7 +1220,7 @@ export default function ReapApp() {
         )}
 
         {/* Main Content */}
-        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 64 : 0, position: "relative" }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 64 : 0, paddingTop: !isSubscribed && trialDaysLeft > 0 ? 38 : 0, position: "relative" }}>
           {isMobile ? (
             <>
               {/* Pipeline — slides left when deal selected */}
