@@ -368,11 +368,242 @@ function NewDealModal({ isOpen, onClose, onSave, saving, isMobile, userEmail }) 
    FINANCIALS TAB — Step 27
    ═══════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════
+   EDIT DEAL MODAL — Step 28
+   ═══════════════════════════════════════════════════════════ */
+
+function EditDealModal({ isOpen, onClose, onSave, saving, isMobile, deal }) {
+  const [form, setForm] = useState({});
+
+  useEffect(() => {
+    if (deal && isOpen) {
+      setForm({
+        dealName: deal.dealName || "",
+        address: deal.address || "",
+        city: deal.city || "",
+        state: deal.state || "",
+        zip: deal.zip || "",
+        type: deal.type || "Multifamily",
+        sqft: deal.sqft || "",
+        units: deal.units || "",
+        yearBuilt: deal.yearBuilt || "",
+        askingPrice: deal.askingPrice || "",
+        ourOffer: deal.offer || "",
+        lotAcres: deal.lotAcres || "",
+        class: deal.class || "",
+        purchasePrice: deal.purchasePrice || "",
+        improvementBudget: deal.improvementBudget || "",
+        arvValue: deal.arv || "",
+        proformaRevenueAnnual: deal.proformaRevenueAnnual || "",
+        proformaExpensesPct: deal.proformaExpensesPct || "",
+        proformaVacancy: deal.proformaVacancy || "",
+        existingRevenueAnnual: deal.existingRevenueAnnual || "",
+        existingExpensePct: deal.existingExpensePct || "",
+        annualTaxes: deal.annualTaxes || "",
+        insuranceCost: deal.insuranceCost || "",
+        bridgeAcqPct: deal.bridgeAcqPct || "",
+        bridgeImprovPct: deal.bridgeImprovPct || "",
+        bridgeInterestRate: deal.bridgeInterestRate || "",
+        bridgePoints: deal.bridgePoints || "",
+        refiPctARV: deal.refiPctARV || "",
+        refiInterestRate: deal.refiInterestRate || "",
+        refiPoints: deal.refiPoints || "",
+        refiTerm: deal.refiTerm || "",
+        months: deal.months || "",
+        acqCostToClose: deal.acqCostToClose || "",
+        dispCostOfSale: deal.dispCostOfSale || "",
+        status: deal.status || "New",
+      });
+    }
+  }, [deal, isOpen]);
+
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
+  const handleSave = () => {
+    onSave(form);
+  };
+
+  if (!isOpen || !deal) return null;
+
+  const inputStyle = {
+    width: "100%", padding: "10px 12px", fontSize: 13,
+    fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0",
+    borderRadius: 8, outline: "none", transition: "border-color 0.2s",
+    background: "#fff", color: "#0f172a", boxSizing: "border-box",
+  };
+
+  const labelStyle = {
+    display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8",
+    marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase",
+    fontFamily: "'DM Sans', sans-serif",
+  };
+
+  const sectionStyle = {
+    fontSize: 11, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em",
+    textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif",
+    marginBottom: 12, marginTop: 20, display: "flex", alignItems: "center", gap: 8,
+  };
+
+  const selectStyle = { ...inputStyle, appearance: "none", backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2394a3b8' fill='none' stroke-width='1.5'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" };
+
+  const Field = ({ label, k, type, placeholder, options }) => (
+    <div style={{ marginBottom: 12 }}>
+      <label style={labelStyle}>{label}</label>
+      {options ? (
+        <select style={selectStyle} value={form[k] || ""} onChange={e => set(k, e.target.value)}>
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input style={inputStyle} type={type || "text"} value={form[k] || ""} onChange={e => set(k, e.target.value)} placeholder={placeholder || ""} onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", animation: "fadeIn 0.2s ease" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }} />
+      <div style={{
+        position: "relative", background: "#fff", width: isMobile ? "100%" : 600,
+        maxHeight: isMobile ? "92vh" : "85vh", overflow: "auto",
+        borderRadius: isMobile ? "20px 20px 0 0" : 20,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+        animation: isMobile ? "slideUp 0.3s cubic-bezier(0.25, 1, 0.5, 1)" : "fadeIn 0.25s ease",
+      }}>
+        {/* Header */}
+        <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "#fff", zIndex: 1, borderRadius: isMobile ? "20px 20px 0 0" : "20px 20px 0 0" }}>
+          <div>
+            <h2 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Edit Deal</h2>
+            <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{deal.address}</p>
+          </div>
+          <button onClick={onClose} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        {/* Form */}
+        <div style={{ padding: "16px 24px 24px" }}>
+          <p style={sectionStyle}>Status & Property <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Deal Status" k="status" options={["New", "Data Validation", "Underwriting | Review", "Underwriting | Active", "Offer Prep", "Offer Submission", "Under Contract / Financing", "Closed / Acquired", "Sideline", "Declined", "Dead / Not Moving Forward", "Offer Lost / Terminated / Dead", "Terminated / Walked"]} />
+            <Field label="Property Type" k="type" options={["Multifamily", "Single Family", "Mixed Use", "Office", "Retail", "Commercial", "Industrial", "Land"]} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <Field label="Sq Ft" k="sqft" type="number" />
+            <Field label="Units" k="units" type="number" />
+            <Field label="Year Built" k="yearBuilt" type="number" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Lot Size (Acres)" k="lotAcres" />
+            <Field label="Class" k="class" options={["", "A", "B", "C", "D"]} />
+          </div>
+
+          <p style={sectionStyle}>Acquisition <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Asking Price" k="askingPrice" placeholder="$1,200,000" />
+            <Field label="Our Offer" k="ourOffer" placeholder="$950,000" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Purchase Price" k="purchasePrice" placeholder="$950,000" />
+            <Field label="Cost to Close %" k="acqCostToClose" placeholder="3" />
+          </div>
+
+          <p style={sectionStyle}>Improvements & Exit <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <Field label="Improvement Budget" k="improvementBudget" placeholder="$100,000" />
+            <Field label="ARV (As Completed)" k="arvValue" placeholder="$2,500,000" />
+            <Field label="Hold Period (Months)" k="months" placeholder="12" />
+          </div>
+          <Field label="Disposition Cost of Sale (% of ARV)" k="dispCostOfSale" placeholder="5" />
+
+          <p style={sectionStyle}>Current Financials <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <Field label="Revenue (Annual)" k="existingRevenueAnnual" placeholder="$237,600" />
+            <Field label="Expense Ratio %" k="existingExpensePct" placeholder="40" />
+            <Field label="Vacancy %" k="existingVacancyPct" placeholder="5" />
+          </div>
+
+          <p style={sectionStyle}>Proforma Income <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <Field label="Revenue (Annual)" k="proformaRevenueAnnual" placeholder="$240,000" />
+            <Field label="Expense Ratio %" k="proformaExpensesPct" placeholder="30" />
+            <Field label="Vacancy %" k="proformaVacancy" placeholder="5" />
+          </div>
+
+          <p style={sectionStyle}>Bridge Loan <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Acquisition Financed %" k="bridgeAcqPct" placeholder="75" />
+            <Field label="Improvement Financed %" k="bridgeImprovPct" placeholder="100" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Interest Rate %" k="bridgeInterestRate" placeholder="10" />
+            <Field label="Points %" k="bridgePoints" placeholder="2" />
+          </div>
+
+          <p style={sectionStyle}>Refinance <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="% of ARV" k="refiPctARV" placeholder="75" />
+            <Field label="Interest Rate %" k="refiInterestRate" placeholder="7" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Points %" k="refiPoints" placeholder="2" />
+            <Field label="Term (Years)" k="refiTerm" placeholder="25" />
+          </div>
+
+          {/* Save Button */}
+          <button onClick={handleSave} disabled={saving} style={{
+            width: "100%", padding: "13px 24px", marginTop: 24,
+            background: saving ? "#15803d" : "linear-gradient(135deg, #16a34a, #15803d)",
+            color: "#fff", fontSize: 14, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
+            border: "none", borderRadius: 10, cursor: saving ? "not-allowed" : "pointer",
+            boxShadow: "0 4px 14px rgba(22,163,74,0.25)",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          }}>
+            {saving && (
+              <svg width={16} height={16} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}>
+                <circle cx={12} cy={12} r={10} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={3} />
+                <path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round" />
+              </svg>
+            )}
+            {saving ? "Saving changes..." : "Save Changes"}
+          </button>
+
+          <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", textAlign: "center", marginTop: 10 }}>
+            Only input fields are editable. Calculated metrics (ROI, NOI, etc.) update automatically.
+          </p>
+        </div>
+      </div>
+      <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+    </div>
+  );
+}
+
 function FinancialsTab({ deal, isMobile }) {
   const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
 
   return (
     <>
+      {/* Existing / Current Financials */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+          Current Financials <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+          <MetricCard label="Revenue (Annual)" value={fmt(deal.existingRevenueAnnual)} />
+          <MetricCard label="Revenue (Monthly)" value={fmt(deal.existingRevenueMonthly)} />
+          <MetricCard label="Revenue $/sqft" value={deal.existingRevenuePerSF ? `$${parseFloat(deal.existingRevenuePerSF).toFixed(2)}` : "—"} />
+          <MetricCard label="Expense Ratio" value={fmtPct(deal.existingExpensePct)} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+          <MetricCard label="Current Expenses" value={fmt(deal.existingExpenses)} />
+          <MetricCard label="Annual Taxes" value={fmt(deal.annualTaxes)} />
+          <MetricCard label="Insurance (Annual)" value={fmt(deal.insuranceCost)} />
+          <MetricCard label="Current NOI" value={fmt(deal.existingNOI)} highlight />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+          <MetricCard label="Current Cap Rate" value={fmtPct(deal.existingCapRate)} />
+        </div>
+      </section>
+
       {/* Proforma Income & Expenses */}
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
@@ -676,7 +907,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   );
 }
 
-function DealDetailView({ deal, onBack, isMobile }) {
+function DealDetailView({ deal, onBack, onEdit, isMobile }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
@@ -767,7 +998,13 @@ function DealDetailView({ deal, onBack, isMobile }) {
               {deal.user && <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Assigned to {fmtUserName(deal.user)}</span>}
             </div>
           </div>
-          <button style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: isMobile ? "10px 18px" : "10px 22px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap", alignSelf: isMobile ? "stretch" : "auto", textAlign: "center" }}>Submit Offer</button>
+          <div style={{ display: "flex", gap: 8, alignSelf: isMobile ? "stretch" : "auto" }}>
+            <button onClick={onEdit} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: isMobile ? "10px 18px" : "10px 18px", color: "#475569", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, flex: isMobile ? 1 : "none" }}>
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Edit Deal
+            </button>
+            <button style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: isMobile ? "10px 18px" : "10px 22px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap", flex: isMobile ? 1 : "none", textAlign: "center" }}>Submit Offer</button>
+          </div>
         </div>
       </div>
 
@@ -1011,6 +1248,14 @@ function AuthScreen({ onAuth }) {
 
   const switchMode = (m) => { setMode(m); setError(""); setSuccess(""); setEmail(""); setPassword(""); setName(""); };
 
+  const handleGoogleLogin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) setError(error.message);
+  };
+
   // ─── SHARED FORM (used by both mobile and desktop) ───
   const formContent = (
     <div>
@@ -1081,6 +1326,7 @@ function AuthScreen({ onAuth }) {
       </div>
 
       <button
+        onClick={handleGoogleLogin}
         onMouseEnter={() => setHoverGoogle(true)}
         onMouseLeave={() => setHoverGoogle(false)}
         style={{
@@ -1397,6 +1643,8 @@ export default function ReapApp() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [savingDeal, setSavingDeal] = useState(false);
+  const [showEditDeal, setShowEditDeal] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
 
   // Check for payment success redirect
   useEffect(() => {
@@ -1521,7 +1769,31 @@ export default function ReapApp() {
       const colEquityAfterRefi = idx("Equity / Left in the Deal after Refi ");
       const colRefiValuation = idx("Refinance Valuation");
       const colReapScore = idx("REAP / Score");
+      // Existing Financials
+      const colExistingRevenueAnnual = idx("Existing Financials / Revenue - Annual");
+      const colExistingRevenueMonthly = idx("Existing Financials / Revenue - Monthly");
+      const colExistingRevenuePerSF = idx("Existing Financials / Revenue Per SQFT");
+      const colExistingNOI = idx("Existing Financials / Net Income (NOI)");
+      const colExistingExpensePct = idx("Existing Financials / Expense Percentage");
+      const colExistingExpenses = idx("Existing Expenses ($)");
+      const colExistingCapRate = idx("Investment / Existing Financials / Our Offer Cap Rate");
+      const colAnnualTaxes = idx("Annual Taxes (New)");
+      const colInsuranceCost = idx("Insurance / Cost (Annual)");
       const colEquityMultiple = idx("Equity Multiple");
+      // Edit-related fields
+      const colAskingPrice = idx("Asking / Price");
+      const colAcqCostToClose = idx("Acquisition / Cost to Close %");
+      const colMonths = idx("Months");
+      const colDispCostOfSale = idx("Disposition / Cost of Sale (% of ARV)");
+      const colBridgeAcqPct = idx("Bridge / Acquisition Financed (%)");
+      const colBridgeImprovPct = idx("Bridge / Improvement Financing (%)");
+      const colRefiPoints = idx("Refinance / Points (%)");
+      const colRefiTerm = idx("Refinance / Term (years)");
+      const colLotAcres = idx("Lot / Size Acres");
+      const colYearBuilt = idx("Year Built");
+      const colDealName = idx("Deal / Name");
+      const colZip = idx("Zip Code");
+      const colClass = idx("Class");
 
       const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
 
@@ -1580,6 +1852,30 @@ export default function ReapApp() {
         refiValuation: g(row, colRefiValuation),
         reapScore: g(row, colReapScore),
         equityMultiple: g(row, colEquityMultiple),
+        // Edit-related fields
+        askingPrice: g(row, colAskingPrice),
+        acqCostToClose: g(row, colAcqCostToClose),
+        months: g(row, colMonths),
+        dispCostOfSale: g(row, colDispCostOfSale),
+        bridgeAcqPct: g(row, colBridgeAcqPct),
+        bridgeImprovPct: g(row, colBridgeImprovPct),
+        refiPoints: g(row, colRefiPoints),
+        refiTerm: g(row, colRefiTerm),
+        lotAcres: g(row, colLotAcres),
+        yearBuilt: g(row, colYearBuilt),
+        dealName: g(row, colDealName),
+        zip: g(row, colZip),
+        dealClass: g(row, colClass),
+        // Existing Financials
+        existingRevenueAnnual: g(row, colExistingRevenueAnnual),
+        existingRevenueMonthly: g(row, colExistingRevenueMonthly),
+        existingRevenuePerSF: g(row, colExistingRevenuePerSF),
+        existingNOI: g(row, colExistingNOI),
+        existingExpensePct: g(row, colExistingExpensePct),
+        existingExpenses: g(row, colExistingExpenses),
+        existingCapRate: g(row, colExistingCapRate),
+        annualTaxes: g(row, colAnnualTaxes),
+        insuranceCost: g(row, colInsuranceCost),
       })).filter(d => d.address);
 
       // Sort newest first
@@ -1685,6 +1981,65 @@ export default function ReapApp() {
     }
   };
 
+  /* ═══════════════════════════════════════════════════════
+     EDIT DEAL — Step 28 (writes via Google Apps Script)
+     ═══════════════════════════════════════════════════════ */
+  const handleEditDeal = async (form) => {
+    setEditSaving(true);
+    try {
+      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
+      const updates = {
+        "Deal / Status": form.status,
+        "Type": form.type,
+        "SQFT / Net": clean(form.sqft),
+        "Units": clean(form.units),
+        "Year Built": clean(form.yearBuilt),
+        "Lot / Size Acres": clean(form.lotAcres),
+        "Class": form.class,
+        "Asking / Price": clean(form.askingPrice),
+        "Investment / Our Offer": clean(form.ourOffer),
+        "Purchase Price": clean(form.purchasePrice),
+        "Acquisition / Cost to Close %": clean(form.acqCostToClose),
+        "Improvement / Budget": clean(form.improvementBudget),
+        "ARV / Value": clean(form.arvValue),
+        "Months": clean(form.months),
+        "Disposition / Cost of Sale (% of ARV)": clean(form.dispCostOfSale),
+        "Proforma / Revenue - Annual": clean(form.proformaRevenueAnnual),
+        "Proforma / Expenses (%)": clean(form.proformaExpensesPct),
+        "Proforma / Vacancy (%)": clean(form.proformaVacancy),
+        "Existing Financials / Revenue - Annual": clean(form.existingRevenueAnnual),
+        "Existing Financials / Expense Percentage": clean(form.existingExpensePct),
+        "Annual Taxes (New)": clean(form.annualTaxes),
+        "Insurance / Cost (Annual)": clean(form.insuranceCost),
+        "Bridge / Acquisition Financed (%)": clean(form.bridgeAcqPct),
+        "Bridge / Improvement Financing (%)": clean(form.bridgeImprovPct),
+        "Bridge / Interest Rate (%)": clean(form.bridgeInterestRate),
+        "Bridge / Points (%)": clean(form.bridgePoints),
+        "Refinance / % of Appraisal (ARV)": clean(form.refiPctARV),
+        "Refinance / Interest Rate (%)": clean(form.refiInterestRate),
+        "Refinance / Points (%)": clean(form.refiPoints),
+        "Refinance / Term (years)": clean(form.refiTerm),
+      };
+
+      if (SHEETS_WRITE_URL) {
+        const res = await fetch(SHEETS_WRITE_URL, {
+          method: "POST",
+          body: JSON.stringify({ action: "edit_deal", address: selectedDeal.address, updates }),
+        });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || "Edit failed");
+      }
+
+      setShowEditDeal(false);
+      setSelectedDeal(null);
+      fetchDeals();
+    } catch (err) {
+      alert("Error saving: " + err.message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const handleSelectDeal = (deal) => {
     if (isMobile) {
       setDealTransition(true);
@@ -1748,6 +2103,15 @@ export default function ReapApp() {
         userEmail={userEmail}
       />
 
+      <EditDealModal
+        isOpen={showEditDeal}
+        onClose={() => setShowEditDeal(false)}
+        onSave={handleEditDeal}
+        saving={editSaving}
+        isMobile={isMobile}
+        deal={selectedDeal}
+      />
+
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", background: "#f8fafc", overflow: "hidden" }}>
 
         {/* Trial Banner */}
@@ -1803,12 +2167,12 @@ export default function ReapApp() {
                 transition: "transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
                 display: "flex", flexDirection: "column", background: "#f8fafc",
               }}>
-                {selectedDeal && <DealDetailView deal={selectedDeal} onBack={handleBack} isMobile={true} />}
+                {selectedDeal && <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} />}
               </div>
             </>
           ) : (
             selectedDeal
-              ? <DealDetailView deal={selectedDeal} onBack={handleBack} isMobile={false} />
+              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} />
               : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
           )}
         </div>
