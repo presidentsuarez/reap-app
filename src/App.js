@@ -16,20 +16,14 @@ const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 const TRIAL_DAYS = 14;
 
 const STATUS_CONFIG = {
-  "New":                          { color: "#16a34a", bg: "rgba(22,163,74,0.08)",   dot: "#16a34a" },
-  "Data Validation":              { color: "#d97706", bg: "rgba(217,119,6,0.08)",   dot: "#d97706" },
-  "Underwriting | Review":        { color: "#2563eb", bg: "rgba(37,99,235,0.08)",   dot: "#2563eb" },
-  "Underwriting | Active":        { color: "#7c3aed", bg: "rgba(124,58,237,0.08)",  dot: "#7c3aed" },
-  "Offer Lost / Terminated / Dead": { color: "#dc2626", bg: "rgba(220,38,38,0.07)", dot: "#dc2626" },
-  "Dead / Not Moving Forward":    { color: "#dc2626", bg: "rgba(220,38,38,0.07)",   dot: "#dc2626" },
-  "Declined":                     { color: "#ef4444", bg: "rgba(239,68,68,0.07)",   dot: "#ef4444" },
-  "Terminated / Walked":          { color: "#dc2626", bg: "rgba(220,38,38,0.07)",   dot: "#dc2626" },
-  "Sideline":                     { color: "#64748b", bg: "rgba(100,116,135,0.08)", dot: "#94a3b8" },
-  "UC Not With US":               { color: "#64748b", bg: "rgba(100,116,135,0.08)", dot: "#94a3b8" },
-  "Offer Prep":                   { color: "#f59e0b", bg: "rgba(245,158,11,0.08)",  dot: "#f59e0b" },
-  "Offer Submission":             { color: "#f59e0b", bg: "rgba(245,158,11,0.08)",  dot: "#f59e0b" },
-  "Under Contract / Financing":   { color: "#0891b2", bg: "rgba(8,145,178,0.08)",   dot: "#0891b2" },
-  "Closed / Acquired":            { color: "#15803d", bg: "rgba(21,128,61,0.08)",   dot: "#15803d" },
+  "New":            { color: "#16a34a", bg: "rgba(22,163,74,0.08)",   dot: "#16a34a" },
+  "Review":         { color: "#d97706", bg: "rgba(217,119,6,0.08)",   dot: "#d97706" },
+  "Underwriting":   { color: "#7c3aed", bg: "rgba(124,58,237,0.08)",  dot: "#7c3aed" },
+  "Offer":          { color: "#f59e0b", bg: "rgba(245,158,11,0.08)",  dot: "#f59e0b" },
+  "Under Contract": { color: "#0891b2", bg: "rgba(8,145,178,0.08)",   dot: "#0891b2" },
+  "Closed":         { color: "#15803d", bg: "rgba(21,128,61,0.08)",   dot: "#15803d" },
+  "Dead":           { color: "#dc2626", bg: "rgba(220,38,38,0.07)",   dot: "#dc2626" },
+  "On Hold":        { color: "#64748b", bg: "rgba(100,116,135,0.08)", dot: "#94a3b8" },
 };
 
 const fmt = (n) => {
@@ -66,8 +60,15 @@ const fmtUserName = (email) => {
   return local.split(/[._-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 };
 
+// Parse a value to a number for threshold checks
+const num = (v) => {
+  if (!v || v === "—") return null;
+  const n = parseFloat(String(v).replace(/[$,%]/g, ""));
+  return isNaN(n) ? null : n;
+};
+
 function StatusBadge({ status }) {
-  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG["Sideline"];
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG["On Hold"];
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 5,
@@ -83,23 +84,34 @@ function StatusBadge({ status }) {
   );
 }
 
-function MetricCard({ label, value, sub, highlight, good }) {
+function MetricCard({ label, value, sub, highlight, good, warn }) {
   const hasValue = value && value !== "—" && value !== "$NaN" && value !== "NaN%";
+  const isWarn = warn && hasValue;
+  const isGood = good && hasValue && !isWarn;
+  const cardBg = isWarn ? "linear-gradient(135deg, #fef2f2, #fee2e2)" : isGood ? "linear-gradient(135deg, #f0fdf4, #dcfce7)" : highlight && hasValue ? "#f8fafc" : "#ffffff";
+  const cardBorder = isWarn ? "#fca5a5" : isGood ? "#86efac" : highlight && hasValue ? "#e2e8f0" : "#e2e8f0";
+  const numColor = isWarn ? "#dc2626" : isGood ? "#15803d" : highlight && hasValue ? "#0f172a" : "#0f172a";
   return (
     <div style={{
-      background: highlight && hasValue ? "linear-gradient(135deg, #f0fdf4, #dcfce7)" : "#ffffff",
-      border: `1px solid ${highlight && hasValue ? "#86efac" : "#e2e8f0"}`,
+      background: cardBg,
+      border: `1px solid ${cardBorder}`,
       borderRadius: 12, padding: "18px 20px",
       display: "flex", flexDirection: "column", gap: 5,
-      boxShadow: highlight && hasValue ? "0 2px 12px rgba(22,163,74,0.1)" : "0 1px 4px rgba(0,0,0,0.04)",
+      boxShadow: isGood ? "0 2px 12px rgba(22,163,74,0.1)" : isWarn ? "0 2px 12px rgba(220,38,38,0.08)" : "0 1px 4px rgba(0,0,0,0.04)",
     }}>
       <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.07em", textTransform: "uppercase", fontWeight: 700 }}>{label}</span>
-      <span style={{ fontSize: 22, fontWeight: 700, color: highlight && hasValue ? "#15803d" : "#0f172a", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em" }}>{hasValue ? value : "—"}</span>
+      <span style={{ fontSize: 22, fontWeight: 700, color: numColor, fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em" }}>{hasValue ? value : "—"}</span>
       {sub && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{sub}</span>}
-      {good && hasValue && (
+      {isGood && (
         <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 3 }}>
           <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="18 15 12 9 6 15"/></svg>
           Strong
+        </span>
+      )}
+      {isWarn && (
+        <span style={{ fontSize: 11, color: "#dc2626", fontWeight: 600, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 3 }}>
+          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="6 9 12 15 18 9"/></svg>
+          Caution
         </span>
       )}
     </div>
@@ -484,7 +496,7 @@ function EditDealModal({ isOpen, onClose, onSave, saving, isMobile, deal }) {
         <div style={{ padding: "16px 24px 24px" }}>
           <p style={sectionStyle}>Status & Property <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Deal Status" k="status" options={["New", "Data Validation", "Underwriting | Review", "Underwriting | Active", "Offer Prep", "Offer Submission", "Under Contract / Financing", "Closed / Acquired", "Sideline", "Declined", "Dead / Not Moving Forward", "Offer Lost / Terminated / Dead", "Terminated / Walked"]} />
+            <Field label="Deal Status" k="status" options={["New", "Review", "Underwriting", "Offer", "Under Contract", "Closed", "Dead", "On Hold"]} />
             <Field label="Property Type" k="type" options={["Multifamily", "Single Family", "Mixed Use", "Office", "Retail", "Commercial", "Industrial", "Land"]} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
@@ -591,16 +603,16 @@ function FinancialsTab({ deal, isMobile }) {
           <MetricCard label="Revenue (Annual)" value={fmt(deal.existingRevenueAnnual)} />
           <MetricCard label="Revenue (Monthly)" value={fmt(deal.existingRevenueMonthly)} />
           <MetricCard label="Revenue $/sqft" value={deal.existingRevenuePerSF ? `$${parseFloat(deal.existingRevenuePerSF).toFixed(2)}` : "—"} />
-          <MetricCard label="Expense Ratio" value={fmtPct(deal.existingExpensePct)} />
+          <MetricCard label="Expense Ratio" value={fmtPct(deal.existingExpensePct)} warn={num(deal.existingExpensePct) > 60} good={num(deal.existingExpensePct) !== null && num(deal.existingExpensePct) <= 45} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
           <MetricCard label="Current Expenses" value={fmt(deal.existingExpenses)} />
           <MetricCard label="Annual Taxes" value={fmt(deal.annualTaxes)} />
           <MetricCard label="Insurance (Annual)" value={fmt(deal.insuranceCost)} />
-          <MetricCard label="Current NOI" value={fmt(deal.existingNOI)} highlight />
+          <MetricCard label="Current NOI" value={fmt(deal.existingNOI)} highlight good={num(deal.existingNOI) > 0} warn={num(deal.existingNOI) !== null && num(deal.existingNOI) <= 0} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-          <MetricCard label="Current Cap Rate" value={fmtPct(deal.existingCapRate)} />
+          <MetricCard label="Current Cap Rate" value={fmtPct(deal.existingCapRate)} good={num(deal.existingCapRate) >= 6} warn={num(deal.existingCapRate) !== null && num(deal.existingCapRate) < 4} />
         </div>
       </section>
 
@@ -613,12 +625,12 @@ function FinancialsTab({ deal, isMobile }) {
           <MetricCard label="Revenue (Annual)" value={fmt(deal.proformaRevenueAnnual)} highlight />
           <MetricCard label="Revenue (Monthly)" value={fmt(deal.proformaRevenueMonthly)} />
           <MetricCard label="Revenue $/sqft" value={deal.proformaRentPerSF ? `$${deal.proformaRentPerSF}` : "—"} />
-          <MetricCard label="Vacancy" value={fmtPct(deal.proformaVacancy)} />
+          <MetricCard label="Vacancy" value={fmtPct(deal.proformaVacancy)} warn={num(deal.proformaVacancy) > 10} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
           <MetricCard label="Expenses (Annual)" value={fmt(deal.proformaExpensesAnnual)} />
           <MetricCard label="Expenses (Monthly)" value={fmt(deal.proformaExpensesMonthly)} />
-          <MetricCard label="Expense Ratio" value={fmtPct(deal.proformaExpensesPct)} />
+          <MetricCard label="Expense Ratio" value={fmtPct(deal.proformaExpensesPct)} warn={num(deal.proformaExpensesPct) > 60} good={num(deal.proformaExpensesPct) !== null && num(deal.proformaExpensesPct) <= 45} />
           <MetricCard label="Expenses $/sqft" value={deal.proformaExpensesPerSF ? `$${deal.proformaExpensesPerSF}` : "—"} />
         </div>
       </section>
@@ -629,10 +641,10 @@ function FinancialsTab({ deal, isMobile }) {
           NOI & Cash Flow <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
         </h2>
         <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-          <MetricCard label="Net Operating Income" value={fmt(deal.noiAnnual)} highlight good />
+          <MetricCard label="Net Operating Income" value={fmt(deal.noiAnnual)} highlight good={num(deal.noiAnnual) > 0} warn={num(deal.noiAnnual) !== null && num(deal.noiAnnual) <= 0} />
           <MetricCard label="NOI (Monthly)" value={fmt(deal.noiMonthly)} />
           <MetricCard label="NOI $/sqft" value={deal.noiPerSF ? `$${deal.noiPerSF}` : "—"} />
-          <MetricCard label="Cash Flow (Pre-Tax)" value={fmt(deal.cashFlowMonthly)} sub="monthly" highlight />
+          <MetricCard label="Cash Flow (Pre-Tax)" value={fmt(deal.cashFlowMonthly)} sub="monthly" highlight good={num(deal.cashFlowMonthly) > 0} warn={num(deal.cashFlowMonthly) !== null && num(deal.cashFlowMonthly) <= 0} />
         </div>
       </section>
 
@@ -642,16 +654,16 @@ function FinancialsTab({ deal, isMobile }) {
           Key Metrics <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
         </h2>
         <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-          <MetricCard label="Cap Rate" value={fmtPct(deal.capRate)} good highlight />
-          <MetricCard label="DSCR" value={deal.dscr || "—"} good={parseFloat(deal.dscr) >= 1.25} />
-          <MetricCard label="ROI" value={fmtPct(deal.roi)} good highlight />
-          <MetricCard label="AAR" value={fmtPct(deal.aar)} good />
+          <MetricCard label="Cap Rate" value={fmtPct(deal.capRate)} highlight good={num(deal.capRate) >= 6} warn={num(deal.capRate) !== null && num(deal.capRate) < 4} />
+          <MetricCard label="DSCR" value={deal.dscr || "—"} good={num(deal.dscr) >= 1.25} warn={num(deal.dscr) !== null && num(deal.dscr) < 1.0} />
+          <MetricCard label="ROI" value={fmtPct(deal.roi)} highlight good={num(deal.roi) >= 15} warn={num(deal.roi) !== null && num(deal.roi) < 5} />
+          <MetricCard label="AAR" value={fmtPct(deal.aar)} good={num(deal.aar) >= 10} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-          <MetricCard label="Cost to Value" value={fmtPct(deal.ctv)} />
-          <MetricCard label="Profitability" value={fmtPct(deal.profitability)} good />
-          <MetricCard label="REAP Score" value={deal.reapScore || "—"} highlight={parseFloat(deal.reapScore) >= 70} />
-          <MetricCard label="Equity Multiple" value={deal.equityMultiple || "—"} />
+          <MetricCard label="Cost to Value" value={fmtPct(deal.ctv)} good={num(deal.ctv) !== null && num(deal.ctv) <= 75} warn={num(deal.ctv) > 90} />
+          <MetricCard label="Profitability" value={fmtPct(deal.profitability)} good={num(deal.profitability) >= 15} warn={num(deal.profitability) !== null && num(deal.profitability) < 5} />
+          <MetricCard label="REAP Score" value={deal.reapScore || "—"} highlight={num(deal.reapScore) >= 70} good={num(deal.reapScore) >= 70} warn={num(deal.reapScore) !== null && num(deal.reapScore) < 40} />
+          <MetricCard label="Equity Multiple" value={deal.equityMultiple || "—"} good={num(deal.equityMultiple) >= 1.5} />
         </div>
       </section>
 
@@ -667,8 +679,8 @@ function FinancialsTab({ deal, isMobile }) {
           <MetricCard label="Points" value={fmtPct(deal.bridgePoints)} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-          <MetricCard label="LTC" value={fmtPct(deal.bridgeLTC)} />
-          <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} />
+          <MetricCard label="LTC" value={fmtPct(deal.bridgeLTC)} warn={num(deal.bridgeLTC) > 90} />
+          <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} good={num(deal.bridgeLTV) !== null && num(deal.bridgeLTV) <= 75} warn={num(deal.bridgeLTV) > 85} />
           <MetricCard label="Equity Required" value={fmt(deal.equityRequired)} />
           <MetricCard label="Bridge Total Cost" value={fmt(deal.bridgeTotalCost)} />
         </div>
@@ -683,11 +695,11 @@ function FinancialsTab({ deal, isMobile }) {
           <MetricCard label="Refi Loan Amount" value={fmt(deal.refiLoanAmount)} />
           <MetricCard label="% of ARV" value={fmtPct(deal.refiPctARV)} />
           <MetricCard label="Refi Interest Rate" value={fmtPct(deal.refiInterestRate)} />
-          <MetricCard label="Cash Flow (Refi)" value={fmt(deal.refiCashFlow)} sub="annual" highlight />
+          <MetricCard label="Cash Flow (Refi)" value={fmt(deal.refiCashFlow)} sub="annual" highlight good={num(deal.refiCashFlow) > 0} warn={num(deal.refiCashFlow) !== null && num(deal.refiCashFlow) <= 0} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-          <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good />
-          <MetricCard label="Profit at Refi" value={fmt(deal.profitAtRefi)} highlight />
+          <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good={num(deal.cashOutRefi) > 0} warn={num(deal.cashOutRefi) !== null && num(deal.cashOutRefi) <= 0} />
+          <MetricCard label="Profit at Refi" value={fmt(deal.profitAtRefi)} highlight good={num(deal.profitAtRefi) > 0} warn={num(deal.profitAtRefi) !== null && num(deal.profitAtRefi) <= 0} />
           <MetricCard label="Equity After Refi" value={fmt(deal.equityAfterRefi)} />
           <MetricCard label="Refi Valuation" value={fmt(deal.refiValuation)} />
         </div>
@@ -751,6 +763,8 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   const [hoveredRow, setHoveredRow] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null);
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState("desc");
   const searchRef = useRef(null);
 
   useEffect(() => {
@@ -758,10 +772,14 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   }, [searchOpen]);
 
   const statusFilters = [
-    { label: "Active", match: d => (d.status || "").includes("Underwriting") },
-    { label: "Under Review", match: d => d.status === "Underwriting | Review" },
-    { label: "New Leads", match: d => d.status === "New" },
-    { label: "Lost", match: d => (d.status || "").includes("Lost") || (d.status || "").includes("Dead") || (d.status || "").includes("Terminated") || (d.status || "").includes("Declined") },
+    { label: "New", match: d => d.status === "New" },
+    { label: "Review", match: d => d.status === "Review" },
+    { label: "Underwriting", match: d => d.status === "Underwriting" },
+    { label: "Offer", match: d => d.status === "Offer" },
+    { label: "Under Contract", match: d => d.status === "Under Contract" },
+    { label: "Closed", match: d => d.status === "Closed" },
+    { label: "Dead", match: d => d.status === "Dead" },
+    { label: "On Hold", match: d => d.status === "On Hold" },
   ];
 
   const textFiltered = deals.filter(d =>
@@ -771,9 +789,45 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
     (d.type || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const filtered = statusFilter !== null
+  const statusFiltered = statusFilter !== null
     ? textFiltered.filter(statusFilters[statusFilter].match)
     : textFiltered;
+
+  // Column sorting
+  const sortConfig = {
+    "User":      { key: d => (d.user || "").toLowerCase(), type: "string" },
+    "Date":      { key: d => new Date(d.date || 0).getTime(), type: "number" },
+    "Status":    { key: d => (d.status || "").toLowerCase(), type: "string" },
+    "Address":   { key: d => (d.address || "").toLowerCase(), type: "string" },
+    "Type":      { key: d => (d.type || "").toLowerCase(), type: "string" },
+    "Our Offer": { key: d => parseFloat(String(d.offer || "0").replace(/[$,]/g, "")) || 0, type: "number" },
+    "$/sqft":    { key: d => parseFloat(String(d.netSqft || "0").replace(/[$,]/g, "")) || 0, type: "number" },
+    "Sq Ft":     { key: d => parseFloat(String(d.sqft || "0").replace(/[$,]/g, "")) || 0, type: "number" },
+    "Source":    { key: d => (d.source || "Manual").toLowerCase(), type: "string" },
+  };
+
+  const handleSort = (col) => {
+    if (sortCol === col) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortCol(col);
+      setSortDir(col === "Date" || col === "Our Offer" || col === "$/sqft" || col === "Sq Ft" ? "desc" : "asc");
+    }
+  };
+
+  const filtered = [...statusFiltered].sort((a, b) => {
+    if (!sortCol || !sortConfig[sortCol]) return 0;
+    const cfg = sortConfig[sortCol];
+    const av = cfg.key(a);
+    const bv = cfg.key(b);
+    let cmp = 0;
+    if (cfg.type === "number") {
+      cmp = av - bv;
+    } else {
+      cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    }
+    return sortDir === "desc" ? -cmp : cmp;
+  });
 
   const totalVolume = deals.reduce((s, d) => {
     const n = parseFloat(String(d.offer || "0").replace(/[$,]/g, ""));
@@ -871,7 +925,20 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                   {["User", "Date", "Status", "Address", "Type", "Our Offer", "$/sqft", "Sq Ft", "Source"].map(h => (
-                    <th key={h} style={{ padding: "11px 16px", textAlign: "left", fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+                    <th key={h} onClick={() => handleSort(h)} style={{
+                      padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
+                      fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
+                      whiteSpace: "nowrap", cursor: "pointer", userSelect: "none", transition: "color 0.15s",
+                    }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        {h}
+                        {sortCol === h && (
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} style={{ transition: "transform 0.2s", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }}>
+                            <polyline points="6 9 12 15 18 9"/>
+                          </svg>
+                        )}
+                      </span>
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -1058,13 +1125,13 @@ function DealDetailView({ deal, onBack, onEdit, isMobile }) {
                 <MetricCard label="Purchase Price" value={fmt(deal.purchasePrice)} />
                 <MetricCard label="Improvement Budget" value={fmt(deal.improvementBudget)} />
                 <MetricCard label="As Completed Value" value={fmt(deal.arv)} />
-                <MetricCard label="Projected Profit" value={fmt(deal.profit)} highlight />
+                <MetricCard label="Projected Profit" value={fmt(deal.profit)} highlight good={num(deal.profit) > 0} warn={num(deal.profit) !== null && num(deal.profit) <= 0} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
-                <MetricCard label="ROI" value={fmtPct(deal.roi)} good highlight />
-                <MetricCard label="Cost / Value" value={fmtPct(deal.ctv)} good />
-                <MetricCard label="Avg Annual Return" value={fmtPct(deal.aar)} good />
-                <MetricCard label="Profitability" value={fmtPct(deal.profitability)} good />
+                <MetricCard label="ROI" value={fmtPct(deal.roi)} highlight good={num(deal.roi) >= 15} warn={num(deal.roi) !== null && num(deal.roi) < 5} />
+                <MetricCard label="Cost / Value" value={fmtPct(deal.ctv)} good={num(deal.ctv) !== null && num(deal.ctv) <= 75} warn={num(deal.ctv) > 90} />
+                <MetricCard label="Avg Annual Return" value={fmtPct(deal.aar)} good={num(deal.aar) >= 10} />
+                <MetricCard label="Profitability" value={fmtPct(deal.profitability)} good={num(deal.profitability) >= 15} warn={num(deal.profitability) !== null && num(deal.profitability) < 5} />
               </div>
             </section>
           </>
@@ -1627,6 +1694,156 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading }) {
   );
 }
 
+function OnboardingScreen({ userName, onComplete, onCreateDeal }) {
+  const [pageLoaded, setPageLoaded] = useState(false);
+  const firstName = userName ? userName.split(" ")[0] : "there";
+
+  useEffect(() => { const t = setTimeout(() => setPageLoaded(true), 100); return () => clearTimeout(t); }, []);
+
+  const steps = [
+    {
+      icon: (
+        <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}>
+          <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      ),
+      title: "Add Your Deals",
+      desc: "Enter a property address and key numbers. REAP auto-calculates 30+ financial metrics instantly.",
+    },
+    {
+      icon: (
+        <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}>
+          <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="3" y1="20" x2="21" y2="20"/>
+        </svg>
+      ),
+      title: "See the Full Picture",
+      desc: "NOI, cap rate, DSCR, bridge loans, refinance — every metric a CRE investor needs, live.",
+    },
+    {
+      icon: (
+        <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}>
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M8 12l2 2 4-4"/>
+        </svg>
+      ),
+      title: "AI Executive Summaries",
+      desc: "One click generates a professional investment summary you can send to partners and lenders.",
+    },
+  ];
+
+  return (
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: "linear-gradient(160deg, #f0fdf4 0%, #f8fafc 40%, #fff 100%)",
+      fontFamily: "'DM Sans', sans-serif",
+      padding: 20,
+    }}>
+      <style>{`
+        @keyframes onbFadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes onbPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.3); } 50% { box-shadow: 0 0 0 12px rgba(22,163,74,0); } }
+      `}</style>
+      <div style={{
+        maxWidth: 480, width: "100%", textAlign: "center",
+        opacity: pageLoaded ? 1 : 0,
+        transform: pageLoaded ? "translateY(0)" : "translateY(24px)",
+        transition: "all 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
+      }}>
+        {/* Logo mark */}
+        <div style={{
+          width: 56, height: 56, borderRadius: 16,
+          background: "linear-gradient(135deg, #0B3D2C, #16a34a)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          margin: "0 auto 28px", boxShadow: "0 8px 30px rgba(11,61,44,0.25)",
+        }}>
+          <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        </div>
+
+        {/* Welcome text */}
+        <h1 style={{
+          fontSize: 28, fontWeight: 700, color: "#0B3D2C",
+          fontFamily: "'Playfair Display', serif",
+          marginBottom: 8, letterSpacing: "-0.02em",
+        }}>
+          Welcome, {firstName}
+        </h1>
+        <p style={{ fontSize: 15, color: "#64748b", lineHeight: 1.6, marginBottom: 40 }}>
+          REAP is your deal analysis co-pilot. Here's how it works.
+        </p>
+
+        {/* 3 Steps */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 40, textAlign: "left" }}>
+          {steps.map((s, i) => (
+            <div key={i} style={{
+              display: "flex", gap: 16, alignItems: "flex-start",
+              background: "#fff",
+              border: "1px solid #e2e8f0",
+              borderRadius: 14, padding: "20px 22px",
+              animation: `onbFadeUp 0.5s ease ${0.15 + i * 0.12}s both`,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+            }}>
+              <div style={{
+                width: 52, height: 52, borderRadius: 13, flexShrink: 0,
+                background: "linear-gradient(135deg, #f0fdf4, #dcfce7)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                border: "1px solid #bbf7d0",
+              }}>
+                {s.icon}
+              </div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, color: "#16a34a",
+                    background: "#f0fdf4", border: "1px solid #bbf7d0",
+                    borderRadius: 6, padding: "2px 7px",
+                    fontFamily: "'DM Mono', monospace",
+                  }}>0{i + 1}</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>{s.title}</span>
+                </div>
+                <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5, margin: 0 }}>{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <button
+          onClick={onCreateDeal}
+          style={{
+            width: "100%", padding: "16px 24px",
+            background: "linear-gradient(135deg, #0B3D2C, #16a34a)",
+            color: "#fff", fontSize: 16, fontWeight: 700,
+            fontFamily: "'DM Sans', sans-serif",
+            border: "none", borderRadius: 12, cursor: "pointer",
+            boxShadow: "0 4px 20px rgba(22,163,74,0.3)",
+            transition: "all 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+            letterSpacing: "0.01em",
+            animation: "onbPulse 2s ease-in-out infinite 1s",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+          }}
+          onMouseOver={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 30px rgba(22,163,74,0.4)"; }}
+          onMouseOut={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(22,163,74,0.3)"; }}
+        >
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create Your First Deal
+        </button>
+
+        <button
+          onClick={onComplete}
+          style={{
+            background: "none", border: "none", color: "#94a3b8",
+            fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+            cursor: "pointer", marginTop: 16, padding: "8px 16px",
+            transition: "color 0.2s",
+          }}
+          onMouseOver={e => e.currentTarget.style.color = "#64748b"}
+          onMouseOut={e => e.currentTarget.style.color = "#94a3b8"}
+        >
+          Skip for now — explore the pipeline
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ReapApp() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -1645,6 +1862,7 @@ export default function ReapApp() {
   const [savingDeal, setSavingDeal] = useState(false);
   const [showEditDeal, setShowEditDeal] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Check for payment success redirect
   useEffect(() => {
@@ -1670,6 +1888,11 @@ export default function ReapApp() {
         setShowPaywall(true);
       } else {
         setShowPaywall(false);
+      }
+      // Show onboarding for first-time users
+      const onboarded = localStorage.getItem("reap_onboarded");
+      if (!onboarded) {
+        setShowOnboarding(true);
       }
     }
   }, [session]);
@@ -1878,8 +2101,14 @@ export default function ReapApp() {
         insuranceCost: g(row, colInsuranceCost),
       })).filter(d => d.address);
 
+      // Filter to current user's deals only
+      const currentEmail = session?.user?.email?.toLowerCase() || "";
+      const userDeals = currentEmail
+        ? parsed.filter(d => (d.user || "").toLowerCase() === currentEmail)
+        : parsed;
+
       // Sort newest first
-      parsed.sort((a, b) => {
+      userDeals.sort((a, b) => {
         const da = new Date(a.date);
         const db = new Date(b.date);
         if (isNaN(da.getTime()) && isNaN(db.getTime())) return 0;
@@ -1888,7 +2117,7 @@ export default function ReapApp() {
         return db - da;
       });
 
-      setDeals(parsed);
+      setDeals(userDeals);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1896,7 +2125,17 @@ export default function ReapApp() {
     }
   };
 
-  useEffect(() => { fetchDeals(); }, []);
+  useEffect(() => { if (session) fetchDeals(); }, [session]);
+
+  // Keep selectedDeal in sync when deals refresh (e.g. after edit)
+  useEffect(() => {
+    if (selectedDeal && deals.length > 0) {
+      const updated = deals.find(d => d.address === selectedDeal.address);
+      if (updated && updated !== selectedDeal) {
+        setSelectedDeal(updated);
+      }
+    }
+  }, [deals]);
 
   /* ═══════════════════════════════════════════════════════
      SAVE NEW DEAL — Step 24 (writes via Google Apps Script)
@@ -2031,7 +2270,8 @@ export default function ReapApp() {
       }
 
       setShowEditDeal(false);
-      setSelectedDeal(null);
+      // Don't null selectedDeal — stay on the deal detail view
+      // fetchDeals will refresh the data, and the sync effect below updates selectedDeal
       fetchDeals();
     } catch (err) {
       alert("Error saving: " + err.message);
@@ -2072,6 +2312,23 @@ export default function ReapApp() {
   );
 
   if (!session) return <AuthScreen onAuth={(user) => setSession({ user })} />;
+
+  const handleFinishOnboarding = (openNewDeal) => {
+    localStorage.setItem("reap_onboarded", "true");
+    setShowOnboarding(false);
+    if (openNewDeal) setShowNewDeal(true);
+  };
+
+  if (showOnboarding) {
+    const onboardName = session?.user?.user_metadata?.full_name || session?.user?.email || "";
+    return (
+      <OnboardingScreen
+        userName={onboardName}
+        onComplete={() => handleFinishOnboarding(false)}
+        onCreateDeal={() => handleFinishOnboarding(true)}
+      />
+    );
+  }
 
   if (showPaywall) return <PricingScreen userEmail={session?.user?.email} daysLeft={trialDaysLeft} onCheckout={handleCheckout} checkoutLoading={checkoutLoading} />;
 
