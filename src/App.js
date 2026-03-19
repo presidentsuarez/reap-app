@@ -6,6 +6,7 @@ const SPREADSHEET_ID = process.env.REACT_APP_SPREADSHEET_ID;
 const API_KEY = process.env.REACT_APP_SHEETS_API_KEY;
 const SHEET_NAME = "Deals";
 const SHEETS_WRITE_URL = process.env.REACT_APP_SHEETS_WRITE_URL;
+const CONTACTS_SHEET_NAME = "Contacts";
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
@@ -1844,6 +1845,272 @@ function OnboardingScreen({ userName, onComplete, onCreateDeal }) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════
+   BUYER PIPELINE
+   ═══════════════════════════════════════════════════════════ */
+
+const BUYER_STATUS_CONFIG = {
+  "New":              { color: "#16a34a", bg: "rgba(22,163,74,0.08)",   dot: "#16a34a" },
+  "Contacted":        { color: "#d97706", bg: "rgba(217,119,6,0.08)",   dot: "#d97706" },
+  "Info Gathering":   { color: "#7c3aed", bg: "rgba(124,58,237,0.08)",  dot: "#7c3aed" },
+  "Confirmed Buyer":  { color: "#0891b2", bg: "rgba(8,145,178,0.08)",   dot: "#0891b2" },
+  "Active":           { color: "#2563eb", bg: "rgba(37,99,235,0.08)",   dot: "#2563eb" },
+  "Closed":           { color: "#64748b", bg: "rgba(100,116,139,0.08)", dot: "#64748b" },
+};
+const BUYER_STATUS_LIST = ["New", "Contacted", "Info Gathering", "Confirmed Buyer", "Active", "Closed"];
+const BUYER_PROPERTY_TYPES = ["Single Family", "Multifamily", "Commercial", "Office", "Industrial", "Mixed Use", "Land", "Retail"];
+const BUYER_MARKETS = ["Tampa", "Orlando", "Miami", "Jacksonville", "St. Petersburg", "Fort Lauderdale", "Clearwater", "Sarasota"];
+
+function BuyerStatusBadge({ status }) {
+  const cfg = BUYER_STATUS_CONFIG[status] || BUYER_STATUS_CONFIG["New"];
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 11, fontWeight: 600, letterSpacing: "0.03em", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", border: `1px solid ${cfg.color}22` }}>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.dot, flexShrink: 0 }} />
+      {status || "—"}
+    </span>
+  );
+}
+
+function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
+  const isEdit = !!buyer?.rowId;
+  const [form, setForm] = useState({ name: "", email: "", phone: "", company: "", buyerStatus: "New", assetPreference: "", temperature: "", manager: "", notes: "", leadSource: "" });
+
+  useEffect(() => {
+    if (isOpen && buyer) {
+      setForm({ name: buyer.name || "", email: buyer.email || "", phone: buyer.phone || "", company: buyer.company || "", buyerStatus: buyer.buyerStatus || "New", assetPreference: buyer.assetPreference || "", temperature: buyer.temperature || "", manager: buyer.manager || "", notes: buyer.notes || "", leadSource: buyer.leadSource || "" });
+    } else if (isOpen) {
+      setForm({ name: "", email: "", phone: "", company: "", buyerStatus: "New", assetPreference: "", temperature: "", manager: "", notes: "", leadSource: "" });
+    }
+  }, [isOpen, buyer]);
+
+  if (!isOpen) return null;
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+  const handleSave = () => { if (!form.name) return; onSave(form); };
+  const inputStyle = { width: "100%", padding: "12px 14px", fontSize: 14, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 10, outline: "none", transition: "border-color 0.2s", background: "#fff", color: "#0f172a", boxSizing: "border-box" };
+  const labelStyle = { display: "block", fontSize: 11, fontWeight: 700, color: "#94a3b8", marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" };
+  const selectStyle = { ...inputStyle, appearance: "none", backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2394a3b8' fill='none' stroke-width='1.5'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 14px center" };
+  const focusH = (e) => { e.target.style.borderColor = "#16a34a"; };
+  const blurH = (e) => { e.target.style.borderColor = "#e2e8f0"; };
+  const secStyle = { fontSize: 11, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", animation: "fadeIn 0.2s ease" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }} />
+      <div style={{ position: "relative", background: "#fff", width: isMobile ? "100%" : 540, maxHeight: isMobile ? "92vh" : "85vh", overflow: "auto", borderRadius: isMobile ? "20px 20px 0 0" : 20, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", animation: isMobile ? "slideUp 0.3s cubic-bezier(0.25, 1, 0.5, 1)" : "fadeIn 0.25s ease" }}>
+        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "#fff", zIndex: 1, borderRadius: isMobile ? "20px 20px 0 0" : "20px 20px 0 0" }}>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>{isEdit ? "Edit Buyer" : "New Buyer"}</h2>
+            <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{isEdit ? "Update buyer details" : "Add a buyer to your pipeline"}</p>
+          </div>
+          <button onClick={onClose} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div style={{ padding: "20px 24px 24px" }}>
+          <p style={secStyle}>Contact Information <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ marginBottom: 16 }}><label style={labelStyle}>Full Name *</label><input style={inputStyle} value={form.name} onChange={e => set("name", e.target.value)} placeholder="John Smith" onFocus={focusH} onBlur={blurH} /></div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div><label style={labelStyle}>Email</label><input style={inputStyle} type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="john@example.com" onFocus={focusH} onBlur={blurH} /></div>
+            <div><label style={labelStyle}>Phone</label><input style={inputStyle} value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(813) 555-1234" onFocus={focusH} onBlur={blurH} /></div>
+          </div>
+          <div style={{ marginBottom: 24 }}><label style={labelStyle}>Company</label><input style={inputStyle} value={form.company} onChange={e => set("company", e.target.value)} placeholder="ABC Investments LLC" onFocus={focusH} onBlur={blurH} /></div>
+          <p style={secStyle}>Pipeline <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div><label style={labelStyle}>Buyer Status</label><select style={selectStyle} value={form.buyerStatus} onChange={e => set("buyerStatus", e.target.value)}>{BUYER_STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+            <div><label style={labelStyle}>Temperature</label><select style={selectStyle} value={form.temperature} onChange={e => set("temperature", e.target.value)}><option value="">—</option><option value="🔥 Hot">🔥 Hot</option><option value="🤔 Medium">🤔 Medium</option><option value="🧊 Cold">🧊 Cold</option></select></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
+            <div><label style={labelStyle}>Asset Preference</label><select style={selectStyle} value={form.assetPreference} onChange={e => set("assetPreference", e.target.value)}><option value="">—</option>{BUYER_PROPERTY_TYPES.map(pt => <option key={pt} value={pt}>{pt}</option>)}</select></div>
+            <div><label style={labelStyle}>Lead Source</label><input style={inputStyle} value={form.leadSource} onChange={e => set("leadSource", e.target.value)} placeholder="Referral, Cold Call, etc." onFocus={focusH} onBlur={blurH} /></div>
+          </div>
+          <p style={secStyle}>Additional <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ marginBottom: 16 }}><label style={labelStyle}>Manager / Assigned To</label><input style={inputStyle} value={form.manager} onChange={e => set("manager", e.target.value)} placeholder="Team member name" onFocus={focusH} onBlur={blurH} /></div>
+          <div style={{ marginBottom: 24 }}><label style={labelStyle}>Notes</label><textarea style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Budget, criteria, follow-up notes..." onFocus={focusH} onBlur={blurH} /></div>
+          <button onClick={handleSave} disabled={saving || !form.name} style={{ width: "100%", padding: "14px 24px", background: saving ? "#15803d" : "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", border: "none", borderRadius: 12, cursor: saving ? "not-allowed" : "pointer", transition: "all 0.25s", letterSpacing: "0.01em", boxShadow: "0 4px 14px rgba(22,163,74,0.25)", opacity: !form.name ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            {saving && <svg width={18} height={18} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle cx={12} cy={12} r={10} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={3} /><path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round" /></svg>}
+            {saving ? "Saving..." : isEdit ? "Update Buyer" : "Add Buyer"}
+          </button>
+        </div>
+      </div>
+      <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+    </div>
+  );
+}
+
+function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer }) {
+  const [buyers, setBuyers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState(null);
+  const [typeFilter, setTypeFilter] = useState("");
+  const [hoveredRow, setHoveredRow] = useState(null);
+  const searchRef = useRef(null);
+
+  useEffect(() => { if (searchOpen && searchRef.current) searchRef.current.focus(); }, [searchOpen]);
+
+  const fetchBuyers = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const range = `${CONTACTS_SHEET_NAME}!A1:BQ`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+      const rows = data.values || [];
+      if (rows.length < 2) { setBuyers([]); setLoading(false); return; }
+      const headers = rows[0];
+      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
+      const colRowId = idx("🔒 Row ID"); const colName = idx("Contact / Name"); const colFirstName = idx("Contact / First Name");
+      const colEmail = idx("Contact / Email"); const colPhone = idx("Contact / Phone"); const colType = idx("Contact / Type");
+      const colBuyerStatus = idx("Buyer / Status"); const colAssetPref = idx("Contact / Asset Preference");
+      const colTemperature = idx("Contact / Temperature"); const colManager = idx("Contact / Manager");
+      const colNotes = idx("Contact / Notes"); const colLeadSource = idx("Contact / Lead Source");
+      const colCompany = idx("Contact / Company"); const colDateAdded = idx("Date / Added");
+      const colLastContact = idx("Date / Last Contact"); const colFollowUpNotes = idx("Contact / Follow Up Notes");
+      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
+      const parsed = rows.slice(1).map(row => ({
+        rowId: g(row, colRowId), name: g(row, colName), firstName: g(row, colFirstName),
+        email: g(row, colEmail), phone: g(row, colPhone), contactType: g(row, colType),
+        buyerStatus: g(row, colBuyerStatus), assetPreference: g(row, colAssetPref),
+        temperature: g(row, colTemperature), manager: g(row, colManager), notes: g(row, colNotes),
+        leadSource: g(row, colLeadSource), company: g(row, colCompany), dateAdded: g(row, colDateAdded),
+        lastContact: g(row, colLastContact), followUpNotes: g(row, colFollowUpNotes),
+      }));
+      const allContacts = parsed.filter(c => c.name && c.name.trim() !== "");
+      setBuyers(allContacts);
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { if (session) fetchBuyers(); }, [session, fetchBuyers]);
+
+  const statusFilters = BUYER_STATUS_LIST.map(label => ({ label, match: b => (b.buyerStatus || "").trim() === label }));
+  const typeFiltered = typeFilter ? buyers.filter(b => (b.contactType || "").toLowerCase().includes(typeFilter.toLowerCase())) : buyers;
+  const textFiltered = typeFiltered.filter(b => (b.name || "").toLowerCase().includes(search.toLowerCase()) || (b.email || "").toLowerCase().includes(search.toLowerCase()) || (b.company || "").toLowerCase().includes(search.toLowerCase()) || (b.phone || "").toLowerCase().includes(search.toLowerCase()));
+  const statusFiltered = statusFilter !== null ? textFiltered.filter(statusFilters[statusFilter].match) : textFiltered;
+
+  if (loading) return <LoadingSpinner />;
+  if (error) return <ErrorState message={error} onRetry={fetchBuyers} />;
+
+  return (
+    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+      {isMobile ? (
+        <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "14px 16px" }}>
+          {searchOpen ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, animation: "fadeIn 0.2s ease" }}>
+              <div style={{ position: "relative", flex: 1 }}>
+                <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
+                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search contacts..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px 10px 32px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: "100%" }} />
+              </div>
+              <button onClick={() => { setSearchOpen(false); setSearch(""); }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "8px 4px", whiteSpace: "nowrap" }}>Cancel</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <h1 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Contacts</h1>
+                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{statusFilter !== null ? statusFiltered.length + " " + statusFilters[statusFilter].label.toLowerCase() : buyers.length + " contacts"}</p>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
+                </button>
+                <button onClick={onNewBuyer} style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(22,163,74,0.35)" }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5}><path d="M12 5v14M5 12h14" /></svg>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Contacts</h1>
+            <p style={{ fontSize: 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{buyers.length} contacts</p>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 12px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}>
+              <option value="">All Types</option>
+              <option value="Buyer">Buyers</option>
+              <option value="Investor">Investors</option>
+              <option value="Wholesaler">Wholesalers</option>
+              <option value="Sphere of Influence">Sphere of Influence</option>
+              <option value="Community">Community</option>
+            </select>
+            <div style={{ position: "relative" }}>
+              <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search contacts..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
+            </div>
+            <button onClick={onNewBuyer} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "9px 18px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap" }}>
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14" /></svg>
+              New Contact
+            </button>
+          </div>
+        </div>
+      )}
+      <div style={{ background: "#fff", borderBottom: "1px solid #f1f5f9", padding: isMobile ? "0" : "12px 32px", display: "flex", gap: 0, overflowX: isMobile ? "auto" : "visible", WebkitOverflowScrolling: "touch" }}>
+        {statusFilters.map((s, i) => {
+          const count = buyers.filter(s.match).length; const isActive = statusFilter === i;
+          return (<button key={s.label} onClick={() => setStatusFilter(isActive ? null : i)} style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, background: "none", border: "none", cursor: "pointer", padding: isMobile ? "12px 16px" : "0", marginRight: isMobile ? 0 : 32, borderBottom: isMobile && isActive ? "2px solid #16a34a" : "2px solid transparent", transition: "all 0.2s", WebkitTapHighlightColor: "transparent" }}>
+            <span style={{ fontSize: isMobile ? 15 : 18, fontWeight: 700, color: isActive ? "#16a34a" : "#0f172a", fontFamily: "'DM Mono', monospace", transition: "color 0.2s" }}>{count}</span>
+            <span style={{ fontSize: isMobile ? 11 : 12, color: isActive ? "#16a34a" : "#94a3b8", fontWeight: 500, fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>{s.label}</span>
+          </button>);
+        })}
+      </div>
+      <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px" : "16px 32px" }}>
+        {statusFiltered.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+            <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ margin: "0 auto 12px", display: "block" }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx={9} cy={7} r={4} /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+            <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>{buyers.length === 0 ? "No contacts yet" : "No contacts match your filters"}</p>
+            <p style={{ fontSize: 13, margin: 0 }}>{buyers.length === 0 ? "Add your first contact to get started" : "Try adjusting your search or status filter"}</p>
+          </div>
+        ) : isMobile ? (
+          statusFiltered.map((b, i) => (
+            <div key={b.rowId || b.name + i} onClick={() => onSetEditingBuyer(b)} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 16px", cursor: "pointer", marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.03)", WebkitTapHighlightColor: "transparent" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.name || "—"}</p>
+                  <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{[b.company, b.assetPreference].filter(Boolean).join(" · ") || "—"}</p>
+                </div>
+                <div style={{ flexShrink: 0, marginLeft: 10 }}><BuyerStatusBadge status={b.buyerStatus || "New"} /></div>
+              </div>
+              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                {b.temperature && <div><span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Temp</span><p style={{ fontSize: 13, fontWeight: 500, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "1px 0 0" }}>{b.temperature}</p></div>}
+                {b.phone && <div><span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Phone</span><p style={{ fontSize: 13, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{b.phone}</p></div>}
+                <div style={{ marginLeft: "auto" }}><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2}><path d="M9 18l6-6-6-6" /></svg></div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif" }}>
+              <thead><tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                {["Name", "Company", "Type", "Status", "Temp", "Asset Pref", "Phone", "Email", "Manager"].map(h => (<th key={h} style={{ textAlign: "left", padding: "12px 14px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>))}
+              </tr></thead>
+              <tbody>
+                {statusFiltered.map((b, i) => (
+                  <tr key={b.rowId || b.name + i} onClick={() => onSetEditingBuyer(b)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer", background: hoveredRow === i ? "#f8fafc" : "transparent", transition: "background 0.1s" }}>
+                    <td style={{ padding: "12px 14px" }}><span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{b.name || "—"}</span></td>
+                    <td style={{ padding: "12px 14px", fontSize: 13, color: "#64748b" }}>{b.company || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>{b.contactType || "—"}</td>
+                    <td style={{ padding: "12px 14px" }}><BuyerStatusBadge status={b.buyerStatus || "New"} /></td>
+                    <td style={{ padding: "12px 14px", fontSize: 13 }}>{b.temperature || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.assetPreference || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{b.phone || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#94a3b8" }}>{b.email || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.manager || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <BuyerModal isOpen={showBuyerModal} onClose={onCloseBuyerModal} onSave={onSaveBuyer} saving={savingBuyer} isMobile={isMobile} buyer={editingBuyer} />
+    </div>
+  );
+}
+
 export default function ReapApp() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -1863,6 +2130,9 @@ export default function ReapApp() {
   const [showEditDeal, setShowEditDeal] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showBuyerModal, setShowBuyerModal] = useState(false);
+  const [savingBuyer, setSavingBuyer] = useState(false);
+  const [editingBuyer, setEditingBuyer] = useState(null);
 
   // Check for payment success redirect
   useEffect(() => {
@@ -2298,10 +2568,51 @@ export default function ReapApp() {
     }
   };
 
+  const handleSaveBuyer = async (form) => {
+    setSavingBuyer(true);
+    try {
+      const buyerData = {
+        "Contact / Name": form.name,
+        "Contact / First Name": form.name.split(" ")[0],
+        "Contact / Email": form.email,
+        "Contact / Phone": form.phone,
+        "Contact / Company": form.company,
+        "Contact / Type": "Buyer (Client)",
+        "Buyer / Status": form.buyerStatus || "New",
+        "Contact / Asset Preference": form.assetPreference,
+        "Contact / Temperature": form.temperature,
+        "Contact / Manager": form.manager,
+        "Contact / Notes": form.notes,
+        "Contact / Lead Source": form.leadSource,
+        "User": session?.user?.email || "",
+        "Date / Added": new Date().toISOString(),
+      };
+
+      if (SHEETS_WRITE_URL) {
+        const payload = editingBuyer?.rowId
+          ? { action: "edit_contact", rowId: editingBuyer.rowId, updates: buyerData }
+          : { action: "add_contact", ...buyerData };
+        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || "Write failed");
+      }
+
+      setShowBuyerModal(false);
+      setEditingBuyer(null);
+      // Force a re-render of BuyerPipelineView by briefly switching nav
+      setActiveNav("pipeline");
+      setTimeout(() => setActiveNav("contacts"), 50);
+    } catch (err) {
+      alert("Error saving buyer: " + err.message);
+    } finally {
+      setSavingBuyer(false);
+    }
+  };
+
   const navItems = [
     { id: "pipeline", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
+    { id: "contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
     { id: "analytics", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-    { id: "team", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
   ];
 
   if (authLoading) return (
@@ -2407,6 +2718,9 @@ export default function ReapApp() {
         {/* Main Content */}
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 64 : 0, paddingTop: !isSubscribed && trialDaysLeft > 0 ? 38 : 0, position: "relative" }}>
           {isMobile ? (
+            activeNav === "contacts" ? (
+              <BuyerPipelineView session={session} isMobile={true} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
+            ) : (
             <>
               <div style={{
                 position: "absolute", inset: 0, paddingBottom: 64,
@@ -2427,10 +2741,13 @@ export default function ReapApp() {
                 {selectedDeal && <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} />}
               </div>
             </>
+            )
           ) : (
-            selectedDeal
-              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} />
-              : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
+            activeNav === "contacts"
+              ? <BuyerPipelineView session={session} isMobile={false} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
+              : selectedDeal
+                ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} />
+                : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
           )}
         </div>
 
