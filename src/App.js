@@ -3125,40 +3125,112 @@ function PortfolioDetailView({ portfolio, deals, onBack, onEdit, onSelectDeal, i
 }
 
 function PortfolioView({ deals, isMobile, onSelectDeal, session }) {
-  var storageKey = "reap_portfolios_" + (session && session.user ? session.user.id : "default");
-  var [portfolios, setPortfolios] = useState(function() {
-    try { return JSON.parse(localStorage.getItem(storageKey)) || []; } catch(e) { return []; }
-  });
+  var [portfolios, setPortfolios] = useState([]);
+  var [portfoliosLoading, setPortfoliosLoading] = useState(true);
   var [selectedPortfolio, setSelectedPortfolio] = useState(null);
   var [showCreateModal, setShowCreateModal] = useState(false);
   var [editingPortfolio, setEditingPortfolio] = useState(null);
   var [hoveredCard, setHoveredCard] = useState(null);
 
-  var savePortfolios = function(updated) {
-    setPortfolios(updated);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
+  var userEmail = session && session.user ? session.user.email : "";
+
+  var fetchPortfolios = function() {
+    setPortfoliosLoading(true);
+    var range = "Portfolios!A1:F";
+    var url = "https://sheets.googleapis.com/v4/spreadsheets/" + SPREADSHEET_ID + "/values/" + range + "?key=" + API_KEY;
+    fetch(url).then(function(res) { return res.json(); }).then(function(data) {
+      var rows = data.values || [];
+      if (rows.length < 2) { setPortfolios([]); setPortfoliosLoading(false); return; }
+      var parsed = [];
+      for (var i = 1; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row[1] || row[1] !== userEmail) continue;
+        parsed.push({
+          id: row[0] || "",
+          user: row[1] || "",
+          name: row[2] || "",
+          type: row[3] || "Owned",
+          dealAddresses: row[4] ? row[4].split("|||").filter(function(a) { return a; }) : [],
+          createdAt: row[5] || "",
+        });
+      }
+      setPortfolios(parsed);
+      setPortfoliosLoading(false);
+    }).catch(function(err) {
+      console.error("Error fetching portfolios:", err);
+      setPortfoliosLoading(false);
+    });
   };
+
+  useEffect(function() {
+    if (userEmail) fetchPortfolios();
+  }, [userEmail]);
 
   var handleCreateSave = function(data) {
     if (editingPortfolio) {
-      var updated = portfolios.map(function(p) {
-        return p.id === editingPortfolio.id ? Object.assign({}, p, data) : p;
-      });
-      savePortfolios(updated);
-      if (selectedPortfolio && selectedPortfolio.id === editingPortfolio.id) {
-        setSelectedPortfolio(Object.assign({}, editingPortfolio, data));
-      }
+      // Edit existing portfolio via Apps Script
+      fetch(SHEETS_WRITE_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "edit_portfolio",
+          id: editingPortfolio.id,
+          name: data.name,
+          type: data.type,
+          dealAddresses: data.dealAddresses,
+        }),
+      }).then(function(res) { return res.json(); }).then(function(result) {
+        if (result.success) {
+          var updatedP = Object.assign({}, editingPortfolio, data);
+          setPortfolios(portfolios.map(function(p) { return p.id === editingPortfolio.id ? updatedP : p; }));
+          if (selectedPortfolio && selectedPortfolio.id === editingPortfolio.id) {
+            setSelectedPortfolio(updatedP);
+          }
+        } else {
+          console.error("Edit portfolio error:", result.error);
+        }
+      }).catch(function(err) { console.error("Edit portfolio network error:", err); });
     } else {
-      var newP = Object.assign({ id: "p_" + Date.now(), createdAt: new Date().toISOString() }, data);
-      savePortfolios(portfolios.concat([newP]));
+      // Create new portfolio via Apps Script
+      var newId = "p_" + Date.now();
+      var payload = {
+        action: "add_portfolio",
+        id: newId,
+        user: userEmail,
+        name: data.name,
+        type: data.type,
+        dealAddresses: data.dealAddresses,
+        createdAt: new Date().toISOString(),
+      };
+      fetch(SHEETS_WRITE_URL, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }).then(function(res) { return res.json(); }).then(function(result) {
+        if (result.success) {
+          setPortfolios(portfolios.concat([result.portfolio || {
+            id: newId, user: userEmail, name: data.name, type: data.type,
+            dealAddresses: data.dealAddresses, createdAt: payload.createdAt,
+          }]));
+        } else {
+          console.error("Add portfolio error:", result.error);
+        }
+      }).catch(function(err) { console.error("Add portfolio network error:", err); });
     }
     setShowCreateModal(false);
     setEditingPortfolio(null);
   };
 
   var handleDelete = function(id) {
-    savePortfolios(portfolios.filter(function(p) { return p.id !== id; }));
-    if (selectedPortfolio && selectedPortfolio.id === id) setSelectedPortfolio(null);
+    fetch(SHEETS_WRITE_URL, {
+      method: "POST",
+      body: JSON.stringify({ action: "delete_portfolio", id: id }),
+    }).then(function(res) { return res.json(); }).then(function(result) {
+      if (result.success) {
+        setPortfolios(portfolios.filter(function(p) { return p.id !== id; }));
+        if (selectedPortfolio && selectedPortfolio.id === id) setSelectedPortfolio(null);
+      } else {
+        console.error("Delete portfolio error:", result.error);
+      }
+    }).catch(function(err) { console.error("Delete portfolio network error:", err); });
   };
 
   var getPortfolioStats = function(p) {
@@ -3208,7 +3280,12 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session }) {
 
       {/* Portfolio Grid */}
       <div style={{ padding: isMobile ? "16px" : "24px 36px" }}>
-        {portfolios.length === 0 ? (
+        {portfoliosLoading ? (
+          <div style={{ padding: 60, textAlign: "center" }}>
+            <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+            <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Loading portfolios...</p>
+          </div>
+        ) : portfolios.length === 0 ? (
           <div style={{ background: "#fff", borderRadius: 16, border: "1px dashed #e2e8f0", padding: isMobile ? "40px 20px" : "60px 40px", textAlign: "center" }}>
             <div style={{ width: 64, height: 64, borderRadius: 16, background: "linear-gradient(135deg, rgba(22,163,74,0.1), rgba(22,163,74,0.05))", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
               <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/></svg>
