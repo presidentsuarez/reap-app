@@ -1846,325 +1846,6 @@ function OnboardingScreen({ userName, onComplete, onCreateDeal }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   DASHBOARD VIEW
-   ═══════════════════════════════════════════════════════════ */
-
-function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [sortField, setSortField] = useState("reapScore");
-  const [sortDir, setSortDir] = useState("desc");
-
-  const num = (v) => {
-    if (!v && v !== 0) return NaN;
-    const n = parseFloat(String(v).replace(/[$,%x]/g, "").trim());
-    return isNaN(n) ? NaN : n;
-  };
-  const fmtK = (v) => {
-    const n = num(v);
-    if (isNaN(n)) return "—";
-    if (Math.abs(n) >= 1000000) return "$" + (n / 1000000).toFixed(1) + "M";
-    if (Math.abs(n) >= 1000) return "$" + (n / 1000).toFixed(0) + "K";
-    return "$" + n.toFixed(0);
-  };
-  const fmtPct = (v) => { const n = num(v); return isNaN(n) ? "—" : n.toFixed(1) + "%"; };
-  const fmtScore = (v) => { const n = num(v); return isNaN(n) ? "—" : Math.round(n); };
-
-  const STATUS_LIST = ["All", "New", "Review", "Underwriting", "Offer", "Under Contract", "Closed", "Dead", "On Hold"];
-  const STATUS_COLORS = {
-    "New": "#16a34a", "Review": "#d97706", "Underwriting": "#7c3aed",
-    "Offer": "#ca8a04", "Under Contract": "#0891b2", "Closed": "#15803d",
-    "Dead": "#dc2626", "On Hold": "#64748b", "All": "#16a34a"
-  };
-
-  const activeDeals = deals.filter(d => !["Dead", "Closed"].includes(d.status));
-
-  // Top-line stats computed from all deals
-  const totalPipelineValue = deals.reduce((s, d) => {
-    const n = num(d.offer); return s + (isNaN(n) ? 0 : n);
-  }, 0);
-  const dealsWithCapRate = deals.filter(d => !isNaN(num(d.capRate)));
-  const avgCapRate = dealsWithCapRate.length
-    ? dealsWithCapRate.reduce((s, d) => s + num(d.capRate), 0) / dealsWithCapRate.length : NaN;
-  const dealsWithScore = deals.filter(d => !isNaN(num(d.reapScore)));
-  const avgReapScore = dealsWithScore.length
-    ? dealsWithScore.reduce((s, d) => s + num(d.reapScore), 0) / dealsWithScore.length : NaN;
-  const totalNOI = deals.reduce((s, d) => {
-    const n = num(d.noiAnnual); return s + (isNaN(n) ? 0 : n);
-  }, 0);
-
-  // Status breakdown
-  const statusCounts = {};
-  STATUS_LIST.slice(1).forEach(s => { statusCounts[s] = 0; });
-  deals.forEach(d => { if (statusCounts[d.status] !== undefined) statusCounts[d.status]++; });
-
-  // Filtered + sorted deal table
-  const filtered = statusFilter === "All" ? deals : deals.filter(d => d.status === statusFilter);
-  const sorted = [...filtered].sort((a, b) => {
-    let va = num(a[sortField]), vb = num(b[sortField]);
-    if (isNaN(va) && isNaN(vb)) return 0;
-    if (isNaN(va)) return 1;
-    if (isNaN(vb)) return -1;
-    return sortDir === "desc" ? vb - va : va - vb;
-  });
-
-  const handleSort = (field) => {
-    if (sortField === field) setSortDir(d => d === "desc" ? "asc" : "desc");
-    else { setSortField(field); setSortDir("desc"); }
-  };
-
-  const scoreColor = (v) => {
-    const n = num(v);
-    if (isNaN(n)) return "#94a3b8";
-    if (n >= 70) return "#16a34a";
-    if (n >= 40) return "#d97706";
-    return "#dc2626";
-  };
-  const scoreLabel = (v) => {
-    const n = num(v);
-    if (isNaN(n)) return "—";
-    if (n >= 70) return "Strong";
-    if (n >= 40) return "Fair";
-    return "Weak";
-  };
-
-  const SortArrow = ({ field }) => {
-    if (sortField !== field) return <span style={{ color: "#cbd5e1", marginLeft: 3 }}>↕</span>;
-    return <span style={{ color: "#16a34a", marginLeft: 3 }}>{sortDir === "desc" ? "↓" : "↑"}</span>;
-  };
-
-  const StatCard = ({ label, value, sub, accent }) => (
-    <div style={{
-      background: "#fff", borderRadius: 14, padding: isMobile ? "16px 18px" : "20px 24px",
-      border: "1px solid #e2e8f0", flex: 1, minWidth: isMobile ? "calc(50% - 6px)" : 0,
-      position: "relative", overflow: "hidden"
-    }}>
-      <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: 3,
-        background: accent || "#16a34a", borderRadius: "14px 14px 0 0"
-      }} />
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em", lineHeight: 1.1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>{sub}</div>}
-    </div>
-  );
-
-  if (loading) return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", gap: 12 }}>
-      <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-      <div style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Loading dashboard…</div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
-
-  return (
-    <div style={{ flex: 1, overflowY: "auto", background: "#f8fafc", padding: isMobile ? "16px 12px" : "28px 32px", fontFamily: "'DM Sans', sans-serif" }}>
-
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Pipeline Dashboard</h1>
-        <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{deals.length} deals · as of today</p>
-      </div>
-
-      {/* Top Stats */}
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
-        <StatCard
-          label="Total Pipeline Value"
-          value={totalPipelineValue >= 1000000 ? "$" + (totalPipelineValue / 1000000).toFixed(1) + "M" : "$" + (totalPipelineValue / 1000).toFixed(0) + "K"}
-          sub={`${activeDeals.length} active deals`}
-          accent="#16a34a"
-        />
-        <StatCard
-          label="Avg Cap Rate"
-          value={fmtPct(avgCapRate)}
-          sub={`${dealsWithCapRate.length} deals with data`}
-          accent="#0891b2"
-        />
-        <StatCard
-          label="Avg REAP Score"
-          value={isNaN(avgReapScore) ? "—" : Math.round(avgReapScore)}
-          sub={`${dealsWithScore.length} deals scored`}
-          accent={isNaN(avgReapScore) ? "#94a3b8" : avgReapScore >= 70 ? "#16a34a" : avgReapScore >= 40 ? "#d97706" : "#dc2626"}
-        />
-        <StatCard
-          label="Total NOI (Annual)"
-          value={totalNOI >= 1000000 ? "$" + (totalNOI / 1000000).toFixed(1) + "M" : totalNOI >= 1000 ? "$" + (totalNOI / 1000).toFixed(0) + "K" : totalNOI > 0 ? "$" + totalNOI.toFixed(0) : "—"}
-          sub="proforma across pipeline"
-          accent="#7c3aed"
-        />
-      </div>
-
-      {/* Status Breakdown */}
-      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "20px 24px", marginBottom: 24 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 14, fontFamily: "'DM Sans', sans-serif" }}>Deals by Status</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {STATUS_LIST.slice(1).filter(s => statusCounts[s] > 0).map(s => {
-            const count = statusCounts[s];
-            const pct = Math.round((count / deals.length) * 100);
-            const color = STATUS_COLORS[s] || "#94a3b8";
-            return (
-              <button key={s} onClick={() => setStatusFilter(statusFilter === s ? "All" : s)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
-                  borderRadius: 10, border: `1.5px solid ${statusFilter === s ? color : "#e2e8f0"}`,
-                  background: statusFilter === s ? color + "14" : "#f8fafc",
-                  cursor: "pointer", transition: "all 0.15s"
-                }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{s}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: color, fontFamily: "'DM Mono', monospace" }}>{count}</span>
-                <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{pct}%</span>
-              </button>
-            );
-          })}
-        </div>
-        {/* Mini bar chart */}
-        <div style={{ display: "flex", height: 6, borderRadius: 99, overflow: "hidden", marginTop: 16, gap: 1 }}>
-          {STATUS_LIST.slice(1).filter(s => statusCounts[s] > 0).map(s => (
-            <div key={s} style={{
-              flex: statusCounts[s], background: STATUS_COLORS[s] || "#94a3b8",
-              transition: "flex 0.4s ease", cursor: "pointer",
-              opacity: statusFilter === "All" || statusFilter === s ? 1 : 0.2
-            }} onClick={() => setStatusFilter(statusFilter === s ? "All" : s)} title={`${s}: ${statusCounts[s]}`} />
-          ))}
-        </div>
-      </div>
-
-      {/* Deal Analysis Table */}
-      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-        <div style={{ padding: isMobile ? "14px 16px" : "18px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>Deal Analysis</div>
-            <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>
-              {statusFilter === "All" ? `All ${filtered.length} deals` : `${filtered.length} ${statusFilter} deals`} · click to open
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            {["All", ...STATUS_LIST.slice(1).filter(s => statusCounts[s] > 0)].map(s => (
-              <button key={s} onClick={() => setStatusFilter(s)}
-                style={{
-                  padding: "5px 10px", borderRadius: 7, border: `1.5px solid ${statusFilter === s ? (STATUS_COLORS[s] || "#16a34a") : "#e2e8f0"}`,
-                  background: statusFilter === s ? (STATUS_COLORS[s] || "#16a34a") + "14" : "transparent",
-                  fontSize: 11, fontWeight: 600, color: statusFilter === s ? (STATUS_COLORS[s] || "#16a34a") : "#64748b",
-                  cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap"
-                }}>{s}</button>
-            ))}
-          </div>
-        </div>
-
-        {isMobile ? (
-          // Mobile: cards
-          <div style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-            {sorted.slice(0, 20).map((deal, i) => {
-              const score = num(deal.reapScore);
-              const sc = STATUS_COLORS[deal.status] || "#94a3b8";
-              return (
-                <button key={i} onClick={() => onSelectDeal(deal)}
-                  style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 14px", cursor: "pointer", textAlign: "left", width: "100%" }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.address || "—"}</div>
-                      <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{deal.type || "—"} · {deal.city || ""}</div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor(score), fontFamily: "'DM Mono', monospace",
-                        background: scoreColor(score) + "14", padding: "2px 7px", borderRadius: 6 }}>
-                        {isNaN(score) ? "—" : Math.round(score)} · {scoreLabel(score)}
-                      </div>
-                      <div style={{ fontSize: 10, fontWeight: 600, color: sc, background: sc + "14", padding: "2px 7px", borderRadius: 6, fontFamily: "'DM Sans', sans-serif" }}>{deal.status || "—"}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
-                    <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Offer: <strong style={{ color: "#0f172a" }}>{fmtK(deal.offer)}</strong></span>
-                    <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Cap: <strong style={{ color: "#0f172a" }}>{fmtPct(deal.capRate)}</strong></span>
-                    <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>ROI: <strong style={{ color: "#0f172a" }}>{fmtPct(deal.roi)}</strong></span>
-                  </div>
-                </button>
-              );
-            })}
-            {sorted.length > 20 && <div style={{ textAlign: "center", padding: "8px 0", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Showing 20 of {sorted.length} deals</div>}
-          </div>
-        ) : (
-          // Desktop: table
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
-              <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                  {[
-                    { label: "Address", field: null },
-                    { label: "Status", field: null },
-                    { label: "Type", field: null },
-                    { label: "Offer Price", field: "offer" },
-                    { label: "Cap Rate", field: "capRate" },
-                    { label: "ROI", field: "roi" },
-                    { label: "NOI / yr", field: "noiAnnual" },
-                    { label: "DSCR", field: "dscr" },
-                    { label: "REAP Score", field: "reapScore" },
-                  ].map(({ label, field }) => (
-                    <th key={label}
-                      onClick={() => field && handleSort(field)}
-                      style={{
-                        padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700,
-                        color: field && sortField === field ? "#16a34a" : "#64748b",
-                        letterSpacing: "0.06em", textTransform: "uppercase",
-                        cursor: field ? "pointer" : "default", whiteSpace: "nowrap",
-                        userSelect: "none"
-                      }}>
-                      {label}{field && <SortArrow field={field} />}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.slice(0, 50).map((deal, i) => {
-                  const score = num(deal.reapScore);
-                  const sc = STATUS_COLORS[deal.status] || "#94a3b8";
-                  return (
-                    <tr key={i} onClick={() => onSelectDeal(deal)}
-                      style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer", transition: "background 0.1s" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      <td style={{ padding: "12px 16px", maxWidth: 220 }}>
-                        <div style={{ fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.address || "—"}</div>
-                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>{deal.city || ""}{deal.state ? ", " + deal.state : ""}</div>
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: sc, background: sc + "14", padding: "3px 9px", borderRadius: 6, whiteSpace: "nowrap" }}>{deal.status || "—"}</span>
-                      </td>
-                      <td style={{ padding: "12px 16px", color: "#475569", whiteSpace: "nowrap" }}>{deal.type || "—"}</td>
-                      <td style={{ padding: "12px 16px", fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap" }}>{fmtK(deal.offer)}</td>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", whiteSpace: "nowrap" }}>{fmtPct(deal.capRate)}</td>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", whiteSpace: "nowrap" }}>{fmtPct(deal.roi)}</td>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", whiteSpace: "nowrap" }}>{fmtK(deal.noiAnnual)}</td>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", whiteSpace: "nowrap" }}>{isNaN(num(deal.dscr)) ? "—" : num(deal.dscr).toFixed(2) + "x"}</td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          {/* Score bar */}
-                          <div style={{ width: 48, height: 5, background: "#e2e8f0", borderRadius: 99, overflow: "hidden" }}>
-                            <div style={{ width: isNaN(score) ? "0%" : Math.min(score, 100) + "%", height: "100%", background: scoreColor(score), borderRadius: 99, transition: "width 0.3s" }} />
-                          </div>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: scoreColor(score), fontFamily: "'DM Mono', monospace", minWidth: 24 }}>{fmtScore(deal.reapScore)}</span>
-                          <span style={{ fontSize: 11, color: scoreColor(score), fontWeight: 600 }}>{scoreLabel(deal.reapScore)}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {sorted.length === 0 && (
-                  <tr><td colSpan={9} style={{ padding: "40px 16px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No deals match this filter</td></tr>
-                )}
-              </tbody>
-            </table>
-            {sorted.length > 50 && (
-              <div style={{ padding: "12px 16px", textAlign: "center", fontSize: 12, color: "#94a3b8", borderTop: "1px solid #f1f5f9" }}>Showing 50 of {sorted.length} deals · use filters to narrow down</div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
    BUYER PIPELINE
    ═══════════════════════════════════════════════════════════ */
 
@@ -2263,7 +1944,6 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null);
-  const [typeFilter, setTypeFilter] = useState("");
   const [hoveredRow, setHoveredRow] = useState(null);
   const searchRef = useRef(null);
 
@@ -2297,16 +1977,15 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
         leadSource: g(row, colLeadSource), company: g(row, colCompany), dateAdded: g(row, colDateAdded),
         lastContact: g(row, colLastContact), followUpNotes: g(row, colFollowUpNotes),
       }));
-      const allContacts = parsed.filter(c => c.name && c.name.trim() !== "");
-      setBuyers(allContacts);
+      const buyerContacts = parsed.filter(c => (c.contactType || "").toLowerCase().includes("buyer") || (c.buyerStatus && c.buyerStatus.trim() !== ""));
+      setBuyers(buyerContacts);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { if (session) fetchBuyers(); }, [session, fetchBuyers]);
 
   const statusFilters = BUYER_STATUS_LIST.map(label => ({ label, match: b => (b.buyerStatus || "").trim() === label }));
-  const typeFiltered = typeFilter ? buyers.filter(b => (b.contactType || "").toLowerCase().includes(typeFilter.toLowerCase())) : buyers;
-  const textFiltered = typeFiltered.filter(b => (b.name || "").toLowerCase().includes(search.toLowerCase()) || (b.email || "").toLowerCase().includes(search.toLowerCase()) || (b.company || "").toLowerCase().includes(search.toLowerCase()) || (b.phone || "").toLowerCase().includes(search.toLowerCase()));
+  const textFiltered = buyers.filter(b => (b.name || "").toLowerCase().includes(search.toLowerCase()) || (b.email || "").toLowerCase().includes(search.toLowerCase()) || (b.company || "").toLowerCase().includes(search.toLowerCase()) || (b.phone || "").toLowerCase().includes(search.toLowerCase()));
   const statusFiltered = statusFilter !== null ? textFiltered.filter(statusFilters[statusFilter].match) : textFiltered;
 
   if (loading) return <LoadingSpinner />;
@@ -2320,15 +1999,15 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
             <div style={{ display: "flex", alignItems: "center", gap: 10, animation: "fadeIn 0.2s ease" }}>
               <div style={{ position: "relative", flex: 1 }}>
                 <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
-                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search contacts..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px 10px 32px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: "100%" }} />
+                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search buyers..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px 10px 32px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: "100%" }} />
               </div>
               <button onClick={() => { setSearchOpen(false); setSearch(""); }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "8px 4px", whiteSpace: "nowrap" }}>Cancel</button>
             </div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
-                <h1 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Contacts</h1>
-                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{statusFilter !== null ? statusFiltered.length + " " + statusFilters[statusFilter].label.toLowerCase() : buyers.length + " contacts"}</p>
+                <h1 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Buyer Pipeline</h1>
+                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{statusFilter !== null ? statusFiltered.length + " " + statusFilters[statusFilter].label.toLowerCase() : buyers.length + " buyers"}</p>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
@@ -2344,25 +2023,17 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
       ) : (
         <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Contacts</h1>
-            <p style={{ fontSize: 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{buyers.length} contacts</p>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Buyer Pipeline</h1>
+            <p style={{ fontSize: 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{buyers.length} buyers in database</p>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 12px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}>
-              <option value="">All Types</option>
-              <option value="Buyer">Buyers</option>
-              <option value="Investor">Investors</option>
-              <option value="Wholesaler">Wholesalers</option>
-              <option value="Sphere of Influence">Sphere of Influence</option>
-              <option value="Community">Community</option>
-            </select>
             <div style={{ position: "relative" }}>
               <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search contacts..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search buyers..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
             </div>
             <button onClick={onNewBuyer} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "9px 18px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap" }}>
               <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14" /></svg>
-              New Contact
+              New Buyer
             </button>
           </div>
         </div>
@@ -2380,8 +2051,8 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
         {statusFiltered.length === 0 ? (
           <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
             <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ margin: "0 auto 12px", display: "block" }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx={9} cy={7} r={4} /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-            <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>{buyers.length === 0 ? "No contacts yet" : "No contacts match your filters"}</p>
-            <p style={{ fontSize: 13, margin: 0 }}>{buyers.length === 0 ? "Add your first contact to get started" : "Try adjusting your search or status filter"}</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>{buyers.length === 0 ? "No buyers yet" : "No buyers match your filters"}</p>
+            <p style={{ fontSize: 13, margin: 0 }}>{buyers.length === 0 ? "Add your first buyer to get started" : "Try adjusting your search or status filter"}</p>
           </div>
         ) : isMobile ? (
           statusFiltered.map((b, i) => (
@@ -2404,14 +2075,13 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
           <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif" }}>
               <thead><tr style={{ borderBottom: "1px solid #e2e8f0" }}>
-                {["Name", "Company", "Type", "Status", "Temp", "Asset Pref", "Phone", "Email", "Manager"].map(h => (<th key={h} style={{ textAlign: "left", padding: "12px 14px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>))}
+                {["Name", "Company", "Status", "Temp", "Asset Pref", "Phone", "Email", "Manager"].map(h => (<th key={h} style={{ textAlign: "left", padding: "12px 14px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>))}
               </tr></thead>
               <tbody>
                 {statusFiltered.map((b, i) => (
                   <tr key={b.rowId || b.name + i} onClick={() => onSetEditingBuyer(b)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer", background: hoveredRow === i ? "#f8fafc" : "transparent", transition: "background 0.1s" }}>
                     <td style={{ padding: "12px 14px" }}><span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{b.name || "—"}</span></td>
                     <td style={{ padding: "12px 14px", fontSize: 13, color: "#64748b" }}>{b.company || "—"}</td>
-                    <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>{b.contactType || "—"}</td>
                     <td style={{ padding: "12px 14px" }}><BuyerStatusBadge status={b.buyerStatus || "New"} /></td>
                     <td style={{ padding: "12px 14px", fontSize: 13 }}>{b.temperature || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.assetPreference || "—"}</td>
@@ -2488,7 +2158,7 @@ export default function ReapApp() {
 
   const handleCheckout = () => {
     const email = session?.user?.email || "";
-    window.location.href = "https://buy.stripe.com/fZu9AScIZ9sjc0QbF163K03?prefilled_email=" + encodeURIComponent(email);
+    window.location.href = "https://buy.stripe.com/test_dRm3cubEVgUL5CsdN963K00?prefilled_email=" + encodeURIComponent(email);
   };
 
   useEffect(() => {
@@ -2920,7 +2590,7 @@ export default function ReapApp() {
       setEditingBuyer(null);
       // Force a re-render of BuyerPipelineView by briefly switching nav
       setActiveNav("pipeline");
-      setTimeout(() => setActiveNav("contacts"), 50);
+      setTimeout(() => setActiveNav("buyers"), 50);
     } catch (err) {
       alert("Error saving buyer: " + err.message);
     } finally {
@@ -2930,8 +2600,9 @@ export default function ReapApp() {
 
   const navItems = [
     { id: "pipeline", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
-    { id: "contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+    { id: "buyers", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
     { id: "analytics", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+    { id: "team", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
   ];
 
   if (authLoading) return (
@@ -3037,10 +2708,8 @@ export default function ReapApp() {
         {/* Main Content */}
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 64 : 0, paddingTop: !isSubscribed && trialDaysLeft > 0 ? 38 : 0, position: "relative" }}>
           {isMobile ? (
-            activeNav === "contacts" ? (
+            activeNav === "buyers" ? (
               <BuyerPipelineView session={session} isMobile={true} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
-            ) : activeNav === "analytics" ? (
-              <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
             ) : (
             <>
               <div style={{
@@ -3064,11 +2733,9 @@ export default function ReapApp() {
             </>
             )
           ) : (
-            activeNav === "contacts"
+            activeNav === "buyers"
               ? <BuyerPipelineView session={session} isMobile={false} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
-              : activeNav === "analytics"
-                ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
-                : selectedDeal
+              : selectedDeal
                 ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} />
                 : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
           )}
