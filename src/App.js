@@ -4118,27 +4118,34 @@ export default function ReapApp() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success") {
-      localStorage.setItem("reap_subscribed", "true");
-      setIsSubscribed(true);
-      window.history.replaceState({}, "", window.location.pathname);
+      const email = session?.user?.email;
+      if (email) {
+        supabase.from("subscriptions").upsert({ user_email: email, status: "active", plan: "starter" }, { onConflict: "user_email" }).then(() => {
+          setIsSubscribed(true);
+          window.history.replaceState({}, "", window.location.pathname);
+        });
+      }
     }
-  }, []);
+  }, [session]);
 
   // Check subscription + trial status
   useEffect(() => {
     if (session?.user) {
-      const subscribed = localStorage.getItem("reap_subscribed") === "true";
-      setIsSubscribed(subscribed);
-      const createdAt = new Date(session.user.created_at);
-      const now = new Date();
-      const daysSinceSignup = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
-      const daysLeft = Math.max(0, TRIAL_DAYS - daysSinceSignup);
-      setTrialDaysLeft(daysLeft);
-      if (daysLeft <= 0 && !subscribed) {
-        setShowPaywall(true);
-      } else {
-        setShowPaywall(false);
-      }
+      const email = session.user.email;
+      supabase.from("subscriptions").select("status").eq("user_email", email).eq("status", "active").single().then(({ data }) => {
+        const subscribed = !!data;
+        setIsSubscribed(subscribed);
+        const createdAt = new Date(session.user.created_at);
+        const now = new Date();
+        const daysSinceSignup = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
+        const daysLeft = Math.max(0, TRIAL_DAYS - daysSinceSignup);
+        setTrialDaysLeft(daysLeft);
+        if (daysLeft <= 0 && !subscribed) {
+          setShowPaywall(true);
+        } else {
+          setShowPaywall(false);
+        }
+      });
       // Show onboarding for first-time users
       const onboarded = localStorage.getItem("reap_onboarded");
       if (!onboarded) {
@@ -4149,7 +4156,7 @@ export default function ReapApp() {
 
   const handleCheckout = () => {
     const email = session?.user?.email || "";
-    window.location.href = "https://buy.stripe.com/test_dRm3cubEVgUL5CsdN963K00?prefilled_email=" + encodeURIComponent(email);
+    window.location.href = "https://buy.stripe.com/fZu9AScIZ9sjc0QbF163K03?prefilled_email=" + encodeURIComponent(email);
   };
 
   useEffect(() => {
