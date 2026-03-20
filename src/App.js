@@ -1414,7 +1414,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile }) {
       )}
 
       {/* Full header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px" : "18px 36px" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px" : "18px 32px" }}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 5, marginBottom: isMobile ? 10 : 14, padding: 0, fontWeight: 500 }}>
           <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
           Back to Pipeline
@@ -1438,7 +1438,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile }) {
         </div>
       </div>
 
-      <div style={{ padding: isMobile ? "20px 16px" : "28px 36px" }}>
+      <div style={{ padding: isMobile ? "20px 16px" : "28px 32px" }}>
         {/* Google Street View */}
         <div style={{ width: "100%", height: isMobile ? 160 : 220, borderRadius: 14, overflow: "hidden", marginBottom: isMobile ? 20 : 28, position: "relative", background: "#f1f5f9", border: "1px solid #e2e8f0" }}>
           <img
@@ -2322,13 +2322,17 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
   );
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", background: "#f8fafc", padding: isMobile ? "16px 12px" : "28px 32px", fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif" }}>
 
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Pipeline Dashboard</h1>
-        <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{deals.length} deals · as of today</p>
+      {/* Uniform Header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px" : "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        <div>
+          <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Pipeline Dashboard</h1>
+          <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{deals.length} deals · as of today</p>
+        </div>
       </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 12px" : "24px 32px" }}>
 
       {/* Top Stats */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
@@ -2524,6 +2528,7 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
@@ -3030,7 +3035,7 @@ function PortfolioDetailView({ portfolio, deals, onBack, onEdit, onSelectDeal, i
 
   return (
     <div style={{ flex: 1, overflow: "auto", background: "#f8fafc" }}>
-      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px" : "18px 36px" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px" : "18px 32px" }}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 5, marginBottom: isMobile ? 10 : 14, padding: 0, fontWeight: 500 }}>
           <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
           Back to Portfolios
@@ -3055,7 +3060,7 @@ function PortfolioDetailView({ portfolio, deals, onBack, onEdit, onSelectDeal, i
         </div>
       </div>
 
-      <div style={{ padding: isMobile ? "20px 16px" : "28px 36px" }}>
+      <div style={{ padding: isMobile ? "20px 16px" : "28px 32px" }}>
 
         {/* Geographic Overview */}
         <div style={{ marginBottom: 28 }}>
@@ -3261,10 +3266,10 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session }) {
   return (
     <div style={{ flex: 1, overflow: "auto", background: "#f8fafc" }}>
       {/* Header */}
-      <div style={{ padding: isMobile ? "14px 16px" : "20px 36px", background: "#fff", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ padding: isMobile ? "14px 16px" : "18px 32px", background: "#fff", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Portfolios</h1>
-          <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{portfolios.length} portfolio{portfolios.length !== 1 ? "s" : ""}</p>
+          <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Portfolios</h1>
+          <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "3px 0 0" }}>{portfolios.length} portfolio{portfolios.length !== 1 ? "s" : ""}</p>
         </div>
         <button onClick={function() { setEditingPortfolio(null); setShowCreateModal(true); }} style={{
           background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 10,
@@ -3279,7 +3284,7 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session }) {
       </div>
 
       {/* Portfolio Grid */}
-      <div style={{ padding: isMobile ? "16px" : "24px 36px" }}>
+      <div style={{ padding: isMobile ? "16px" : "24px 32px" }}>
         {portfoliosLoading ? (
           <div style={{ padding: 60, textAlign: "center" }}>
             <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
@@ -3772,16 +3777,20 @@ function MarketIntelligenceView({ deals, isMobile, session }) {
   );
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", background: "#f8fafc", padding: isMobile ? "16px 12px" : "28px 32px", fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif" }}>
 
-      {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-          <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Market Intelligence</h1>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", background: "#f0fdf4", padding: "3px 8px", borderRadius: 6, fontFamily: "'DM Mono', monospace", letterSpacing: "0.05em", border: "1px solid #bbf7d0" }}>BETA</span>
+      {/* Uniform Header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px" : "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Market Intelligence</h1>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", background: "#f0fdf4", padding: "3px 8px", borderRadius: 6, fontFamily: "'DM Mono', monospace", letterSpacing: "0.05em", border: "1px solid #bbf7d0" }}>BETA</span>
+          </div>
+          <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>Trending markets · AI signal rankings</p>
         </div>
-        <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>Trending markets · AI signal rankings · Geographic overview</p>
       </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 12px" : "24px 32px" }}>
 
       {/* Top Stats */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
@@ -3955,6 +3964,128 @@ function MarketIntelligenceView({ deals, isMobile, session }) {
       <div style={{ textAlign: "center", padding: "16px 0 8px", fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
         Data sourced from your deal pipeline + Markets tab · AI signals update when data changes
       </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckout, onSignOut, onClose }) {
+  const user = session?.user || {};
+  const email = user.email || "—";
+  const fullName = user.user_metadata?.full_name || "";
+  const displayName = fullName || fmtUserName(email);
+  const initials = displayName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+  const createdAt = user.created_at ? fmtDate(user.created_at) : "—";
+  const provider = user.app_metadata?.provider || "email";
+
+  const SettingRow = ({ icon, label, value, action, actionLabel, danger }) => (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: "16px 0", borderBottom: "1px solid #f1f5f9",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: danger ? "#fef2f2" : "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{label}</div>
+          <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+        </div>
+      </div>
+      {action && (
+        <button onClick={action} style={{
+          background: danger ? "#fef2f2" : "#f8fafc", border: `1px solid ${danger ? "#fca5a5" : "#e2e8f0"}`,
+          borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+          color: danger ? "#dc2626" : "#475569", cursor: "pointer",
+          fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", transition: "all 0.15s",
+        }}>{actionLabel}</button>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+      {/* Uniform Header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px" : "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Profile & Settings</h1>
+          <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>Account information</p>
+        </div>
+      </div>
+
+      <div style={{ padding: isMobile ? "20px 16px" : "28px 32px", maxWidth: 640 }}>
+        {/* Profile Card */}
+        <div style={{
+          background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0",
+          padding: isMobile ? "24px 20px" : "28px 28px", marginBottom: 20,
+          position: "relative", overflow: "hidden",
+        }}>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(135deg, #16a34a, #15803d)", borderRadius: "16px 16px 0 0" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: 16,
+              background: "linear-gradient(135deg, #16a34a, #15803d)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif",
+              boxShadow: "0 4px 12px rgba(22,163,74,0.3)", flexShrink: 0,
+            }}>{initials}</div>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>{displayName}</h2>
+              <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email}</p>
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", fontFamily: "'DM Mono', monospace",
+                  padding: "3px 8px", borderRadius: 6,
+                  background: isSubscribed ? "#f0fdf4" : trialDaysLeft > 3 ? "#f0fdf4" : "#fef2f2",
+                  color: isSubscribed ? "#16a34a" : trialDaysLeft > 3 ? "#16a34a" : "#dc2626",
+                  border: `1px solid ${isSubscribed ? "#bbf7d0" : trialDaysLeft > 3 ? "#bbf7d0" : "#fca5a5"}`,
+                }}>{isSubscribed ? "SUBSCRIBED" : trialDaysLeft > 0 ? trialDaysLeft + " DAYS LEFT" : "TRIAL EXPIRED"}</span>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", fontFamily: "'DM Mono', monospace",
+                  padding: "3px 8px", borderRadius: 6,
+                  background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0",
+                }}>REAP STARTER</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Settings Sections */}
+        <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? "4px 20px" : "4px 28px", marginBottom: 20 }}>
+          <SettingRow
+            icon={<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>}
+            label="Email"
+            value={email}
+          />
+          <SettingRow
+            icon={<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
+            label="Sign-in Method"
+            value={provider === "google" ? "Google OAuth" : "Email & Password"}
+          />
+          <SettingRow
+            icon={<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
+            label="Member Since"
+            value={createdAt}
+          />
+          <SettingRow
+            icon={<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
+            label="Subscription"
+            value={isSubscribed ? "REAP Starter — $99/mo" : trialDaysLeft > 0 ? "Free Trial — " + trialDaysLeft + " days remaining" : "Trial expired"}
+            action={!isSubscribed ? onCheckout : undefined}
+            actionLabel="Upgrade"
+          />
+        </div>
+
+        {/* Sign Out */}
+        <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? "4px 20px" : "4px 28px" }}>
+          <SettingRow
+            icon={<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth={2}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>}
+            label="Sign Out"
+            value="End your current session"
+            action={onSignOut}
+            actionLabel="Sign Out"
+            danger
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -3981,6 +4112,7 @@ export default function ReapApp() {
   const [showBuyerModal, setShowBuyerModal] = useState(false);
   const [savingBuyer, setSavingBuyer] = useState(false);
   const [editingBuyer, setEditingBuyer] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
 
   // Check for payment success redirect
   useEffect(() => {
@@ -4458,11 +4590,11 @@ export default function ReapApp() {
   };
 
   const navItems = [
-    { id: "pipeline", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
-    { id: "contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
-    { id: "portfolios", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/><polyline points="2 15.5 12 8.5 22 15.5"/></svg> },
-    { id: "analytics", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-    { id: "markets", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
+    { id: "pipeline", label: "Deals", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
+    { id: "contacts", label: "Contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+    { id: "analytics", label: "Dashboard", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+    { id: "portfolios", label: "Portfolios", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/><polyline points="2 15.5 12 8.5 22 15.5"/></svg> },
+    { id: "markets", label: "Markets", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
   ];
 
   if (authLoading) return (
@@ -4558,17 +4690,19 @@ export default function ReapApp() {
               <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
             </div>
             {navItems.map(item => (
-              <button key={item.id} onClick={() => setActiveNav(item.id)} style={{ width: 40, height: 40, borderRadius: 10, border: "none", background: activeNav === item.id ? "#f0fdf4" : "transparent", color: activeNav === item.id ? "#16a34a" : "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}>{item.icon}</button>
+              <button key={item.id} onClick={() => { setActiveNav(item.id); setShowProfile(false); }} title={item.label} style={{ width: 40, height: 40, borderRadius: 10, border: "none", background: activeNav === item.id && !showProfile ? (item.featured ? "linear-gradient(135deg, #16a34a, #15803d)" : "#f0fdf4") : "transparent", color: activeNav === item.id && !showProfile ? (item.featured ? "#fff" : "#16a34a") : "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s", boxShadow: activeNav === item.id && item.featured && !showProfile ? "0 2px 8px rgba(22,163,74,0.3)" : "none" }}>{item.icon}</button>
             ))}
             <div style={{ flex: 1 }} />
-            <button onClick={() => supabase.auth.signOut()} title="Sign out" style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #3b82f6, #2563eb)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>{initials}</button>
+            <button onClick={() => setShowProfile(true)} title="Profile & Settings" style={{ width: 32, height: 32, borderRadius: "50%", background: showProfile ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #3b82f6, #2563eb)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", cursor: "pointer", transition: "all 0.15s" }}>{initials}</button>
           </div>
         )}
 
         {/* Main Content */}
-        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 64 : 0, paddingTop: !isSubscribed && trialDaysLeft > 0 ? 38 : 0, position: "relative" }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 70 : 0, paddingTop: !isSubscribed && trialDaysLeft > 0 ? 42 : 0, position: "relative" }}>
           {isMobile ? (
-            activeNav === "portfolios" ? (
+            showProfile ? (
+              <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} />
+            ) : activeNav === "portfolios" ? (
               <PortfolioView deals={deals} isMobile={true} session={session} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} />
             ) : activeNav === "contacts" ? (
               <BuyerPipelineView session={session} isMobile={true} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
@@ -4579,7 +4713,7 @@ export default function ReapApp() {
             ) : (
             <>
               <div style={{
-                position: "absolute", inset: 0, paddingBottom: 64,
+                position: "absolute", inset: 0, paddingBottom: 70,
                 transform: selectedDeal ? "translateX(-30%)" : "translateX(0)",
                 opacity: selectedDeal ? 0 : 1,
                 transition: "all 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
@@ -4589,7 +4723,7 @@ export default function ReapApp() {
                 <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} />
               </div>
               <div style={{
-                position: "absolute", inset: 0, paddingBottom: 64,
+                position: "absolute", inset: 0, paddingBottom: 70,
                 transform: dealTransition && selectedDeal ? "translateX(0)" : "translateX(100%)",
                 transition: "transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
                 display: "flex", flexDirection: "column", background: "#f8fafc",
@@ -4599,7 +4733,9 @@ export default function ReapApp() {
             </>
             )
           ) : (
-            activeNav === "portfolios"
+            showProfile
+              ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} />
+              : activeNav === "portfolios"
               ? <PortfolioView deals={deals} isMobile={false} session={session} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} />
               : activeNav === "contacts"
               ? <BuyerPipelineView session={session} isMobile={false} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
@@ -4616,38 +4752,57 @@ export default function ReapApp() {
         {/* Mobile Bottom Nav */}
         {isMobile && (
           <div style={{
-            position: "fixed", bottom: 0, left: 0, right: 0, height: 64,
+            position: "fixed", bottom: 0, left: 0, right: 0, height: 70,
             background: "#fff", borderTop: "1px solid #e2e8f0",
-            display: "flex", alignItems: "center", justifyContent: "space-around",
-            padding: "0 8px", zIndex: 100,
-            boxShadow: "0 -2px 12px rgba(0,0,0,0.04)",
+            display: "flex", alignItems: "flex-end", justifyContent: "space-around",
+            padding: "0 4px 6px", zIndex: 100,
+            boxShadow: "0 -2px 12px rgba(0,0,0,0.06)",
           }}>
-            <div style={{
-              position: "absolute", top: 0, left: 0, height: 2,
-              width: (100 / (navItems.length + 1)) + "%",
-              background: "#16a34a", borderRadius: "0 0 2px 2px",
-              transform: "translateX(" + (navItems.findIndex(n => n.id === activeNav) * 100) + "%)",
-              transition: "transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
-            }} />
-            {navItems.map(item => (
-              <button key={item.id} onClick={() => setActiveNav(item.id)} style={{
-                flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-                background: "none", border: "none",
-                color: activeNav === item.id ? "#16a34a" : "#94a3b8",
-                cursor: "pointer", padding: "8px 0",
-                transition: "color 0.2s", WebkitTapHighlightColor: "transparent",
-              }}>
-                {item.icon}
-                <span style={{ fontSize: 9, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize" }}>{item.id}</span>
-              </button>
-            ))}
-            <button onClick={() => supabase.auth.signOut()} style={{
+            {navItems.map(item => {
+              const isActive = activeNav === item.id && !showProfile;
+              if (item.featured) {
+                return (
+                  <button key={item.id} onClick={() => { setActiveNav(item.id); setShowProfile(false); }} style={{
+                    flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                    background: "none", border: "none", cursor: "pointer",
+                    padding: "0", marginTop: -18, WebkitTapHighlightColor: "transparent",
+                    position: "relative",
+                  }}>
+                    <div style={{
+                      width: 48, height: 48, borderRadius: 16,
+                      background: isActive ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #22c55e, #16a34a)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      boxShadow: isActive ? "0 4px 16px rgba(22,163,74,0.45)" : "0 3px 12px rgba(22,163,74,0.3)",
+                      transition: "all 0.2s", color: "#fff",
+                      transform: isActive ? "scale(1.08)" : "scale(1)",
+                      border: "3px solid #fff",
+                    }}>
+                      {item.icon}
+                    </div>
+                    <span style={{ fontSize: 9, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", color: isActive ? "#16a34a" : "#16a34a", letterSpacing: "0.02em" }}>{item.label}</span>
+                  </button>
+                );
+              }
+              return (
+                <button key={item.id} onClick={() => { setActiveNav(item.id); setShowProfile(false); }} style={{
+                  flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                  background: "none", border: "none",
+                  color: isActive ? "#16a34a" : "#94a3b8",
+                  cursor: "pointer", padding: "8px 0",
+                  transition: "color 0.2s", WebkitTapHighlightColor: "transparent",
+                }}>
+                  {item.icon}
+                  <span style={{ fontSize: 9, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{item.label}</span>
+                </button>
+              );
+            })}
+            <button onClick={() => setShowProfile(true)} style={{
               flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-              background: "none", border: "none", color: "#94a3b8",
+              background: "none", border: "none", color: showProfile ? "#16a34a" : "#94a3b8",
               cursor: "pointer", padding: "8px 0", WebkitTapHighlightColor: "transparent",
             }}>
-              <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg, #3b82f6, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>{initials}</div>
-              <span style={{ fontSize: 9, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Account</span>
+              <div style={{ width: 24, height: 24, borderRadius: "50%", background: showProfile ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #3b82f6, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s" }}>{initials}</div>
+              <span style={{ fontSize: 9, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Profile</span>
             </button>
           </div>
         )}
