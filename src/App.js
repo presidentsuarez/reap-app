@@ -2896,11 +2896,17 @@ function CreatePortfolioModal({ isOpen, onClose, onSave, isMobile, deals, portfo
     }
   }, [isOpen, portfolio]);
 
-  var filteredDeals = deals.filter(function(d) {
-    if (!searchText) return true;
-    var q = searchText.toLowerCase();
-    return (d.address && d.address.toLowerCase().includes(q)) || (d.city && d.city.toLowerCase().includes(q));
-  });
+  var filteredDeals = (function() {
+    var selected = deals.filter(function(d) { return selectedDeals.includes(d.address); });
+    var unselected = deals.filter(function(d) { return !selectedDeals.includes(d.address); });
+    if (!searchText) return selected.concat(unselected);
+    var q = searchText.toLowerCase().trim();
+    var matchedUnselected = unselected.filter(function(d) {
+      return (d.address && d.address.toLowerCase().includes(q)) ||
+             (d.dealName && d.dealName.toLowerCase().includes(q));
+    });
+    return selected.concat(matchedUnselected);
+  })();
 
   var toggleDeal = function(addr) {
     if (selectedDeals.includes(addr)) {
@@ -2967,8 +2973,8 @@ function CreatePortfolioModal({ isOpen, onClose, onSave, isMobile, deals, portfo
           </div>
 
           <div style={{ marginBottom: 20 }}>
-            <label style={labelStyle}>Assign Deals ({selectedDeals.length} selected)</label>
-            <input style={{ ...inputStyle, marginBottom: 10 }} value={searchText} onChange={function(e) { setSearchText(e.target.value); }} placeholder="Search deals by address or city..." onFocus={function(e) { e.target.style.borderColor = "#16a34a"; }} onBlur={function(e) { e.target.style.borderColor = "#e2e8f0"; }} />
+            <label style={labelStyle}>Assign Deals ({selectedDeals.length} selected of {deals.length})</label>
+            <input style={{ ...inputStyle, marginBottom: 10 }} value={searchText} onChange={function(e) { setSearchText(e.target.value); }} placeholder="Search by property address..." onFocus={function(e) { e.target.style.borderColor = "#16a34a"; }} onBlur={function(e) { e.target.style.borderColor = "#e2e8f0"; }} />
             <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
               {filteredDeals.length === 0 ? (
                 <p style={{ padding: 20, textAlign: "center", color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif", margin: 0 }}>No deals found</p>
@@ -2991,8 +2997,8 @@ function CreatePortfolioModal({ isOpen, onClose, onSave, isMobile, deals, portfo
                       {selected && <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}><polyline points="20 6 9 17 4 12"/></svg>}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.address || "—"}</p>
-                      <p style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "1px 0 0" }}>{d.type || ""} · {d.city || ""}{d.state ? ", " + d.state : ""}</p>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.address || d.dealName || "—"}</p>
+                      <p style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "1px 0 0" }}>{d.dealName && d.address ? d.dealName + " · " : ""}{d.type || ""} · {d.city || ""}{d.state ? ", " + d.state : ""}</p>
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace", flexShrink: 0 }}>{fmt(d.offer)}</span>
                   </div>
@@ -3129,7 +3135,7 @@ function PortfolioDetailView({ portfolio, deals, onBack, onEdit, onSelectDeal, i
   );
 }
 
-function PortfolioView({ deals, isMobile, onSelectDeal, session }) {
+function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfolioId, onClearPendingPortfolio, onHashUpdate }) {
   var [portfolios, setPortfolios] = useState([]);
   var [portfoliosLoading, setPortfoliosLoading] = useState(true);
   var [selectedPortfolio, setSelectedPortfolio] = useState(null);
@@ -3170,6 +3176,25 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session }) {
   useEffect(function() {
     if (userEmail) fetchPortfolios();
   }, [userEmail]);
+
+  // Resolve pending portfolio from hash
+  useEffect(function() {
+    if (pendingPortfolioId && portfolios.length > 0) {
+      var p = portfolios.find(function(p) { return p.id === pendingPortfolioId; });
+      if (p) setSelectedPortfolio(p);
+      if (onClearPendingPortfolio) onClearPendingPortfolio();
+    }
+  }, [pendingPortfolioId, portfolios, onClearPendingPortfolio]);
+
+  var selectPortfolio = function(p) {
+    setSelectedPortfolio(p);
+    if (onHashUpdate) onHashUpdate("portfolio/" + encodeURIComponent(p.id));
+  };
+
+  var backToPortfolios = function() {
+    setSelectedPortfolio(null);
+    if (onHashUpdate) onHashUpdate("portfolios");
+  };
 
   var handleCreateSave = function(data) {
     if (editingPortfolio) {
@@ -3231,7 +3256,7 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session }) {
     }).then(function(res) { return res.json(); }).then(function(result) {
       if (result.success) {
         setPortfolios(portfolios.filter(function(p) { return p.id !== id; }));
-        if (selectedPortfolio && selectedPortfolio.id === id) setSelectedPortfolio(null);
+        if (selectedPortfolio && selectedPortfolio.id === id) backToPortfolios();
       } else {
         console.error("Delete portfolio error:", result.error);
       }
@@ -3252,14 +3277,24 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session }) {
 
   if (selectedPortfolio) {
     return (
-      <PortfolioDetailView
-        portfolio={selectedPortfolio}
-        deals={deals}
-        onBack={function() { setSelectedPortfolio(null); }}
-        onEdit={function() { setEditingPortfolio(selectedPortfolio); setShowCreateModal(true); }}
-        onSelectDeal={onSelectDeal}
-        isMobile={isMobile}
-      />
+      <>
+        <PortfolioDetailView
+          portfolio={selectedPortfolio}
+          deals={deals}
+          onBack={function() { backToPortfolios(); }}
+          onEdit={function() { setEditingPortfolio(selectedPortfolio); setShowCreateModal(true); }}
+          onSelectDeal={onSelectDeal}
+          isMobile={isMobile}
+        />
+        <CreatePortfolioModal
+          isOpen={showCreateModal}
+          onClose={function() { setShowCreateModal(false); setEditingPortfolio(null); }}
+          onSave={handleCreateSave}
+          isMobile={isMobile}
+          deals={deals}
+          portfolio={editingPortfolio}
+        />
+      </>
     );
   }
 
@@ -3316,7 +3351,7 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session }) {
               var stats = getPortfolioStats(p);
               var isHovered = hoveredCard === p.id;
               return (
-                <div key={p.id} onClick={function() { setSelectedPortfolio(p); }}
+                <div key={p.id} onClick={function() { selectPortfolio(p); }}
                   onMouseEnter={function() { setHoveredCard(p.id); }}
                   onMouseLeave={function() { setHoveredCard(null); }}
                   style={{
@@ -4113,6 +4148,77 @@ export default function ReapApp() {
   const [savingBuyer, setSavingBuyer] = useState(false);
   const [editingBuyer, setEditingBuyer] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [pendingDealAddress, setPendingDealAddress] = useState(null);
+  const [pendingPortfolioId, setPendingPortfolioId] = useState(null);
+
+  // --- Hash-based routing ---
+  const updateHash = useCallback((hash) => {
+    if (window.location.hash !== "#" + hash) {
+      window.location.hash = hash;
+    }
+  }, []);
+
+  // Parse hash on initial load
+  useEffect(() => {
+    const hash = window.location.hash.replace("#", "");
+    if (!hash) return;
+    if (hash.startsWith("deal/")) {
+      const addr = decodeURIComponent(hash.replace("deal/", ""));
+      setActiveNav("pipeline");
+      setPendingDealAddress(addr);
+    } else if (hash.startsWith("portfolio/")) {
+      const id = decodeURIComponent(hash.replace("portfolio/", ""));
+      setActiveNav("portfolios");
+      setPendingPortfolioId(id);
+    } else if (hash === "profile") {
+      setShowProfile(true);
+    } else if (["pipeline", "portfolios", "analytics", "contacts", "markets"].includes(hash)) {
+      setActiveNav(hash);
+    }
+  }, []);
+
+  // Resolve pending deal once deals are loaded
+  useEffect(() => {
+    if (pendingDealAddress && deals.length > 0) {
+      const deal = deals.find(d => d.address === pendingDealAddress);
+      if (deal) {
+        setSelectedDeal(deal);
+        if (isMobile) setDealTransition(true);
+      }
+      setPendingDealAddress(null);
+    }
+  }, [pendingDealAddress, deals, isMobile]);
+
+  // Listen for browser back/forward
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash.replace("#", "");
+      if (hash.startsWith("deal/")) {
+        const addr = decodeURIComponent(hash.replace("deal/", ""));
+        const deal = deals.find(d => d.address === addr);
+        if (deal) {
+          setActiveNav("pipeline");
+          setShowProfile(false);
+          setSelectedDeal(deal);
+          if (isMobile) setDealTransition(true);
+        }
+      } else if (hash.startsWith("portfolio/")) {
+        setActiveNav("portfolios");
+        setShowProfile(false);
+        setPendingPortfolioId(decodeURIComponent(hash.replace("portfolio/", "")));
+      } else if (hash === "profile") {
+        setShowProfile(true);
+      } else if (["pipeline", "portfolios", "analytics", "contacts", "markets"].includes(hash)) {
+        setActiveNav(hash);
+        setShowProfile(false);
+        setSelectedDeal(null);
+        if (isMobile) setDealTransition(false);
+      }
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [deals, isMobile]);
 
   // Check for payment success redirect
   useEffect(() => {
@@ -4164,6 +4270,17 @@ export default function ReapApp() {
     window.addEventListener("resize", handle);
     return () => window.removeEventListener("resize", handle);
   }, []);
+
+  // Sync hash when nav or profile changes (skip initial render, skip when deal selected)
+  const hashInitRef = useRef(false);
+  useEffect(() => {
+    if (!hashInitRef.current) { hashInitRef.current = true; return; }
+    if (showProfile) {
+      updateHash("profile");
+    } else if (!selectedDeal) {
+      updateHash(activeNav);
+    }
+  }, [activeNav, showProfile, selectedDeal, updateHash]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -4544,6 +4661,7 @@ export default function ReapApp() {
     } else {
       setSelectedDeal(deal);
     }
+    if (deal.address) updateHash("deal/" + encodeURIComponent(deal.address));
   };
 
   const handleBack = () => {
@@ -4553,6 +4671,7 @@ export default function ReapApp() {
     } else {
       setSelectedDeal(null);
     }
+    updateHash("pipeline");
   };
 
   const handleSaveBuyer = async (form) => {
@@ -4598,9 +4717,9 @@ export default function ReapApp() {
 
   const navItems = [
     { id: "pipeline", label: "Deals", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
-    { id: "contacts", label: "Contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
-    { id: "analytics", label: "Dashboard", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
     { id: "portfolios", label: "Portfolios", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/><polyline points="2 15.5 12 8.5 22 15.5"/></svg> },
+    { id: "analytics", label: "Dashboard", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+    { id: "contacts", label: "Contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
     { id: "markets", label: "Markets", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
   ];
 
@@ -4648,6 +4767,8 @@ export default function ReapApp() {
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes slideInLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+        @keyframes slideOutLeft { from { transform: translateX(0); } to { transform: translateX(-100%); } }
       `}</style>
 
       {/* New Deal Modal */}
@@ -4705,12 +4826,12 @@ export default function ReapApp() {
         )}
 
         {/* Main Content */}
-        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 70 : 0, paddingTop: !isSubscribed && trialDaysLeft > 0 ? 42 : 0, position: "relative" }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 70 : 0, paddingTop: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56) : (!isSubscribed && trialDaysLeft > 0 ? 42 : 0), position: "relative" }}>
           {isMobile ? (
             showProfile ? (
               <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} />
             ) : activeNav === "portfolios" ? (
-              <PortfolioView deals={deals} isMobile={true} session={session} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} />
+              <PortfolioView deals={deals} isMobile={true} session={session} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
             ) : activeNav === "contacts" ? (
               <BuyerPipelineView session={session} isMobile={true} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
             ) : activeNav === "analytics" ? (
@@ -4743,7 +4864,7 @@ export default function ReapApp() {
             showProfile
               ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} />
               : activeNav === "portfolios"
-              ? <PortfolioView deals={deals} isMobile={false} session={session} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} />
+              ? <PortfolioView deals={deals} isMobile={false} session={session} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
               : activeNav === "contacts"
               ? <BuyerPipelineView session={session} isMobile={false} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
               : activeNav === "analytics"
@@ -4803,14 +4924,130 @@ export default function ReapApp() {
                 </button>
               );
             })}
-            <button onClick={() => setShowProfile(true)} style={{
-              flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-              background: "none", border: "none", color: showProfile ? "#16a34a" : "#94a3b8",
-              cursor: "pointer", padding: "8px 0", WebkitTapHighlightColor: "transparent",
+          </div>
+        )}
+
+        {/* Mobile Top Header Bar */}
+        {isMobile && (
+          <div style={{
+            position: "fixed", top: !isSubscribed && trialDaysLeft > 0 ? 42 : 0, left: 0, right: 0, height: 56,
+            background: "#fff", borderBottom: "1px solid #e2e8f0",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "0 16px", zIndex: 110,
+            boxShadow: "0 1px 8px rgba(0,0,0,0.04)",
+          }}>
+            <button onClick={() => setShowMobileMenu(true)} style={{
+              width: 40, height: 40, borderRadius: 10, border: "none",
+              background: "transparent", cursor: "pointer", display: "flex",
+              alignItems: "center", justifyContent: "center",
+              WebkitTapHighlightColor: "transparent", color: "#0f172a",
             }}>
-              <div style={{ width: 24, height: 24, borderRadius: "50%", background: showProfile ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #3b82f6, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s" }}>{initials}</div>
-              <span style={{ fontSize: 9, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Profile</span>
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
+            <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", letterSpacing: "-0.01em" }}>
+              {showProfile ? "Profile" : navItems.find(i => i.id === activeNav)?.label || "REAP"}
+            </span>
+            <div style={{ width: 40 }} />
+          </div>
+        )}
+
+        {/* Mobile Side Drawer Overlay */}
+        {isMobile && showMobileMenu && (
+          <div onClick={() => setShowMobileMenu(false)} style={{
+            position: "fixed", inset: 0, zIndex: 200,
+            background: "rgba(0,0,0,0.4)", animation: "fadeIn 0.2s ease",
+          }} />
+        )}
+
+        {/* Mobile Side Drawer */}
+        {isMobile && showMobileMenu && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, bottom: 0, width: 280,
+            background: "#fff", zIndex: 210,
+            display: "flex", flexDirection: "column",
+            animation: "slideInLeft 0.25s cubic-bezier(0.25, 1, 0.5, 1)",
+            boxShadow: "4px 0 24px rgba(0,0,0,0.12)",
+          }}>
+            {/* Drawer Header */}
+            <div style={{
+              padding: "20px 20px 16px", display: "flex", alignItems: "center",
+              justifyContent: "space-between", borderBottom: "1px solid #f1f5f9",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: 10,
+                  background: "linear-gradient(135deg, #16a34a, #15803d)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
+                }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                </div>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.06em" }}>REAP</span>
+              </div>
+              <button onClick={() => setShowMobileMenu(false)} style={{
+                width: 34, height: 34, borderRadius: 8, border: "none",
+                background: "#f8fafc", cursor: "pointer", display: "flex",
+                alignItems: "center", justifyContent: "center", color: "#64748b",
+              }}>
+                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {/* Drawer Nav Items */}
+            <div style={{ flex: 1, padding: "12px 12px", overflow: "auto" }}>
+              {navItems.map(item => {
+                const isActive = activeNav === item.id && !showProfile;
+                return (
+                  <button key={item.id} onClick={() => {
+                    setActiveNav(item.id);
+                    setShowProfile(false);
+                    setShowMobileMenu(false);
+                  }} style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 14,
+                    padding: "14px 16px", borderRadius: 12, border: "none",
+                    background: isActive ? "#f0fdf4" : "transparent",
+                    color: isActive ? "#16a34a" : "#475569",
+                    cursor: "pointer", transition: "all 0.15s",
+                    fontFamily: "'DM Sans', sans-serif", fontSize: 15, fontWeight: 600,
+                    WebkitTapHighlightColor: "transparent", marginBottom: 2,
+                    borderLeft: isActive ? "3px solid #16a34a" : "3px solid transparent",
+                  }}>
+                    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24 }}>
+                      {item.icon}
+                    </span>
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Drawer Profile Footer */}
+            <div style={{
+              padding: "16px 16px", borderTop: "1px solid #f1f5f9",
+              display: "flex", alignItems: "center", gap: 12,
+            }}>
+              <button onClick={() => {
+                setShowProfile(true);
+                setShowMobileMenu(false);
+              }} style={{
+                flex: 1, display: "flex", alignItems: "center", gap: 12,
+                padding: "10px 12px", borderRadius: 12, border: "none",
+                background: showProfile ? "#f0fdf4" : "#f8fafc",
+                cursor: "pointer", WebkitTapHighlightColor: "transparent",
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: "50%",
+                  background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, color: "#fff",
+                  fontFamily: "'DM Sans', sans-serif", flexShrink: 0,
+                }}>{initials}</div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", overflow: "hidden" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 160 }}>{userName}</span>
+                  <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 160 }}>{userEmail}</span>
+                </div>
+              </button>
+            </div>
           </div>
         )}
       </div>
