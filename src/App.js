@@ -4179,15 +4179,14 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
     setAddingId(listing.rowIndex);
     try {
       const dealData = {
-        action: "add_deal",
         "Deal / Name": listing.address || "MLS " + listing.mlsNumber,
-        "Address": listing.address,
-        "MLS Number": listing.mlsNumber,
-        "Asking / Price": listing.price,
-        "Status": "New",
+        "Property / Address": listing.address,
+        "Asking / Price": listing.price ? listing.price.replace(/[$,]/g, "") : "",
+        "Deal / Status": "New",
         "User": session?.user?.email || "",
-        "Date / Added": new Date().toISOString(),
+        "Date / Added": new Date().toLocaleDateString("en-US"),
         "Source": "MLS Feed",
+        "MLS Number": listing.mlsNumber,
       };
       if (SHEETS_WRITE_URL) {
         const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(dealData) });
