@@ -7,8 +7,6 @@ const API_KEY = process.env.REACT_APP_SHEETS_API_KEY;
 const SHEET_NAME = "Deals";
 const SHEETS_WRITE_URL = process.env.REACT_APP_SHEETS_WRITE_URL;
 const CONTACTS_SHEET_NAME = "Contacts";
-const MLS_FEED_SHEET_NAME = "MLS Feed";
-const FILE_UPLOADS_SHEET_NAME = "File Uploads";
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
@@ -4127,412 +4125,6 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   MLS FEED VIEW
-   ═══════════════════════════════════════════════════════════ */
-
-function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
-  const [listings, setListings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [search, setSearch] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [hoveredRow, setHoveredRow] = useState(null);
-  const [addingId, setAddingId] = useState(null);
-  const searchRef = useRef(null);
-
-  useEffect(() => { if (searchOpen && searchRef.current) searchRef.current.focus(); }, [searchOpen]);
-
-  const fetchListings = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const range = `${MLS_FEED_SHEET_NAME}!A1:Z`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setListings([]); setLoading(false); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
-      const colAddress = idx("Property Address") >= 0 ? idx("Property Address") : idx("Address");
-      const colMLS = idx("MLS Number") >= 0 ? idx("MLS Number") : idx("MLS #");
-      const colPrice = idx("Price") >= 0 ? idx("Price") : idx("Listing Price");
-      const g = (row, col) => col >= 0 && col < row.length ? (row[col] || "").trim() : "";
-      const parsed = rows.slice(1).map((row, i) => ({
-        rowIndex: i + 2,
-        address: g(row, colAddress),
-        mlsNumber: g(row, colMLS),
-        price: g(row, colPrice),
-      })).filter(l => l.address || l.mlsNumber);
-      setListings(parsed);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchListings(); }, [fetchListings]);
-
-  const handleAddToPipeline = async (listing) => {
-    setAddingId(listing.rowIndex);
-    try {
-      const dealData = {
-        action: "add_deal",
-        "Deal / Name": listing.address || "MLS " + listing.mlsNumber,
-        "Address": listing.address,
-        "MLS Number": listing.mlsNumber,
-        "Asking / Price": listing.price,
-        "Status": "New",
-        "User": session?.user?.email || "",
-        "Date / Added": new Date().toISOString(),
-        "Source": "MLS Feed",
-      };
-      if (SHEETS_WRITE_URL) {
-        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(dealData) });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Failed to add deal");
-      }
-      if (onAddToPipeline) onAddToPipeline();
-    } catch (err) {
-      alert("Error adding to pipeline: " + err.message);
-    } finally {
-      setAddingId(null);
-    }
-  };
-
-  const filtered = listings.filter(l =>
-    (l.address || "").toLowerCase().includes(search.toLowerCase()) ||
-    (l.mlsNumber || "").toLowerCase().includes(search.toLowerCase())
-  );
-
-  return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#f8fafc", overflow: "hidden" }}>
-      {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px 16px 14px" : "20px 28px 18px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <h1 style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>MLS Feed</h1>
-            <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "4px 0 0" }}>
-              {loading ? "Loading listings..." : `${filtered.length} listing${filtered.length !== 1 ? "s" : ""}`}
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {searchOpen ? (
-              <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} onBlur={() => { if (!search) setSearchOpen(false); }}
-                placeholder="Search address or MLS #..."
-                style={{ width: isMobile ? 160 : 220, height: 36, borderRadius: 10, border: "1px solid #e2e8f0", padding: "0 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", background: "#f8fafc" }} />
-            ) : (
-              <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><circle cx={11} cy={11} r={8}/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 12 : 20 }}>
-        {loading ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[0,1,2,3,4].map(i => (
-              <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "16px 18px", animation: "pulse 1.5s ease-in-out infinite " + (i * 0.1) + "s" }}>
-                <div style={{ width: "60%", height: 14, background: "#e2e8f0", borderRadius: 4, marginBottom: 8 }} />
-                <div style={{ width: "30%", height: 10, background: "#f1f5f9", borderRadius: 4 }} />
-              </div>
-            ))}
-          </div>
-        ) : error ? (
-          <div style={{ textAlign: "center", padding: 40 }}>
-            <p style={{ color: "#dc2626", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Error: {error}</p>
-            <button onClick={fetchListings} style={{ background: "#16a34a", border: "none", borderRadius: 8, padding: "8px 16px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginTop: 12 }}>Try Again</button>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ background: "#fff", borderRadius: 14, border: "1px dashed #e2e8f0", padding: "48px 20px", textAlign: "center" }}>
-            <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 12 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            <p style={{ fontSize: 14, color: "#64748b", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, margin: "0 0 4px" }}>No MLS listings yet</p>
-            <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Upload a CSV via the File Uploader to populate the MLS Feed.</p>
-          </div>
-        ) : isMobile ? (
-          /* Mobile Cards */
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {filtered.map(listing => (
-              <div key={listing.rowIndex} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "16px 18px", boxShadow: "0 1px 4px rgba(0,0,0,0.03)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>{listing.address || "—"}</p>
-                    <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Mono', monospace", margin: 0 }}>MLS# {listing.mlsNumber || "—"}</p>
-                  </div>
-                  <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{listing.price ? fmt(listing.price) : "—"}</span>
-                </div>
-                <button onClick={() => handleAddToPipeline(listing)} disabled={addingId === listing.rowIndex} style={{
-                  width: "100%", padding: "10px 0", borderRadius: 10, border: "1px solid #16a34a",
-                  background: addingId === listing.rowIndex ? "#f0fdf4" : "#fff",
-                  color: "#16a34a", fontSize: 12, fontWeight: 700, cursor: addingId === listing.rowIndex ? "not-allowed" : "pointer",
-                  fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  transition: "all 0.15s",
-                }}>
-                  {addingId === listing.rowIndex ? (
-                    <><svg width={14} height={14} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle cx={12} cy={12} r={10} fill="none" stroke="#16a34a" strokeWidth={3} opacity={0.3} /><path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="#16a34a" strokeWidth={3} strokeLinecap="round" /></svg> Adding...</>
-                  ) : (
-                    <><svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add to Pipeline</>
-                  )}
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          /* Desktop Table */
-          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #f1f5f9" }}>
-                  <th style={{ padding: "12px 18px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Property Address</th>
-                  <th style={{ padding: "12px 18px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>MLS #</th>
-                  <th style={{ padding: "12px 18px", textAlign: "right", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Price</th>
-                  <th style={{ padding: "12px 18px", textAlign: "center", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", width: 140 }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(listing => (
-                  <tr key={listing.rowIndex} onMouseEnter={() => setHoveredRow(listing.rowIndex)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f8fafc", background: hoveredRow === listing.rowIndex ? "#fafffe" : "transparent", transition: "background 0.1s" }}>
-                    <td style={{ padding: "14px 18px", fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{listing.address || "—"}</td>
-                    <td style={{ padding: "14px 18px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{listing.mlsNumber || "—"}</td>
-                    <td style={{ padding: "14px 18px", fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace", textAlign: "right" }}>{listing.price ? fmt(listing.price) : "—"}</td>
-                    <td style={{ padding: "14px 18px", textAlign: "center" }}>
-                      <button onClick={() => handleAddToPipeline(listing)} disabled={addingId === listing.rowIndex} style={{
-                        padding: "6px 14px", borderRadius: 8, border: "1px solid #16a34a22",
-                        background: addingId === listing.rowIndex ? "#f0fdf4" : "rgba(22,163,74,0.06)",
-                        color: "#16a34a", fontSize: 11, fontWeight: 700, cursor: addingId === listing.rowIndex ? "not-allowed" : "pointer",
-                        fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", display: "inline-flex", alignItems: "center", gap: 4,
-                      }}>
-                        {addingId === listing.rowIndex ? "Adding..." : "+ Pipeline"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={4} style={{ padding: "40px 18px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match your search</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   FILE UPLOADER VIEW
-   ═══════════════════════════════════════════════════════════ */
-
-function FileUploaderView({ session, isMobile }) {
-  const [uploads, setUploads] = useState([]);
-  const [uploadsLoading, setUploadsLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const fileInputRef = useRef(null);
-
-  const fetchUploads = useCallback(async () => {
-    setUploadsLoading(true);
-    try {
-      const range = `${FILE_UPLOADS_SHEET_NAME}!A1:E`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) { setUploads([]); return; }
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setUploads([]); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
-      const colFilename = idx("filename") >= 0 ? idx("filename") : 0;
-      const colLink = idx("file link") >= 0 ? idx("file link") : idx("link") >= 0 ? idx("link") : 1;
-      const colDate = idx("uploaded at") >= 0 ? idx("uploaded at") : idx("date") >= 0 ? idx("date") : 2;
-      const colUser = idx("user") >= 0 ? idx("user") : 3;
-      const colStatus = idx("status") >= 0 ? idx("status") : 4;
-      const g = (row, col) => col >= 0 && col < row.length ? (row[col] || "").trim() : "";
-      const parsed = rows.slice(1).map((row, i) => ({
-        rowIndex: i + 2,
-        filename: g(row, colFilename),
-        link: g(row, colLink),
-        date: g(row, colDate),
-        user: g(row, colUser),
-        status: g(row, colStatus) || "Uploaded",
-      })).filter(u => u.filename || u.link);
-      setUploads(parsed.reverse());
-    } catch (err) {
-      console.error("Error fetching uploads:", err);
-      setUploads([]);
-    } finally {
-      setUploadsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchUploads(); }, [fetchUploads]);
-
-  const handleUpload = async (file) => {
-    if (!file) return;
-    setUploading(true);
-    try {
-      // Read file as base64
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      // Send to Apps Script which uploads to Drive and writes row to File Uploads tab
-      if (SHEETS_WRITE_URL) {
-        const payload = {
-          action: "upload_file",
-          filename: file.name,
-          mimeType: file.type || "text/csv",
-          base64: base64,
-          user: session?.user?.email || "",
-          uploadedAt: new Date().toISOString(),
-        };
-        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Upload failed");
-      }
-
-      setSelectedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      fetchUploads();
-    } catch (err) {
-      alert("Upload error: " + err.message);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const onDrop = (e) => {
-    e.preventDefault(); setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file && (file.name.endsWith(".csv") || file.name.endsWith(".xlsx") || file.name.endsWith(".xls"))) {
-      setSelectedFile(file);
-    } else {
-      alert("Please upload a CSV or Excel file.");
-    }
-  };
-
-  const onFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) setSelectedFile(file);
-  };
-
-  return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#f8fafc", overflow: "hidden" }}>
-      {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px 16px 14px" : "20px 28px 18px" }}>
-        <h1 style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>File Uploader</h1>
-        <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "4px 0 0" }}>Upload CSV files to populate MLS Feed data</p>
-      </div>
-
-      <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 16 : 24 }}>
-        {/* Upload Zone */}
-        <div
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          onClick={() => !selectedFile && fileInputRef.current?.click()}
-          style={{
-            background: dragOver ? "#f0fdf4" : "#fff",
-            border: `2px dashed ${dragOver ? "#16a34a" : selectedFile ? "#16a34a" : "#e2e8f0"}`,
-            borderRadius: 16, padding: isMobile ? "32px 20px" : "48px 40px",
-            textAlign: "center", cursor: selectedFile ? "default" : "pointer",
-            transition: "all 0.2s", marginBottom: 24,
-          }}
-        >
-          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={onFileSelect} style={{ display: "none" }} />
-          {selectedFile ? (
-            <div>
-              <div style={{ width: 48, height: 48, borderRadius: 14, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
-                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              </div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>{selectedFile.name}</p>
-              <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 16px" }}>{(selectedFile.size / 1024).toFixed(1)} KB</p>
-              <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                <button onClick={(e) => { e.stopPropagation(); setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} style={{
-                  padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0",
-                  background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600,
-                  cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-                }}>Cancel</button>
-                <button onClick={(e) => { e.stopPropagation(); handleUpload(selectedFile); }} disabled={uploading} style={{
-                  padding: "10px 24px", borderRadius: 10, border: "none",
-                  background: uploading ? "#86efac" : "linear-gradient(135deg, #16a34a, #15803d)",
-                  color: "#fff", fontSize: 13, fontWeight: 700,
-                  cursor: uploading ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif",
-                  boxShadow: "0 2px 10px rgba(22,163,74,0.3)",
-                  display: "flex", alignItems: "center", gap: 8,
-                }}>
-                  {uploading && <svg width={16} height={16} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle cx={12} cy={12} r={10} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={3} /><path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round" /></svg>}
-                  {uploading ? "Uploading..." : "Upload File"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <div style={{ width: 56, height: 56, borderRadius: 16, background: "#f8fafc", border: "1px solid #e2e8f0", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
-                <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.8}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              </div>
-              <p style={{ fontSize: 15, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Drop a file here or click to browse</p>
-              <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Accepts CSV and Excel files</p>
-            </div>
-          )}
-        </div>
-
-        {/* Upload History */}
-        <div>
-          <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
-            Upload History <span style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-          </h3>
-          {uploadsLoading ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {[0,1,2].map(i => (
-                <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 16px", animation: "pulse 1.5s ease-in-out infinite " + (i * 0.1) + "s" }}>
-                  <div style={{ width: "50%", height: 12, background: "#e2e8f0", borderRadius: 4, marginBottom: 6 }} />
-                  <div style={{ width: "30%", height: 10, background: "#f1f5f9", borderRadius: 4 }} />
-                </div>
-              ))}
-            </div>
-          ) : uploads.length === 0 ? (
-            <div style={{ background: "#fff", borderRadius: 14, border: "1px dashed #e2e8f0", padding: "32px 20px", textAlign: "center" }}>
-              <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>No files uploaded yet. Upload your first CSV above.</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {uploads.map(u => (
-                <div key={u.rowIndex} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  </div>
-                  <div style={{ flex: 1, overflow: "hidden" }}>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.filename || "Untitled"}</p>
-                    <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>{u.date ? fmtDate(u.date) : "—"} · {u.user ? fmtUserName(u.user) : "—"}</p>
-                  </div>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 20, background: u.status === "Processed" ? "rgba(22,163,74,0.08)" : u.status === "Error" ? "rgba(220,38,38,0.08)" : "rgba(100,116,139,0.08)", color: u.status === "Processed" ? "#16a34a" : u.status === "Error" ? "#dc2626" : "#64748b", fontSize: 10, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>
-                    {u.status}
-                  </span>
-                  {u.link && (
-                    <a href={u.link} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, background: "#f8fafc", border: "1px solid #e2e8f0", flexShrink: 0 }}>
-                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function ReapApp() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -4581,7 +4173,7 @@ export default function ReapApp() {
       setPendingPortfolioId(id);
     } else if (hash === "profile") {
       setShowProfile(true);
-    } else if (["pipeline", "portfolios", "analytics", "contacts", "markets", "mls", "uploader"].includes(hash)) {
+    } else if (["pipeline", "portfolios", "analytics", "contacts", "markets"].includes(hash)) {
       setActiveNav(hash);
     }
   }, []);
@@ -4617,7 +4209,7 @@ export default function ReapApp() {
         setPendingPortfolioId(decodeURIComponent(hash.replace("portfolio/", "")));
       } else if (hash === "profile") {
         setShowProfile(true);
-      } else if (["pipeline", "portfolios", "analytics", "contacts", "markets", "mls", "uploader"].includes(hash)) {
+      } else if (["pipeline", "portfolios", "analytics", "contacts", "markets"].includes(hash)) {
         setActiveNav(hash);
         setShowProfile(false);
         setSelectedDeal(null);
@@ -5129,8 +4721,6 @@ export default function ReapApp() {
     { id: "analytics", label: "Dashboard", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
     { id: "contacts", label: "Contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
     { id: "markets", label: "Markets", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
-    { id: "mls", label: "MLS Feed", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-    { id: "uploader", label: "File Uploader", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> },
   ];
 
   if (authLoading) return (
@@ -5248,10 +4838,6 @@ export default function ReapApp() {
               <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
             ) : activeNav === "markets" ? (
               <MarketIntelligenceView deals={deals} isMobile={true} session={session} />
-            ) : activeNav === "mls" ? (
-              <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} />
-            ) : activeNav === "uploader" ? (
-              <FileUploaderView session={session} isMobile={true} />
             ) : (
             <>
               <div style={{
@@ -5285,10 +4871,6 @@ export default function ReapApp() {
                 ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
                 : activeNav === "markets"
                 ? <MarketIntelligenceView deals={deals} isMobile={false} session={session} />
-                : activeNav === "mls"
-                ? <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} />
-                : activeNav === "uploader"
-                ? <FileUploaderView session={session} isMobile={false} />
                 : selectedDeal
                 ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} />
                 : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
@@ -5304,7 +4886,7 @@ export default function ReapApp() {
             padding: "0 4px 6px", zIndex: 100,
             boxShadow: "0 -2px 12px rgba(0,0,0,0.06)",
           }}>
-            {navItems.filter(item => item.mobileBottom !== false).map(item => {
+            {navItems.map(item => {
               const isActive = activeNav === item.id && !showProfile;
               if (item.featured) {
                 return (
