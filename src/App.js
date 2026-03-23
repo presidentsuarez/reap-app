@@ -4128,8 +4128,28 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MLS FEED VIEW
+   MLS FEED VIEW — 3 tabs: Cards, Table, Dashboard
    ═══════════════════════════════════════════════════════════ */
+
+const MLS_STATUS_COLORS = {
+  "Active":           { color: "#16a34a", bg: "rgba(22,163,74,0.08)" },
+  "Pending":          { color: "#d97706", bg: "rgba(217,119,6,0.08)" },
+  "Sold":             { color: "#7c3aed", bg: "rgba(124,58,237,0.08)" },
+  "Closed":           { color: "#64748b", bg: "rgba(100,116,139,0.08)" },
+  "Withdrawn":        { color: "#dc2626", bg: "rgba(220,38,38,0.07)" },
+  "Expired":          { color: "#94a3b8", bg: "rgba(148,163,184,0.08)" },
+  "Coming Soon":      { color: "#0891b2", bg: "rgba(8,145,178,0.08)" },
+};
+
+function MLSStatusBadge({ status }) {
+  const cfg = MLS_STATUS_COLORS[status] || { color: "#64748b", bg: "rgba(100,116,139,0.08)" };
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 10, fontWeight: 600, letterSpacing: "0.03em", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", border: `1px solid ${cfg.color}22` }}>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.color, flexShrink: 0 }} />
+      {status || "—"}
+    </span>
+  );
+}
 
 function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
   const [listings, setListings] = useState([]);
@@ -4139,6 +4159,10 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState(null);
   const [addingId, setAddingId] = useState(null);
+  const [activeTab, setActiveTab] = useState("cards");
+  const [statusFilter, setStatusFilter] = useState(null);
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState("desc");
   const searchRef = useRef(null);
 
   useEffect(() => { if (searchOpen && searchRef.current) searchRef.current.focus(); }, [searchOpen]);
@@ -4146,7 +4170,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
   const fetchListings = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const range = `${MLS_FEED_SHEET_NAME}!A1:Z`;
+      const range = `${MLS_FEED_SHEET_NAME}!A1:W`;
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`API error: ${res.status}`);
@@ -4155,15 +4179,58 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
       if (rows.length < 2) { setListings([]); setLoading(false); return; }
       const headers = rows[0];
       const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
-      const colAddress = idx("Property Address") >= 0 ? idx("Property Address") : idx("Address");
-      const colMLS = idx("MLS Number") >= 0 ? idx("MLS Number") : idx("MLS #");
-      const colPrice = idx("Price") >= 0 ? idx("Price") : idx("Listing Price");
-      const g = (row, col) => col >= 0 && col < row.length ? (row[col] || "").trim() : "";
+      // Map all 23 columns
+      const col = {
+        mlsNumber: idx("ml number") >= 0 ? idx("ml number") : idx("mls number") >= 0 ? idx("mls number") : idx("mls #"),
+        status: idx("status"),
+        adom: idx("adom"),
+        cdom: idx("cdom"),
+        price: idx("current price") >= 0 ? idx("current price") : idx("price"),
+        address: idx("address"),
+        city: idx("city"),
+        county: idx("county"),
+        ownership: idx("ownership"),
+        propType: idx("prop type") >= 0 ? idx("prop type") : idx("property type"),
+        style: idx("property style"),
+        units: idx("total units"),
+        heatedArea: idx("heated area"),
+        lotAcres: idx("lot size acres"),
+        beds: idx("beds"),
+        baths: idx("bathrooms total") >= 0 ? idx("bathrooms total") : idx("baths"),
+        yearBuilt: idx("year built"),
+        ppsf: idx("$/sqft"),
+        agent: idx("list agent"),
+        publicRemarks: idx("public remarks"),
+        realtorRemarks: idx("realtor only remarks"),
+        zip: idx("zip"),
+        sqftTotal: idx("sqft total"),
+      };
+      const g = (row, c) => c >= 0 && c < row.length ? (row[c] || "").trim() : "";
       const parsed = rows.slice(1).map((row, i) => ({
         rowIndex: i + 2,
-        address: g(row, colAddress),
-        mlsNumber: g(row, colMLS),
-        price: g(row, colPrice),
+        mlsNumber: g(row, col.mlsNumber),
+        status: g(row, col.status),
+        adom: g(row, col.adom),
+        cdom: g(row, col.cdom),
+        price: g(row, col.price),
+        address: g(row, col.address),
+        city: g(row, col.city),
+        county: g(row, col.county),
+        ownership: g(row, col.ownership),
+        propType: g(row, col.propType),
+        style: g(row, col.style),
+        units: g(row, col.units),
+        heatedArea: g(row, col.heatedArea),
+        lotAcres: g(row, col.lotAcres),
+        beds: g(row, col.beds),
+        baths: g(row, col.baths),
+        yearBuilt: g(row, col.yearBuilt),
+        ppsf: g(row, col.ppsf),
+        agent: g(row, col.agent),
+        publicRemarks: g(row, col.publicRemarks),
+        realtorRemarks: g(row, col.realtorRemarks),
+        zip: g(row, col.zip),
+        sqftTotal: g(row, col.sqftTotal),
       })).filter(l => l.address || l.mlsNumber);
       setListings(parsed);
     } catch (err) {
@@ -4178,10 +4245,19 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
   const handleAddToPipeline = async (listing) => {
     setAddingId(listing.rowIndex);
     try {
+      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
       const dealData = {
         "Deal / Name": listing.address || "MLS " + listing.mlsNumber,
         "Property / Address": listing.address,
-        "Asking / Price": listing.price ? listing.price.replace(/[$,]/g, "") : "",
+        "City": listing.city,
+        "State": "",
+        "Zip Code": listing.zip,
+        "Type": listing.propType || "",
+        "Asking / Price": clean(listing.price),
+        "SQFT / Net": clean(listing.heatedArea || listing.sqftTotal),
+        "Units": clean(listing.units),
+        "Lot / Size Acres": clean(listing.lotAcres),
+        "Year Built": listing.yearBuilt,
         "Deal / Status": "New",
         "User": session?.user?.email || "",
         "Date / Added": new Date().toLocaleDateString("en-US"),
@@ -4201,27 +4277,71 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
     }
   };
 
-  const filtered = listings.filter(l =>
+  // Filter
+  const textFiltered = listings.filter(l =>
     (l.address || "").toLowerCase().includes(search.toLowerCase()) ||
-    (l.mlsNumber || "").toLowerCase().includes(search.toLowerCase())
+    (l.mlsNumber || "").toLowerCase().includes(search.toLowerCase()) ||
+    (l.city || "").toLowerCase().includes(search.toLowerCase()) ||
+    (l.agent || "").toLowerCase().includes(search.toLowerCase()) ||
+    (l.propType || "").toLowerCase().includes(search.toLowerCase())
   );
+  const filtered = statusFilter ? textFiltered.filter(l => l.status === statusFilter) : textFiltered;
+
+  // Sort for table
+  const sorted = [...filtered].sort((a, b) => {
+    if (!sortCol) return 0;
+    let va = a[sortCol] || "", vb = b[sortCol] || "";
+    const na = parseFloat(String(va).replace(/[$,%]/g, "")), nb = parseFloat(String(vb).replace(/[$,%]/g, ""));
+    if (!isNaN(na) && !isNaN(nb)) return sortDir === "asc" ? na - nb : nb - na;
+    return sortDir === "asc" ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
+
+  const handleSort = (col) => {
+    if (sortCol === col) { setSortDir(d => d === "asc" ? "desc" : "asc"); }
+    else { setSortCol(col); setSortDir("desc"); }
+  };
+
+  // Status counts for dashboard + filters
+  const statusCounts = {};
+  listings.forEach(l => { const s = l.status || "Unknown"; statusCounts[s] = (statusCounts[s] || 0) + 1; });
+  const statuses = Object.keys(statusCounts).sort((a, b) => statusCounts[b] - statusCounts[a]);
+
+  // Dashboard stats
+  const totalListings = listings.length;
+  const prices = listings.map(l => parseFloat(String(l.price).replace(/[$,]/g, ""))).filter(n => !isNaN(n));
+  const avgPrice = prices.length > 0 ? prices.reduce((s, n) => s + n, 0) / prices.length : 0;
+  const medianPrice = prices.length > 0 ? [...prices].sort((a, b) => a - b)[Math.floor(prices.length / 2)] : 0;
+  const avgPPSF = (() => { const vals = listings.map(l => parseFloat(String(l.ppsf).replace(/[$,]/g, ""))).filter(n => !isNaN(n)); return vals.length > 0 ? vals.reduce((s, n) => s + n, 0) / vals.length : 0; })();
+  const propTypeCounts = {};
+  listings.forEach(l => { const t = l.propType || "Unknown"; propTypeCounts[t] = (propTypeCounts[t] || 0) + 1; });
+  const propTypes = Object.entries(propTypeCounts).sort((a, b) => b[1] - a[1]);
+  const avgDOM = (() => { const vals = listings.map(l => parseInt(l.cdom || l.adom)).filter(n => !isNaN(n)); return vals.length > 0 ? Math.round(vals.reduce((s, n) => s + n, 0) / vals.length) : 0; })();
+
+  const tabs = [
+    { id: "cards", label: "Cards", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
+    { id: "table", label: "Table", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg> },
+    { id: "dashboard", label: "Dashboard", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+  ];
+
+  const thStyle = { padding: "10px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" };
+  const SortArrow = ({ col }) => sortCol === col ? <span style={{ marginLeft: 3, fontSize: 9 }}>{sortDir === "asc" ? "▲" : "▼"}</span> : null;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#f8fafc", overflow: "hidden" }}>
       {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px 16px 14px" : "20px 28px 18px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px 16px 0" : "20px 28px 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div>
             <h1 style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>MLS Feed</h1>
             <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "4px 0 0" }}>
-              {loading ? "Loading listings..." : `${filtered.length} listing${filtered.length !== 1 ? "s" : ""}`}
+              {loading ? "Loading listings..." : `${filtered.length} listing${filtered.length !== 1 ? "s" : ""}${statusFilter ? " · " + statusFilter : ""}`}
             </p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {searchOpen ? (
               <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} onBlur={() => { if (!search) setSearchOpen(false); }}
-                placeholder="Search address or MLS #..."
-                style={{ width: isMobile ? 160 : 220, height: 36, borderRadius: 10, border: "1px solid #e2e8f0", padding: "0 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", background: "#f8fafc" }} />
+                placeholder="Search address, city, agent..."
+                style={{ width: isMobile ? 160 : 240, height: 36, borderRadius: 10, border: "1px solid #e2e8f0", padding: "0 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", background: "#f8fafc" }} />
             ) : (
               <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><circle cx={11} cy={11} r={8}/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -4229,6 +4349,31 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
             )}
           </div>
         </div>
+
+        {/* Tab bar + Status filter */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, overflow: "auto" }}>
+          <div style={{ display: "flex", gap: 2, background: "#f1f5f9", borderRadius: 10, padding: 3 }}>
+            {tabs.map(tab => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+                display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 8, border: "none",
+                background: activeTab === tab.id ? "#fff" : "transparent",
+                color: activeTab === tab.id ? "#0f172a" : "#94a3b8",
+                fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                boxShadow: activeTab === tab.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                transition: "all 0.15s", whiteSpace: "nowrap",
+              }}>{tab.icon} {tab.label}</button>
+            ))}
+          </div>
+          {activeTab !== "dashboard" && (
+            <div style={{ display: "flex", gap: 6, overflow: "auto", paddingBottom: 2 }}>
+              <button onClick={() => setStatusFilter(null)} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (!statusFilter ? "#16a34a" : "#e2e8f0"), background: !statusFilter ? "#f0fdf4" : "#fff", color: !statusFilter ? "#16a34a" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>All</button>
+              {statuses.slice(0, 6).map(s => (
+                <button key={s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (statusFilter === s ? (MLS_STATUS_COLORS[s]?.color || "#16a34a") : "#e2e8f0"), background: statusFilter === s ? (MLS_STATUS_COLORS[s]?.bg || "#f0fdf4") : "#fff", color: statusFilter === s ? (MLS_STATUS_COLORS[s]?.color || "#16a34a") : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>{s} ({statusCounts[s]})</button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ height: 1, background: "#e2e8f0", marginTop: 12 }} />
       </div>
 
       {/* Content */}
@@ -4247,77 +4392,190 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
             <p style={{ color: "#dc2626", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Error: {error}</p>
             <button onClick={fetchListings} style={{ background: "#16a34a", border: "none", borderRadius: 8, padding: "8px 16px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginTop: 12 }}>Try Again</button>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : filtered.length === 0 && activeTab !== "dashboard" ? (
           <div style={{ background: "#fff", borderRadius: 14, border: "1px dashed #e2e8f0", padding: "48px 20px", textAlign: "center" }}>
             <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 12 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            <p style={{ fontSize: 14, color: "#64748b", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, margin: "0 0 4px" }}>No MLS listings yet</p>
+            <p style={{ fontSize: 14, color: "#64748b", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, margin: "0 0 4px" }}>No MLS listings{statusFilter ? (" for " + statusFilter) : ""}</p>
             <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Upload a CSV via the File Uploader to populate the MLS Feed.</p>
           </div>
-        ) : isMobile ? (
-          /* Mobile Cards */
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+
+        /* ── CARDS VIEW ── */
+        ) : activeTab === "cards" ? (
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340, 1fr))", gap: 14 }}>
             {filtered.map(listing => (
-              <div key={listing.rowIndex} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "16px 18px", boxShadow: "0 1px 4px rgba(0,0,0,0.03)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>{listing.address || "—"}</p>
-                    <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Mono', monospace", margin: 0 }}>MLS# {listing.mlsNumber || "—"}</p>
-                  </div>
-                  <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{listing.price ? fmt(listing.price) : "—"}</span>
+              <div key={listing.rowIndex} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.03)", transition: "box-shadow 0.15s" }}>
+                {/* Image placeholder — future Zillow API */}
+                <div style={{ height: 140, background: "linear-gradient(135deg, #f1f5f9, #e2e8f0)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                  <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  <div style={{ position: "absolute", top: 10, left: 10 }}><MLSStatusBadge status={listing.status} /></div>
+                  <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>MLS# {listing.mlsNumber || "—"}</div>
                 </div>
-                <button onClick={() => handleAddToPipeline(listing)} disabled={addingId === listing.rowIndex} style={{
-                  width: "100%", padding: "10px 0", borderRadius: 10, border: "1px solid #16a34a",
-                  background: addingId === listing.rowIndex ? "#f0fdf4" : "#fff",
-                  color: "#16a34a", fontSize: 12, fontWeight: 700, cursor: addingId === listing.rowIndex ? "not-allowed" : "pointer",
-                  fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  transition: "all 0.15s",
-                }}>
-                  {addingId === listing.rowIndex ? (
-                    <><svg width={14} height={14} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle cx={12} cy={12} r={10} fill="none" stroke="#16a34a" strokeWidth={3} opacity={0.3} /><path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="#16a34a" strokeWidth={3} strokeLinecap="round" /></svg> Adding...</>
-                  ) : (
-                    <><svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add to Pipeline</>
-                  )}
-                </button>
+                {/* Card body */}
+                <div style={{ padding: "14px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{listing.address || "—"}</p>
+                      <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>{[listing.city, listing.county, listing.zip].filter(Boolean).join(", ") || "—"}</p>
+                    </div>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap", marginLeft: 10 }}>{listing.price ? fmt(listing.price) : "—"}</span>
+                  </div>
+                  {/* Key metrics row */}
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                    {listing.beds && <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}><strong>{listing.beds}</strong> Beds</span>}
+                    {listing.baths && <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}><strong>{listing.baths}</strong> Baths</span>}
+                    {(listing.heatedArea || listing.sqftTotal) && <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}><strong>{fmtNum(listing.heatedArea || listing.sqftTotal)}</strong> SF</span>}
+                    {listing.lotAcres && <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}><strong>{listing.lotAcres}</strong> Acres</span>}
+                    {listing.yearBuilt && <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Built <strong>{listing.yearBuilt}</strong></span>}
+                    {listing.ppsf && <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}><strong>{listing.ppsf.startsWith("$") ? listing.ppsf : "$" + listing.ppsf}</strong>/SF</span>}
+                    {listing.units && parseInt(listing.units) > 1 && <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}><strong>{listing.units}</strong> Units</span>}
+                    {listing.cdom && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{listing.cdom}d on market</span>}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    {listing.propType && <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 600 }}>{listing.propType}</span>}
+                    <button onClick={() => handleAddToPipeline(listing)} disabled={addingId === listing.rowIndex} style={{
+                      padding: "7px 16px", borderRadius: 8, border: "1px solid #16a34a22",
+                      background: addingId === listing.rowIndex ? "#f0fdf4" : "rgba(22,163,74,0.06)",
+                      color: "#16a34a", fontSize: 11, fontWeight: 700, cursor: addingId === listing.rowIndex ? "not-allowed" : "pointer",
+                      fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", display: "inline-flex", alignItems: "center", gap: 4, marginLeft: "auto",
+                    }}>
+                      {addingId === listing.rowIndex ? "Adding..." : "+ Pipeline"}
+                    </button>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
-        ) : (
-          /* Desktop Table */
-          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif" }}>
+
+        /* ── TABLE VIEW ── */
+        ) : activeTab === "table" ? (
+          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif", minWidth: 1000 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #f1f5f9" }}>
-                  <th style={{ padding: "12px 18px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Property Address</th>
-                  <th style={{ padding: "12px 18px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>MLS #</th>
-                  <th style={{ padding: "12px 18px", textAlign: "right", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Price</th>
-                  <th style={{ padding: "12px 18px", textAlign: "center", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", width: 140 }}>Action</th>
+                  <th onClick={() => handleSort("address")} style={thStyle}>Address<SortArrow col="address"/></th>
+                  <th onClick={() => handleSort("city")} style={thStyle}>City<SortArrow col="city"/></th>
+                  <th onClick={() => handleSort("price")} style={{...thStyle, textAlign: "right"}}>Price<SortArrow col="price"/></th>
+                  <th onClick={() => handleSort("status")} style={thStyle}>Status<SortArrow col="status"/></th>
+                  <th onClick={() => handleSort("propType")} style={thStyle}>Type<SortArrow col="propType"/></th>
+                  <th onClick={() => handleSort("beds")} style={{...thStyle, textAlign: "center"}}>Beds<SortArrow col="beds"/></th>
+                  <th onClick={() => handleSort("baths")} style={{...thStyle, textAlign: "center"}}>Baths<SortArrow col="baths"/></th>
+                  <th onClick={() => handleSort("heatedArea")} style={{...thStyle, textAlign: "right"}}>SqFt<SortArrow col="heatedArea"/></th>
+                  <th onClick={() => handleSort("ppsf")} style={{...thStyle, textAlign: "right"}}>$/SF<SortArrow col="ppsf"/></th>
+                  <th onClick={() => handleSort("yearBuilt")} style={{...thStyle, textAlign: "center"}}>Built<SortArrow col="yearBuilt"/></th>
+                  <th onClick={() => handleSort("cdom")} style={{...thStyle, textAlign: "center"}}>DOM<SortArrow col="cdom"/></th>
+                  <th style={{...thStyle, textAlign: "center", cursor: "default", width: 100}}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(listing => (
+                {sorted.map(listing => (
                   <tr key={listing.rowIndex} onMouseEnter={() => setHoveredRow(listing.rowIndex)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f8fafc", background: hoveredRow === listing.rowIndex ? "#fafffe" : "transparent", transition: "background 0.1s" }}>
-                    <td style={{ padding: "14px 18px", fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{listing.address || "—"}</td>
-                    <td style={{ padding: "14px 18px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{listing.mlsNumber || "—"}</td>
-                    <td style={{ padding: "14px 18px", fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace", textAlign: "right" }}>{listing.price ? fmt(listing.price) : "—"}</td>
-                    <td style={{ padding: "14px 18px", textAlign: "center" }}>
+                    <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{listing.address || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>{listing.city || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace", textAlign: "right" }}>{listing.price ? fmt(listing.price) : "—"}</td>
+                    <td style={{ padding: "12px 14px" }}><MLSStatusBadge status={listing.status} /></td>
+                    <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>{listing.propType || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.beds || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.baths || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "right", fontFamily: "'DM Mono', monospace" }}>{listing.heatedArea ? fmtNum(listing.heatedArea) : "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "right", fontFamily: "'DM Mono', monospace" }}>{listing.ppsf || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.yearBuilt || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.cdom || listing.adom || "—"}</td>
+                    <td style={{ padding: "12px 14px", textAlign: "center" }}>
                       <button onClick={() => handleAddToPipeline(listing)} disabled={addingId === listing.rowIndex} style={{
-                        padding: "6px 14px", borderRadius: 8, border: "1px solid #16a34a22",
+                        padding: "5px 12px", borderRadius: 8, border: "1px solid #16a34a22",
                         background: addingId === listing.rowIndex ? "#f0fdf4" : "rgba(22,163,74,0.06)",
-                        color: "#16a34a", fontSize: 11, fontWeight: 700, cursor: addingId === listing.rowIndex ? "not-allowed" : "pointer",
-                        fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", display: "inline-flex", alignItems: "center", gap: 4,
+                        color: "#16a34a", fontSize: 10, fontWeight: 700, cursor: addingId === listing.rowIndex ? "not-allowed" : "pointer",
+                        fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s",
                       }}>
-                        {addingId === listing.rowIndex ? "Adding..." : "+ Pipeline"}
+                        {addingId === listing.rowIndex ? "..." : "+ Pipeline"}
                       </button>
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={4} style={{ padding: "40px 18px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match your search</td></tr>
-                )}
+                {sorted.length === 0 && <tr><td colSpan={12} style={{ padding: "40px 14px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match</td></tr>}
               </tbody>
             </table>
           </div>
-        )}
+
+        /* ── DASHBOARD VIEW ── */
+        ) : activeTab === "dashboard" ? (
+          <div>
+            {/* Top Stats */}
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+              {[
+                { label: "Total Listings", value: totalListings },
+                { label: "Avg Price", value: fmt(avgPrice) },
+                { label: "Median Price", value: fmt(medianPrice) },
+                { label: "Avg $/SF", value: avgPPSF ? "$" + avgPPSF.toFixed(0) : "—" },
+              ].map((s, i) => (
+                <div key={i} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "16px 18px" }}>
+                  <p style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>{s.label}</p>
+                  <p style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0, letterSpacing: "-0.02em" }}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Status Breakdown */}
+            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 20 }}>
+              <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                By Status <span style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+              </h3>
+              {/* Color bar */}
+              <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", height: 10, marginBottom: 14 }}>
+                {statuses.map(s => {
+                  const pct = (statusCounts[s] / totalListings) * 100;
+                  const color = MLS_STATUS_COLORS[s]?.color || "#94a3b8";
+                  return <div key={s} style={{ width: pct + "%", background: color, transition: "width 0.3s" }} />;
+                })}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {statuses.map(s => {
+                  const color = MLS_STATUS_COLORS[s]?.color || "#94a3b8";
+                  const pct = ((statusCounts[s] / totalListings) * 100).toFixed(0);
+                  return (
+                    <div key={s} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: "#f8fafc" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{s}</span>
+                      <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{statusCounts[s]} ({pct}%)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Property Type + DOM */}
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px" }}>
+                <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>By Property Type</h3>
+                {propTypes.map(([type, count]) => (
+                  <div key={type} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f8fafc" }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{type}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 60, height: 5, background: "#e2e8f0", borderRadius: 99, overflow: "hidden" }}>
+                        <div style={{ width: ((count / totalListings) * 100) + "%", height: "100%", background: "#16a34a", borderRadius: 99 }} />
+                      </div>
+                      <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace", minWidth: 28, textAlign: "right" }}>{count}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px" }}>
+                <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>Market Snapshot</h3>
+                {[
+                  { label: "Avg Days on Market", value: avgDOM ? avgDOM + " days" : "—" },
+                  { label: "Active Listings", value: statusCounts["Active"] || 0 },
+                  { label: "Pending", value: statusCounts["Pending"] || 0 },
+                  { label: "Total Volume", value: prices.length > 0 ? fmt(prices.reduce((s, n) => s + n, 0)) : "—" },
+                ].map((item, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: i < 3 ? "1px solid #f8fafc" : "none" }}>
+                    <span style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{item.label}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
