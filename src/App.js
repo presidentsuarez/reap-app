@@ -18,6 +18,11 @@ const supabase = createClient(
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 const TRIAL_DAYS = 14;
 
+// ── Org / Team tier ranking ──
+const PLATFORM_ADMIN_EMAIL = "javier@thesuarezcapital.com";
+const TIER_RANK = { free: 0, starter: 1, team: 2, pro: 3, enterprise: 4 };
+const getTierRank = (tier) => TIER_RANK[(tier || "starter").toLowerCase()] || 1;
+
 const STATUS_CONFIG = {
   "New":            { color: "#16a34a", bg: "rgba(22,163,74,0.08)",   dot: "#16a34a" },
   "Review":         { color: "#d97706", bg: "rgba(217,119,6,0.08)",   dot: "#d97706" },
@@ -2628,7 +2633,7 @@ function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
   );
 }
 
-function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer }) {
+function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp }) {
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -2670,6 +2675,7 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
         lastContact: g(row, colLastContact), followUpNotes: g(row, colFollowUpNotes),
       }));
       const allContacts = parsed.filter(c => c.name && c.name.trim() !== "");
+      // Filter by team emails if available (contacts don't have a strict User column, show all for now)
       setBuyers(allContacts);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, []);
@@ -3137,7 +3143,7 @@ function PortfolioDetailView({ portfolio, deals, onBack, onEdit, onSelectDeal, i
   );
 }
 
-function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfolioId, onClearPendingPortfolio, onHashUpdate }) {
+function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfolioId, onClearPendingPortfolio, onHashUpdate, teamEmails: teamEmailsProp }) {
   var [portfolios, setPortfolios] = useState([]);
   var [portfoliosLoading, setPortfoliosLoading] = useState(true);
   var [selectedPortfolio, setSelectedPortfolio] = useState(null);
@@ -3146,6 +3152,7 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfoli
   var [hoveredCard, setHoveredCard] = useState(null);
 
   var userEmail = session && session.user ? session.user.email : "";
+  var emailsToShow = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp : [userEmail.toLowerCase()];
 
   var fetchPortfolios = function() {
     setPortfoliosLoading(true);
@@ -3157,7 +3164,7 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfoli
       var parsed = [];
       for (var i = 1; i < rows.length; i++) {
         var row = rows[i];
-        if (!row[1] || row[1] !== userEmail) continue;
+        if (!row[1] || !emailsToShow.includes(row[1].toLowerCase())) continue;
         parsed.push({
           id: row[0] || "",
           user: row[1] || "",
@@ -3602,7 +3609,7 @@ function HeatMapPlaceholder({ markets, isMobile }) {
   );
 }
 
-function MarketIntelligenceView({ deals, isMobile, session }) {
+function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmailsProp }) {
   const [markets, setMarkets] = useState([]);
   const [marketsLoading, setMarketsLoading] = useState(true);
   const [sortField, setSortField] = useState("aiSignalRank");
@@ -3671,8 +3678,8 @@ function MarketIntelligenceView({ deals, isMobile, session }) {
     function computeFromDeals() {
       // Aggregate deal data by city+state as fallback
       const marketMap = {};
-      const userEmail = session?.user?.email || "";
-      const userDeals = deals.filter(d => d.user === userEmail);
+      const emailsToShow = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp : [session?.user?.email?.toLowerCase() || ""];
+      const userDeals = deals.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
       
       userDeals.forEach(d => {
         const city = (d.city || "").trim();
@@ -4006,7 +4013,8 @@ function MarketIntelligenceView({ deals, isMobile, session }) {
   );
 }
 
-function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckout, onSignOut, onClose }) {
+function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckout, onSignOut, onClose, orgData, orgMembers, inviteEmail, setInviteEmail, inviteSaving, inviteSuccess, onInviteMember, onRemoveMember, features, featureFlags, onToggleFeature }) {
+  const [activeTab, setActiveTab] = useState("profile");
   const user = session?.user || {};
   const email = user.email || "—";
   const fullName = user.user_metadata?.full_name || "";
@@ -4014,114 +4022,555 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
   const initials = displayName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   const createdAt = user.created_at ? fmtDate(user.created_at) : "—";
   const provider = user.app_metadata?.provider || "email";
+  const isOwner = orgData && orgData.owner_email === email;
 
-  const SettingRow = ({ icon, label, value, action, actionLabel, danger }) => (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "16px 0", borderBottom: "1px solid #f1f5f9",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: danger ? "#fef2f2" : "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{label}</div>
-          <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
-        </div>
-      </div>
-      {action && (
-        <button onClick={action} style={{
-          background: danger ? "#fef2f2" : "#f8fafc", border: `1px solid ${danger ? "#fca5a5" : "#e2e8f0"}`,
-          borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600,
-          color: danger ? "#dc2626" : "#475569", cursor: "pointer",
-          fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", transition: "all 0.15s",
-        }}>{actionLabel}</button>
-      )}
-    </div>
-  );
+  const tabs = [
+    { id: "profile", label: "Profile" },
+    { id: "team", label: "Team" },
+    { id: "permissions", label: "Permissions" },
+    { id: "pricing", label: "Pricing" },
+  ];
+
+  const TIER_LABELS = { free: "Free", starter: "Starter", team: "Team", pro: "Pro", enterprise: "Enterprise" };
+  const TIER_PRICES = { free: "$0/mo", starter: "$99/mo", team: "$499/mo", pro: "$249/mo", enterprise: "Custom" };
+  const TIER_DESC = {
+    free: "View-only access, up to 5 deals",
+    starter: "Individual plan with core features",
+    team: "Shared pipeline, contacts & portfolios for your whole team",
+    pro: "Advanced AI features and document generation",
+    enterprise: "Custom integrations, SSO, dedicated support",
+  };
+
+  const tabStyle = (id) => ({
+    padding: isMobile ? "10px 14px" : "10px 20px",
+    fontSize: 13, fontWeight: activeTab === id ? 600 : 500, cursor: "pointer",
+    color: activeTab === id ? "#16a34a" : "#64748b",
+    borderBottom: activeTab === id ? "2px solid #16a34a" : "2px solid transparent",
+    fontFamily: "'DM Sans', sans-serif", background: "none", border: "none",
+    borderBottomWidth: 2, borderBottomStyle: "solid",
+    borderBottomColor: activeTab === id ? "#16a34a" : "transparent",
+    transition: "all 0.15s", whiteSpace: "nowrap",
+  });
+
+  const cardStyle = { background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? "16px 20px" : "20px 28px", marginBottom: 20 };
+  const sectionLabel = { fontSize: 11, fontWeight: 700, color: "#94a3b8", fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", marginBottom: 12, textTransform: "uppercase" };
+  const rowStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid #f1f5f9" };
 
   return (
     <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
-      {/* Uniform Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px" : "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Profile & Settings</h1>
-          <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>Account information</p>
+      {/* Header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px 0" : "18px 32px 0" }}>
+        <div style={{ marginBottom: 14 }}>
+          <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Settings</h1>
+          <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>
+            {orgData ? orgData.name + " — " + (TIER_LABELS[orgData.plan_tier] || "Team") + " Plan" : "Account & preferences"}
+          </p>
+        </div>
+        {/* Tab bar */}
+        <div style={{ display: "flex", gap: 0, overflowX: "auto", borderBottom: "none" }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={tabStyle(t.id)}>{t.label}</button>
+          ))}
         </div>
       </div>
 
-      <div style={{ padding: isMobile ? "20px 16px" : "28px 32px", maxWidth: 640 }}>
-        {/* Profile Card */}
-        <div style={{
-          background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0",
-          padding: isMobile ? "24px 20px" : "28px 28px", marginBottom: 20,
-          position: "relative", overflow: "hidden",
-        }}>
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(135deg, #16a34a, #15803d)", borderRadius: "16px 16px 0 0" }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: 16,
-              background: "linear-gradient(135deg, #16a34a, #15803d)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif",
-              boxShadow: "0 4px 12px rgba(22,163,74,0.3)", flexShrink: 0,
-            }}>{initials}</div>
-            <div style={{ minWidth: 0 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>{displayName}</h2>
-              <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email}</p>
-              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", fontFamily: "'DM Mono', monospace",
-                  padding: "3px 8px", borderRadius: 6,
-                  background: isSubscribed ? "#f0fdf4" : trialDaysLeft > 3 ? "#f0fdf4" : "#fef2f2",
-                  color: isSubscribed ? "#16a34a" : trialDaysLeft > 3 ? "#16a34a" : "#dc2626",
-                  border: `1px solid ${isSubscribed ? "#bbf7d0" : trialDaysLeft > 3 ? "#bbf7d0" : "#fca5a5"}`,
-                }}>{isSubscribed ? "SUBSCRIBED" : trialDaysLeft > 0 ? trialDaysLeft + " DAYS LEFT" : "TRIAL EXPIRED"}</span>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", fontFamily: "'DM Mono', monospace",
-                  padding: "3px 8px", borderRadius: 6,
-                  background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0",
-                }}>REAP STARTER</span>
+      <div style={{ padding: isMobile ? "20px 16px" : "28px 32px", maxWidth: 700 }}>
+
+        {/* ═══ PROFILE TAB ═══ */}
+        {activeTab === "profile" && (
+          <>
+            {/* Profile card */}
+            <div style={{ ...cardStyle, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(135deg, #16a34a, #15803d)" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <div style={{ width: 56, height: 56, borderRadius: 16, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 4px 12px rgba(22,163,74,0.3)", flexShrink: 0 }}>{initials}</div>
+                <div style={{ minWidth: 0 }}>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>{displayName}</h2>
+                  <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{email}</p>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", fontFamily: "'DM Mono', monospace", padding: "3px 8px", borderRadius: 6, background: isSubscribed ? "#f0fdf4" : trialDaysLeft > 3 ? "#f0fdf4" : "#fef2f2", color: isSubscribed ? "#16a34a" : trialDaysLeft > 3 ? "#16a34a" : "#dc2626", border: "1px solid " + (isSubscribed || trialDaysLeft > 3 ? "#bbf7d0" : "#fca5a5") }}>{isSubscribed ? "SUBSCRIBED" : trialDaysLeft > 0 ? trialDaysLeft + " DAYS LEFT" : "TRIAL EXPIRED"}</span>
+                    {orgData && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", fontFamily: "'DM Mono', monospace", padding: "3px 8px", borderRadius: 6, background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe" }}>{isOwner ? "OWNER" : "MEMBER"}</span>}
+                  </div>
+                </div>
               </div>
             </div>
+
+            {/* Account details */}
+            <div style={cardStyle}>
+              <div style={sectionLabel}>Account</div>
+              <div style={rowStyle}><span style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Email</span><span style={{ fontSize: 13, fontWeight: 500, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{email}</span></div>
+              <div style={rowStyle}><span style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Sign-in</span><span style={{ fontSize: 13, fontWeight: 500, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{provider === "google" ? "Google OAuth" : "Email & Password"}</span></div>
+              <div style={rowStyle}><span style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Member since</span><span style={{ fontSize: 13, fontWeight: 500, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{createdAt}</span></div>
+              <div style={{ ...rowStyle, borderBottom: "none" }}><span style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Subscription</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{isSubscribed ? "REAP Starter — $99/mo" : trialDaysLeft > 0 ? trialDaysLeft + " days left" : "Expired"}</span>
+                  {!isSubscribed && <button onClick={onCheckout} style={{ padding: "5px 12px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Upgrade</button>}
+                </div>
+              </div>
+            </div>
+
+            {/* Sign Out */}
+            <div style={cardStyle}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div><div style={{ fontSize: 13, fontWeight: 600, color: "#dc2626", fontFamily: "'DM Sans', sans-serif" }}>Sign Out</div><div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>End your current session</div></div>
+                <button onClick={onSignOut} style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Sign Out</button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ═══ TEAM TAB ═══ */}
+        {activeTab === "team" && (
+          <>
+            {/* Org header card */}
+            <div style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 14, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: orgData ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : "#e2e8f0" }} />
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: orgData ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{orgData ? orgData.name.charAt(0) : "?"}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{orgData ? orgData.name : "No Organization"}</div>
+                <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{orgData ? (orgMembers.filter(m => m.status === "active").length) + " active members · " + (TIER_LABELS[orgData.plan_tier] || "Team") + " Plan" : "You’re on an individual plan"}</div>
+              </div>
+              {isOwner && <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'DM Mono', monospace", padding: "3px 10px", borderRadius: 6, background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe" }}>OWNER</span>}
+            </div>
+
+            {/* Members list */}
+            {orgData && (
+              <div style={cardStyle}>
+                <div style={sectionLabel}>Members ({orgMembers.length})</div>
+                {orgMembers.map((m, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: i < orgMembers.length - 1 ? "1px solid #f1f5f9" : "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 10, background: m.status === "active" ? "linear-gradient(135deg, #16a34a, #15803d)" : m.status === "invited" ? "linear-gradient(135deg, #d97706, #b45309)" : "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>
+                        {(m.user_email || "").split("@")[0].split(/[._-]/).map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtUserName(m.user_email)}</div>
+                        <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.user_email}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'DM Mono', monospace", padding: "2px 8px", borderRadius: 5, background: m.role === "owner" ? "#f5f3ff" : "#f8fafc", color: m.role === "owner" ? "#7c3aed" : "#64748b", border: "1px solid " + (m.role === "owner" ? "#ddd6fe" : "#e2e8f0"), textTransform: "uppercase" }}>{m.role}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'DM Mono', monospace", padding: "2px 8px", borderRadius: 5, background: m.status === "active" ? "#f0fdf4" : m.status === "invited" ? "#fffbeb" : "#f8fafc", color: m.status === "active" ? "#16a34a" : m.status === "invited" ? "#d97706" : "#94a3b8", border: "1px solid " + (m.status === "active" ? "#bbf7d0" : m.status === "invited" ? "#fde68a" : "#e2e8f0"), textTransform: "uppercase" }}>{m.status}</span>
+                      </div>
+                    </div>
+                    {isOwner && m.role !== "owner" && (
+                      <button onClick={() => onRemoveMember(m.user_email)} style={{ marginLeft: 10, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "5px 12px", fontSize: 11, fontWeight: 600, color: "#dc2626", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Remove</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Invite */}
+            {isOwner && (
+              <div style={cardStyle}>
+                <div style={sectionLabel}>Invite member</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="teammate@company.com" onKeyDown={e => e.key === "Enter" && onInviteMember()} style={{ flex: 1, padding: "11px 14px", fontSize: 14, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 10, outline: "none", color: "#0f172a" }} />
+                  <button onClick={onInviteMember} disabled={inviteSaving || !inviteEmail} style={{ padding: "11px 22px", background: inviteSaving ? "#94a3b8" : "#16a34a", color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: inviteSaving || !inviteEmail ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", opacity: !inviteEmail ? 0.5 : 1, whiteSpace: "nowrap" }}>{inviteSaving ? "Sending..." : "Send Invite"}</button>
+                </div>
+                {inviteSuccess && <div style={{ marginTop: 8, fontSize: 12, color: inviteSuccess.startsWith("Error") ? "#dc2626" : "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{inviteSuccess}</div>}
+                <div style={{ marginTop: 12, fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>They’ll see an invite banner when they log in. Once accepted, they’ll have access to all shared team data.</div>
+              </div>
+            )}
+
+            {!orgData && (
+              <div style={cardStyle}>
+                <div style={{ textAlign: "center", padding: "20px 0" }}>
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>👥</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>No team yet</div>
+                  <div style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>You’re on an individual plan. Team features will be available when you upgrade to the Team tier.</div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ═══ PERMISSIONS TAB ═══ */}
+        {activeTab === "permissions" && (
+          <>
+            <div style={cardStyle}>
+              <div style={sectionLabel}>Feature access</div>
+              <div style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginBottom: 16 }}>
+                {isOwner ? "Toggle which features are enabled for your organization. Changes apply to all team members." : "Features available on your current plan."}
+              </div>
+              {(featureFlags || []).map((f, i) => {
+                const enabled = features[f.feature_key] !== false;
+                return (
+                  <div key={f.feature_key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderBottom: i < (featureFlags || []).length - 1 ? "1px solid #f1f5f9" : "none" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{f.display_name}</div>
+                        <span style={{ fontSize: 9, fontWeight: 700, fontFamily: "'DM Mono', monospace", padding: "1px 6px", borderRadius: 4, background: f.min_tier === "starter" ? "#f0fdf4" : f.min_tier === "team" ? "#f5f3ff" : "#fffbeb", color: f.min_tier === "starter" ? "#16a34a" : f.min_tier === "team" ? "#7c3aed" : "#d97706", border: "1px solid " + (f.min_tier === "starter" ? "#bbf7d0" : f.min_tier === "team" ? "#ddd6fe" : "#fde68a"), textTransform: "uppercase" }}>{f.min_tier}+</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{f.description}</div>
+                    </div>
+                    {isOwner ? (
+                      <div onClick={() => onToggleFeature(f.feature_key, enabled)} style={{ width: 44, height: 24, borderRadius: 12, background: enabled ? "#16a34a" : "#d1d5db", cursor: "pointer", position: "relative", transition: "background 0.2s", flexShrink: 0, marginLeft: 16 }}>
+                        <div style={{ width: 20, height: 20, borderRadius: 10, background: "#fff", position: "absolute", top: 2, left: enabled ? 22 : 2, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11, fontWeight: 600, fontFamily: "'DM Mono', monospace", color: enabled ? "#16a34a" : "#dc2626", flexShrink: 0, marginLeft: 16 }}>{enabled ? "✓ ON" : "✗ OFF"}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* ═══ PRICING TAB ═══ */}
+        {activeTab === "pricing" && (
+          <>
+            <div style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginBottom: 16 }}>
+              Compare plans and see which features are included at each tier.
+            </div>
+            {["free", "starter", "team", "pro", "enterprise"].map(tier => {
+              const isCurrentTier = orgData ? orgData.plan_tier === tier : (isSubscribed ? "starter" === tier : "free" === tier);
+              const tierFeatures = (featureFlags || []).filter(f => getTierRank(tier) >= getTierRank(f.min_tier));
+              return (
+                <div key={tier} style={{ ...cardStyle, border: isCurrentTier ? "2px solid #16a34a" : "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
+                  {isCurrentTier && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(135deg, #16a34a, #15803d)" }} />}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{TIER_LABELS[tier]}</span>
+                        {isCurrentTier && <span style={{ fontSize: 9, fontWeight: 700, fontFamily: "'DM Mono', monospace", padding: "2px 8px", borderRadius: 5, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>CURRENT</span>}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{TIER_DESC[tier]}</div>
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", flexShrink: 0 }}>{TIER_PRICES[tier]}</div>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                    {tierFeatures.map(f => (
+                      <span key={f.feature_key} style={{ fontSize: 11, fontWeight: 500, fontFamily: "'DM Sans', sans-serif", padding: "3px 10px", borderRadius: 6, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>✓ {f.display_name}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ADMIN VIEW — Platform owner only
+   ═══════════════════════════════════════════════════════════ */
+
+function AdminView({ session, isMobile }) {
+  const [tab, setTab] = useState("users");
+  const [users, setUsers] = useState([]);
+  const [orgs, setOrgs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingUser, setEditingUser] = useState(null);
+  const [editingOrg, setEditingOrg] = useState(null);
+  const [viewedOrgMembers, setViewedOrgMembers] = useState([]);
+  const [addToOrgModal, setAddToOrgModal] = useState(null);
+  const [addEmail, setAddEmail] = useState("");
+  const [newOrgModal, setNewOrgModal] = useState(false);
+  const [newOrgName, setNewOrgName] = useState("");
+  const [newOrgOwner, setNewOrgOwner] = useState("");
+  const [newOrgTier, setNewOrgTier] = useState("team");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const fetchUsers = async () => {
+    const { data, error } = await supabase.rpc("admin_get_all_users");
+    if (error) { console.error("Admin users error:", error); setMsg("Error: " + error.message); }
+    else setUsers(data || []);
+  };
+  const fetchOrgs = async () => {
+    const { data, error } = await supabase.rpc("admin_get_all_orgs");
+    if (error) { console.error("Admin orgs error:", error); setMsg("Error: " + error.message); }
+    else setOrgs(data || []);
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([fetchUsers(), fetchOrgs()]).finally(() => setLoading(false));
+  }, []);
+
+  const handleSaveUser = async () => {
+    if (!editingUser) return;
+    setSaving(true); setMsg("");
+    try {
+      const { error } = await supabase.rpc("admin_update_user", {
+        target_user_id: editingUser.id,
+        new_plan_tier: editingUser.plan_tier,
+        new_is_subscribed: editingUser.is_subscribed,
+        new_full_name: editingUser.full_name,
+        new_org_id: editingUser.org_id || null,
+      });
+      if (error) throw error;
+      setMsg("User updated!");
+      setEditingUser(null);
+      fetchUsers();
+    } catch (err) { setMsg("Error: " + err.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleSaveOrg = async () => {
+    if (!editingOrg) return;
+    setSaving(true); setMsg("");
+    try {
+      const { error } = await supabase.rpc("admin_update_org", {
+        target_org_id: editingOrg.id,
+        new_name: editingOrg.name,
+        new_plan_tier: editingOrg.plan_tier,
+        new_owner_email: editingOrg.owner_email,
+      });
+      if (error) throw error;
+      setMsg("Organization updated!");
+      setEditingOrg(null);
+      fetchOrgs();
+    } catch (err) { setMsg("Error: " + err.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleViewMembers = async (orgId) => {
+    const { data } = await supabase.rpc("admin_get_org_members", { target_org_id: orgId });
+    setViewedOrgMembers(data || []);
+  };
+
+  const handleAddToOrg = async () => {
+    if (!addToOrgModal || !addEmail) return;
+    setSaving(true); setMsg("");
+    try {
+      const { error } = await supabase.rpc("admin_add_user_to_org", {
+        target_org_id: addToOrgModal,
+        target_email: addEmail.toLowerCase().trim(),
+      });
+      if (error) throw error;
+      setMsg("User added to org!");
+      setAddEmail("");
+      setAddToOrgModal(null);
+      fetchOrgs(); fetchUsers();
+    } catch (err) { setMsg("Error: " + err.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleCreateOrg = async () => {
+    if (!newOrgName || !newOrgOwner) return;
+    setSaving(true); setMsg("");
+    try {
+      const { error } = await supabase.rpc("admin_create_org", {
+        org_name: newOrgName,
+        org_owner_email: newOrgOwner.toLowerCase().trim(),
+        org_plan_tier: newOrgTier,
+      });
+      if (error) throw error;
+      setMsg("Organization created!");
+      setNewOrgModal(false); setNewOrgName(""); setNewOrgOwner(""); setNewOrgTier("team");
+      fetchOrgs();
+    } catch (err) { setMsg("Error: " + err.message); }
+    finally { setSaving(false); }
+  };
+
+  const cardS = { background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "20px 24px", marginBottom: 16 };
+  const inpS = { width: "100%", padding: "9px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", color: "#0f172a", boxSizing: "border-box" };
+  const selS = { ...inpS, background: "#fff", cursor: "pointer" };
+  const btnP = { padding: "8px 18px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" };
+  const btnS = { padding: "8px 18px", background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" };
+  const bdg = (text, color, bg, bc) => <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'DM Mono', monospace", padding: "2px 7px", borderRadius: 5, background: bg, color, border: "1px solid " + bc, textTransform: "uppercase" }}>{text}</span>;
+
+  const tStyle = (id) => ({
+    padding: isMobile ? "10px 14px" : "10px 20px", fontSize: 13, fontWeight: tab === id ? 600 : 500, cursor: "pointer",
+    color: tab === id ? "#dc2626" : "#64748b", background: "none", border: "none",
+    borderBottom: tab === id ? "2px solid #dc2626" : "2px solid transparent",
+    fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", whiteSpace: "nowrap",
+  });
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px 0" : "18px 32px 0" }}>
+        <div style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #dc2626, #b91c1c)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div>
+            <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Platform Admin</h1>
+            <p style={{ fontSize: 11, color: "#dc2626", margin: "2px 0 0", fontFamily: "'DM Mono', monospace", fontWeight: 600, letterSpacing: "0.04em" }}>OWNER ACCESS ONLY</p>
           </div>
         </div>
-
-        {/* Settings Sections */}
-        <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? "4px 20px" : "4px 28px", marginBottom: 20 }}>
-          <SettingRow
-            icon={<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>}
-            label="Email"
-            value={email}
-          />
-          <SettingRow
-            icon={<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
-            label="Sign-in Method"
-            value={provider === "google" ? "Google OAuth" : "Email & Password"}
-          />
-          <SettingRow
-            icon={<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
-            label="Member Since"
-            value={createdAt}
-          />
-          <SettingRow
-            icon={<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
-            label="Subscription"
-            value={isSubscribed ? "REAP Starter — $99/mo" : trialDaysLeft > 0 ? "Free Trial — " + trialDaysLeft + " days remaining" : "Trial expired"}
-            action={!isSubscribed ? onCheckout : undefined}
-            actionLabel="Upgrade"
-          />
+        <div style={{ display: "flex", gap: 0 }}>
+          <button onClick={() => setTab("users")} style={tStyle("users")}>Users ({users.length})</button>
+          <button onClick={() => setTab("orgs")} style={tStyle("orgs")}>Organizations ({orgs.length})</button>
         </div>
+      </div>
 
-        {/* Sign Out */}
-        <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? "4px 20px" : "4px 28px" }}>
-          <SettingRow
-            icon={<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth={2}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>}
-            label="Sign Out"
-            value="End your current session"
-            action={onSignOut}
-            actionLabel="Sign Out"
-            danger
-          />
-        </div>
+      <div style={{ padding: isMobile ? "16px" : "24px 32px", maxWidth: 900 }}>
+        {msg && <div style={{ padding: "10px 16px", borderRadius: 10, marginBottom: 16, fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, background: msg.startsWith("Error") ? "#fef2f2" : "#f0fdf4", color: msg.startsWith("Error") ? "#dc2626" : "#16a34a", border: "1px solid " + (msg.startsWith("Error") ? "#fca5a5" : "#bbf7d0") }}>{msg}</div>}
+
+        {tab === "users" && (
+          <>
+            <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginBottom: 16 }}>All registered users across the platform. Click a row to edit.</div>
+            {users.map((u) => (
+              <div key={u.id} onClick={() => setEditingUser({ ...u })} style={{ ...cardS, cursor: "pointer", transition: "all 0.15s", border: editingUser?.id === u.id ? "2px solid #dc2626" : "1px solid #e2e8f0" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: u.is_subscribed ? "linear-gradient(135deg, #16a34a, #15803d)" : "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: u.is_subscribed ? "#fff" : "#94a3b8", fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{(u.full_name || u.email || "?").split(/[\s@._-]/).map(w => w[0]).join("").toUpperCase().slice(0, 2)}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{u.full_name || fmtUserName(u.email)}</div>
+                      <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    {bdg(u.plan_tier || "starter", u.plan_tier === "team" ? "#7c3aed" : "#64748b", u.plan_tier === "team" ? "#f5f3ff" : "#f8fafc", u.plan_tier === "team" ? "#ddd6fe" : "#e2e8f0")}
+                    {u.is_subscribed ? bdg("subscribed", "#16a34a", "#f0fdf4", "#bbf7d0") : bdg("no sub", "#94a3b8", "#f8fafc", "#e2e8f0")}
+                    {u.org_name && bdg(u.org_name, "#0891b2", "#ecfeff", "#a5f3fc")}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {editingUser && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={() => setEditingUser(null)}>
+                <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 480, width: "100%", maxHeight: "80vh", overflow: "auto" }}>
+                  <h3 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Edit User</h3>
+                  <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginBottom: 20 }}>{editingUser.email}</p>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Full Name</label>
+                    <input value={editingUser.full_name || ""} onChange={e => setEditingUser({ ...editingUser, full_name: e.target.value })} style={inpS} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Plan Tier</label>
+                      <select value={editingUser.plan_tier || "starter"} onChange={e => setEditingUser({ ...editingUser, plan_tier: e.target.value })} style={selS}>
+                        <option value="free">Free</option><option value="starter">Starter</option><option value="team">Team</option><option value="pro">Pro</option><option value="enterprise">Enterprise</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Subscribed</label>
+                      <select value={editingUser.is_subscribed ? "yes" : "no"} onChange={e => setEditingUser({ ...editingUser, is_subscribed: e.target.value === "yes" })} style={selS}>
+                        <option value="yes">Yes</option><option value="no">No</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Organization</label>
+                    <select value={editingUser.org_id || ""} onChange={e => setEditingUser({ ...editingUser, org_id: e.target.value || null })} style={selS}>
+                      <option value="">None (Solo User)</option>
+                      {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 20 }}>
+                    <button onClick={() => setEditingUser(null)} style={btnS}>Cancel</button>
+                    <button onClick={handleSaveUser} disabled={saving} style={{ ...btnP, opacity: saving ? 0.6 : 1 }}>{saving ? "Saving..." : "Save Changes"}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === "orgs" && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>All organizations on the platform.</div>
+              <button onClick={() => setNewOrgModal(true)} style={btnP}>+ New Org</button>
+            </div>
+            {orgs.map((o) => (
+              <div key={o.id} style={cardS}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: editingOrg?.id === o.id ? 14 : 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, #7c3aed, #6d28d9)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{o.name.charAt(0)}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{o.name}</div>
+                      <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Owner: {o.owner_email} · {o.member_count} member{Number(o.member_count) !== 1 ? "s" : ""}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {bdg(o.plan_tier || "team", "#7c3aed", "#f5f3ff", "#ddd6fe")}
+                    <button onClick={() => { setEditingOrg({ ...o }); handleViewMembers(o.id); }} style={btnS}>Edit</button>
+                    <button onClick={() => setAddToOrgModal(o.id)} style={btnS}>+ Member</button>
+                  </div>
+                </div>
+
+                {editingOrg?.id === o.id && (
+                  <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 14, marginTop: 8 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Name</label>
+                        <input value={editingOrg.name} onChange={e => setEditingOrg({ ...editingOrg, name: e.target.value })} style={inpS} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Plan</label>
+                        <select value={editingOrg.plan_tier || "team"} onChange={e => setEditingOrg({ ...editingOrg, plan_tier: e.target.value })} style={selS}>
+                          <option value="free">Free</option><option value="starter">Starter</option><option value="team">Team</option><option value="pro">Pro</option><option value="enterprise">Enterprise</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Owner Email</label>
+                      <input value={editingOrg.owner_email} onChange={e => setEditingOrg({ ...editingOrg, owner_email: e.target.value })} style={inpS} />
+                    </div>
+                    {viewedOrgMembers.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", fontFamily: "'DM Mono', monospace", marginBottom: 6 }}>MEMBERS</div>
+                        {viewedOrgMembers.map((m, mi) => (
+                          <div key={mi} style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", padding: "4px 0", display: "flex", gap: 8, alignItems: "center" }}>
+                            <span>{m.user_email}</span>
+                            {bdg(m.role, m.role === "owner" ? "#7c3aed" : "#64748b", m.role === "owner" ? "#f5f3ff" : "#f8fafc", m.role === "owner" ? "#ddd6fe" : "#e2e8f0")}
+                            {bdg(m.status, m.status === "active" ? "#16a34a" : "#d97706", m.status === "active" ? "#f0fdf4" : "#fffbeb", m.status === "active" ? "#bbf7d0" : "#fde68a")}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      <button onClick={() => { setEditingOrg(null); setViewedOrgMembers([]); }} style={btnS}>Cancel</button>
+                      <button onClick={handleSaveOrg} disabled={saving} style={{ ...btnP, opacity: saving ? 0.6 : 1 }}>{saving ? "Saving..." : "Save"}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {addToOrgModal && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={() => { setAddToOrgModal(null); setAddEmail(""); }}>
+                <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 420, width: "100%" }}>
+                  <h3 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Add User to Organization</h3>
+                  <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginBottom: 16 }}>{orgs.find(x => x.id === addToOrgModal)?.name || ""}</p>
+                  <input value={addEmail} onChange={e => setAddEmail(e.target.value)} placeholder="user@email.com" style={{ ...inpS, marginBottom: 16 }} onKeyDown={e => e.key === "Enter" && handleAddToOrg()} />
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={() => { setAddToOrgModal(null); setAddEmail(""); }} style={btnS}>Cancel</button>
+                    <button onClick={handleAddToOrg} disabled={saving || !addEmail} style={{ ...btnP, opacity: !addEmail ? 0.5 : 1 }}>{saving ? "Adding..." : "Add to Org"}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {newOrgModal && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={() => setNewOrgModal(false)}>
+                <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 420, width: "100%" }}>
+                  <h3 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 16px" }}>Create Organization</h3>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Name</label>
+                    <input value={newOrgName} onChange={e => setNewOrgName(e.target.value)} placeholder="Acme Capital LLC" style={inpS} />
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Owner Email</label>
+                    <input value={newOrgOwner} onChange={e => setNewOrgOwner(e.target.value)} placeholder="owner@company.com" style={inpS} />
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Plan Tier</label>
+                    <select value={newOrgTier} onChange={e => setNewOrgTier(e.target.value)} style={selS}>
+                      <option value="free">Free</option><option value="starter">Starter</option><option value="team">Team</option><option value="pro">Pro</option><option value="enterprise">Enterprise</option>
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={() => setNewOrgModal(false)} style={btnS}>Cancel</button>
+                    <button onClick={handleCreateOrg} disabled={saving || !newOrgName || !newOrgOwner} style={{ ...btnP, opacity: !newOrgName || !newOrgOwner ? 0.5 : 1 }}>{saving ? "Creating..." : "Create"}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -4817,6 +5266,18 @@ export default function ReapApp() {
   const [pendingDealAddress, setPendingDealAddress] = useState(null);
   const [pendingPortfolioId, setPendingPortfolioId] = useState(null);
 
+  // ── Organization / Team state ──
+  const [orgData, setOrgData] = useState(null);           // { id, name, owner_email, plan_tier }
+  const [teamEmails, setTeamEmails] = useState([]);        // all emails in the user's org
+  const [features, setFeatures] = useState({});            // { pipeline: true, portfolio: false, ... }
+  const [orgLoading, setOrgLoading] = useState(true);
+  const [pendingInvite, setPendingInvite] = useState(null); // invite awaiting acceptance
+  const [orgMembers, setOrgMembers] = useState([]);        // all members in the user's org
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const [inviteSuccess, setInviteSuccess] = useState("");
+  const [featureFlags, setFeatureFlags] = useState([]);    // raw feature_flags rows
+
   // --- Hash-based routing ---
   const updateHash = useCallback((hash) => {
     if (window.location.hash !== "#" + hash) {
@@ -4838,7 +5299,7 @@ export default function ReapApp() {
       setPendingPortfolioId(id);
     } else if (hash === "profile") {
       setShowProfile(true);
-    } else if (["pipeline", "portfolios", "analytics", "contacts", "markets", "mls", "uploader"].includes(hash)) {
+    } else if (["pipeline", "portfolios", "analytics", "contacts", "markets", "mls", "uploader", "admin"].includes(hash)) {
       setActiveNav(hash);
     }
   }, []);
@@ -4874,7 +5335,7 @@ export default function ReapApp() {
         setPendingPortfolioId(decodeURIComponent(hash.replace("portfolio/", "")));
       } else if (hash === "profile") {
         setShowProfile(true);
-      } else if (["pipeline", "portfolios", "analytics", "contacts", "markets", "mls", "uploader"].includes(hash)) {
+      } else if (["pipeline", "portfolios", "analytics", "contacts", "markets", "mls", "uploader", "admin"].includes(hash)) {
         setActiveNav(hash);
         setShowProfile(false);
         setSelectedDeal(null);
@@ -4957,6 +5418,235 @@ export default function ReapApp() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  /* ═══════════════════════════════════════════════════════
+     ORG / TEAM DATA — loads on session change
+     ═══════════════════════════════════════════════════════ */
+  useEffect(() => {
+    if (!session?.user?.email) { setOrgLoading(false); return; }
+    const email = session.user.email.toLowerCase();
+    const uid = session.user.id;
+
+    async function loadOrgData() {
+      setOrgLoading(true);
+      let foundOrgId = null;
+      let foundOrg = null;
+      let foundRole = null;
+      try {
+        // 1. Ensure user_profiles row exists
+        const { data: existingProfile, error: profileErr } = await supabase
+          .from("user_profiles").select("id").eq("id", uid).maybeSingle();
+        console.log("[REAP Org] Profile check:", existingProfile ? "exists" : "creating...", profileErr?.message || "");
+        if (!existingProfile && !profileErr) {
+          await supabase.from("user_profiles").insert({
+            id: uid, email: email,
+            full_name: session.user.user_metadata?.full_name || "",
+            trial_ends_at: new Date(Date.now() + 14 * 86400000).toISOString(),
+          });
+        }
+
+        // 2. Check for pending invites (simple query, no join)
+        const { data: invites } = await supabase
+          .from("org_members")
+          .select("id, org_id, user_email, role, status")
+          .eq("user_email", email)
+          .eq("status", "invited");
+        if (invites && invites.length > 0) {
+          // Fetch org name separately
+          const { data: inviteOrg } = await supabase
+            .from("organizations").select("name").eq("id", invites[0].org_id).maybeSingle();
+          setPendingInvite({ ...invites[0], organizations: inviteOrg });
+        }
+
+        // 3. Check for active org membership (NO join, NO .single())
+        const { data: memberships, error: memberErr } = await supabase
+          .from("org_members")
+          .select("org_id, role, status")
+          .eq("user_email", email)
+          .eq("status", "active");
+        console.log("[REAP Org] Membership query:", memberships?.length || 0, "results", memberErr?.message || "");
+
+        if (memberships && memberships.length > 0) {
+          foundOrgId = memberships[0].org_id;
+          foundRole = memberships[0].role;
+
+          // 4. Fetch org details SEPARATELY
+          const { data: orgRow, error: orgErr } = await supabase
+            .from("organizations")
+            .select("id, name, owner_email, plan_tier, slug")
+            .eq("id", foundOrgId)
+            .maybeSingle();
+          console.log("[REAP Org] Org lookup:", orgRow?.name || "not found", orgErr?.message || "");
+
+          if (orgRow) {
+            foundOrg = orgRow;
+            setOrgData(orgRow);
+
+            // Update user_profiles.org_id
+            await supabase.from("user_profiles")
+              .update({ org_id: orgRow.id })
+              .eq("id", uid);
+
+            // 5. Get all team member emails
+            const { data: members } = await supabase
+              .from("org_members")
+              .select("user_email, role, status, joined_at, created_at")
+              .eq("org_id", orgRow.id);
+            const activeMembers = (members || []).filter(m => m.status === "active");
+            setOrgMembers(members || []);
+            setTeamEmails(activeMembers.map(m => m.user_email.toLowerCase()));
+            console.log("[REAP Org] Team emails:", activeMembers.length, "active members");
+          }
+        }
+
+        if (!foundOrg) {
+          // Solo user — just their own email
+          setOrgData(null);
+          setTeamEmails([email]);
+          setOrgMembers([]);
+          console.log("[REAP Org] Solo user mode");
+        }
+
+        // 6. Load feature flags
+        const { data: flags } = await supabase.from("feature_flags").select("*");
+        setFeatureFlags(flags || []);
+        const userTier = foundOrg?.plan_tier || "starter";
+        const userRank = getTierRank(userTier);
+        console.log("[REAP Org] Feature flags loaded:", flags?.length || 0, "tier:", userTier);
+
+        // Load org overrides if in an org
+        let overrides = {};
+        if (foundOrgId) {
+          const { data: ov } = await supabase
+            .from("org_feature_overrides")
+            .select("feature_key, enabled")
+            .eq("org_id", foundOrgId);
+          (ov || []).forEach(o => { overrides[o.feature_key] = o.enabled; });
+        }
+
+        // Build features map
+        const featureMap = {};
+        (flags || []).forEach(f => {
+          if (!f.is_active) { featureMap[f.feature_key] = false; return; }
+          if (overrides.hasOwnProperty(f.feature_key)) {
+            featureMap[f.feature_key] = overrides[f.feature_key];
+          } else {
+            featureMap[f.feature_key] = userRank >= getTierRank(f.min_tier);
+          }
+        });
+        setFeatures(featureMap);
+
+      } catch (err) {
+        console.error("[REAP Org] Error loading org data:", err);
+        setTeamEmails([email]);
+        setFeatures({ pipeline: true, contacts: true, dashboard: true, market_intel: true, ai_summary: true, portfolio: true, ai_underwriting: true, mls_feed: true, file_uploader: true });
+      } finally {
+        setOrgLoading(false);
+      }
+    }
+
+    loadOrgData();
+  }, [session]);
+
+  // ── Invite acceptance handler ──
+  const handleAcceptInvite = async () => {
+    if (!pendingInvite) return;
+    try {
+      await supabase.from("org_members")
+        .update({ status: "active", joined_at: new Date().toISOString() })
+        .eq("id", pendingInvite.id);
+      setPendingInvite(null);
+      // Reload org data
+      const email = session.user.email.toLowerCase();
+      const { data: membership } = await supabase
+        .from("org_members")
+        .select("org_id, role, organizations(id, name, owner_email, plan_tier, slug)")
+        .eq("user_email", email).eq("status", "active").limit(1).single();
+      if (membership?.organizations) {
+        setOrgData(membership.organizations);
+        const { data: members } = await supabase
+          .from("org_members").select("user_email, role, status, joined_at, created_at")
+          .eq("org_id", membership.organizations.id);
+        const activeMembers = (members || []).filter(m => m.status === "active");
+        setOrgMembers(members || []);
+        setTeamEmails(activeMembers.map(m => m.user_email.toLowerCase()));
+      }
+      // Reload deals with new team context
+      fetchDeals();
+    } catch (err) { console.error("Error accepting invite:", err); }
+  };
+
+  const handleDeclineInvite = async () => {
+    if (!pendingInvite) return;
+    try {
+      await supabase.from("org_members").delete().eq("id", pendingInvite.id);
+      setPendingInvite(null);
+    } catch (err) { console.error("Error declining invite:", err); }
+  };
+
+  // ── Invite a team member ──
+  const handleInviteMember = async () => {
+    if (!inviteEmail || !orgData) return;
+    setInviteSaving(true);
+    setInviteSuccess("");
+    try {
+      const { error } = await supabase.from("org_members").insert({
+        org_id: orgData.id,
+        user_email: inviteEmail.toLowerCase().trim(),
+        role: "member",
+        status: "invited",
+        invited_by: session?.user?.email || "",
+      });
+      if (error) throw error;
+      setInviteSuccess(inviteEmail.trim() + " invited!");
+      setInviteEmail("");
+      // Reload members
+      const { data: members } = await supabase
+        .from("org_members").select("user_email, role, status, joined_at, created_at")
+        .eq("org_id", orgData.id);
+      setOrgMembers(members || []);
+    } catch (err) {
+      setInviteSuccess("Error: " + (err.message || "Could not send invite"));
+    } finally { setInviteSaving(false); }
+  };
+
+  // ── Remove a team member ──
+  const handleRemoveMember = async (memberEmail) => {
+    if (!orgData) return;
+    try {
+      await supabase.from("org_members")
+        .delete()
+        .eq("org_id", orgData.id)
+        .eq("user_email", memberEmail);
+      const { data: members } = await supabase
+        .from("org_members").select("user_email, role, status, joined_at, created_at")
+        .eq("org_id", orgData.id);
+      setOrgMembers(members || []);
+      setTeamEmails((members || []).filter(m => m.status === "active").map(m => m.user_email.toLowerCase()));
+    } catch (err) { console.error("Error removing member:", err); }
+  };
+
+  // ── Toggle a feature override for the org ──
+  const handleToggleFeature = async (featureKey, currentlyEnabled) => {
+    if (!orgData) return;
+    try {
+      if (currentlyEnabled) {
+        // Disable: upsert override with enabled=false
+        await supabase.from("org_feature_overrides").upsert(
+          { org_id: orgData.id, feature_key: featureKey, enabled: false, updated_by: session?.user?.email },
+          { onConflict: "org_id,feature_key" }
+        );
+      } else {
+        // Enable: remove override (fall back to global default) or set enabled=true
+        await supabase.from("org_feature_overrides").upsert(
+          { org_id: orgData.id, feature_key: featureKey, enabled: true, updated_by: session?.user?.email },
+          { onConflict: "org_id,feature_key" }
+        );
+      }
+      // Update local state
+      setFeatures(prev => ({ ...prev, [featureKey]: !currentlyEnabled }));
+    } catch (err) { console.error("Error toggling feature:", err); }
+  };
 
   /* ═══════════════════════════════════════════════════════
      FETCH DEALS — expanded range for all financial columns
@@ -5140,11 +5830,9 @@ export default function ReapApp() {
         insuranceCost: g(row, colInsuranceCost),
       })).filter(d => d.address);
 
-      // Filter to current user's deals only
-      const currentEmail = session?.user?.email?.toLowerCase() || "";
-      const userDeals = currentEmail
-        ? parsed.filter(d => (d.user || "").toLowerCase() === currentEmail)
-        : parsed;
+      // Filter to team's deals (org members see all team deals, solo users see only their own)
+      const emailsToShow = teamEmails.length > 0 ? teamEmails : [session?.user?.email?.toLowerCase() || ""];
+      const userDeals = parsed.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
 
       // Sort newest first
       userDeals.sort((a, b) => {
@@ -5380,7 +6068,15 @@ export default function ReapApp() {
     }
   };
 
-  const navItems = [
+  // ── Feature-gated navigation ──
+  const userEmail = session?.user?.email || "";
+  const userName = session?.user?.user_metadata?.full_name || userEmail;
+  const initials = userName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+  const FEATURE_NAV_MAP = {
+    pipeline: "pipeline", portfolios: "portfolio", analytics: "dashboard",
+    contacts: "contacts", markets: "market_intel", mls: "mls_feed", uploader: "file_uploader"
+  };
+  const allNavItems = [
     { id: "pipeline", label: "Deals", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
     { id: "portfolios", label: "Portfolios", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/><polyline points="2 15.5 12 8.5 22 15.5"/></svg> },
     { id: "analytics", label: "Dashboard", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
@@ -5388,7 +6084,15 @@ export default function ReapApp() {
     { id: "markets", label: "Markets", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
     { id: "mls", label: "MLS Feed", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
     { id: "uploader", label: "File Uploader", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> },
+    ...(userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL ? [{ id: "admin", label: "Admin", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> }] : []),
   ];
+  // Filter nav items by feature flags (fallback: show all if features haven't loaded yet)
+  const navItems = Object.keys(features).length === 0
+    ? allNavItems
+    : allNavItems.filter(item => {
+        const featureKey = FEATURE_NAV_MAP[item.id];
+        return !featureKey || features[featureKey] !== false;
+      });
 
   if (authLoading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
@@ -5417,10 +6121,6 @@ export default function ReapApp() {
   }
 
   if (showPaywall) return <PricingScreen userEmail={session?.user?.email} daysLeft={trialDaysLeft} onCheckout={handleCheckout} checkoutLoading={checkoutLoading} />;
-
-  const userEmail = session?.user?.email || "";
-  const userName = session?.user?.user_metadata?.full_name || userEmail;
-  const initials = userName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
 
   return (
     <>
@@ -5492,23 +6192,43 @@ export default function ReapApp() {
           </div>
         )}
 
+        {/* Invite Banner */}
+        {pendingInvite && (
+          <div style={{
+            background: "linear-gradient(135deg, #7c3aed, #6d28d9)", padding: "12px 20px",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+            position: isMobile ? "fixed" : "relative", top: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56) : undefined,
+            left: 0, right: 0, zIndex: 90,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>
+              <strong>{pendingInvite.organizations?.name || "A team"}</strong> has invited you to join their organization.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={handleAcceptInvite} style={{ padding: "6px 16px", background: "#fff", color: "#7c3aed", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Accept</button>
+              <button onClick={handleDeclineInvite} style={{ padding: "6px 16px", background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Decline</button>
+            </div>
+          </div>
+        )}
+
         {/* Main Content */}
-        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 70 : 0, paddingTop: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56) : (!isSubscribed && trialDaysLeft > 0 ? 42 : 0), position: "relative" }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 70 : 0, paddingTop: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : (!isSubscribed && trialDaysLeft > 0 ? 42 : 0), position: "relative" }}>
           {isMobile ? (
             showProfile ? (
-              <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} />
+              <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} />
             ) : activeNav === "portfolios" ? (
-              <PortfolioView deals={deals} isMobile={true} session={session} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
+              <PortfolioView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
             ) : activeNav === "contacts" ? (
-              <BuyerPipelineView session={session} isMobile={true} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
+              <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
             ) : activeNav === "analytics" ? (
               <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
             ) : activeNav === "markets" ? (
-              <MarketIntelligenceView deals={deals} isMobile={true} session={session} />
+              <MarketIntelligenceView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} />
             ) : activeNav === "mls" ? (
               <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} />
             ) : activeNav === "uploader" ? (
               <FileUploaderView session={session} isMobile={true} />
+            ) : activeNav === "admin" && userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL ? (
+              <AdminView session={session} isMobile={true} />
             ) : (
             <>
               <div style={{
@@ -5533,19 +6253,21 @@ export default function ReapApp() {
             )
           ) : (
             showProfile
-              ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} />
+              ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} />
               : activeNav === "portfolios"
-              ? <PortfolioView deals={deals} isMobile={false} session={session} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
+              ? <PortfolioView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
               : activeNav === "contacts"
-              ? <BuyerPipelineView session={session} isMobile={false} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
+              ? <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
               : activeNav === "analytics"
                 ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
                 : activeNav === "markets"
-                ? <MarketIntelligenceView deals={deals} isMobile={false} session={session} />
+                ? <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} />
                 : activeNav === "mls"
                 ? <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} />
                 : activeNav === "uploader"
                 ? <FileUploaderView session={session} isMobile={false} />
+                : activeNav === "admin" && userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL
+                ? <AdminView session={session} isMobile={false} />
                 : selectedDeal
                 ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} />
                 : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
