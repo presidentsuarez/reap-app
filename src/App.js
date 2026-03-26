@@ -147,7 +147,7 @@ function LoadingSpinner() {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, background: "#f8fafc" }}>
       <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-      <p style={{ color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading deals from Google Sheets...</p>
+      <p style={{ color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading deals...</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
@@ -3550,7 +3550,7 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
     return isNaN(n) ? NaN : n;
   };
 
-  // Fetch Markets tab from Google Sheets
+  // Fetch markets from Supabase
   useEffect(() => {
     async function fetchMarkets() {
       setMarketsLoading(true);
@@ -3789,7 +3789,7 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
             {sorted.length === 0 ? (
               <div style={{ textAlign: "center", padding: "32px 16px" }}>
                 <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: 0 }}>No markets found</p>
-                <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0" }}>Add markets in your Google Sheets "Markets" tab</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0" }}>Add markets in your Market Intelligence settings</p>
               </div>
             ) : sorted.map((m, i) => (
               <div key={i} style={{
@@ -3850,7 +3850,7 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
               <tbody>
                 {sorted.length === 0 ? (
                   <tr><td colSpan={8} style={{ textAlign: "center", padding: "40px 16px", color: "#94a3b8", fontSize: 14 }}>
-                    No markets found. Add data to your "Markets" tab in Google Sheets, or add deals with city data.
+                    No markets found. Add markets through the app, or add deals with city data.
                   </td></tr>
                 ) : sorted.map((m, i) => (
                   <tr key={i} style={{
@@ -3900,7 +3900,7 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
 
       {/* Footer note */}
       <div style={{ textAlign: "center", padding: "16px 0 8px", fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
-        Data sourced from your deal pipeline + Markets tab · AI signals update when data changes
+        Data sourced from your deal pipeline + market intelligence · AI signals update when data changes
       </div>
       </div>
     </div>
