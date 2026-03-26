@@ -2,16 +2,24 @@
 // REAP | dataService.js — Data Access Abstraction Layer
 // ═══════════════════════════════════════════════════════════════════
 //
-// This file centralizes ALL data access. Every read from Google Sheets
-// and every write through Apps Script goes through here.
-//
-// When we migrate to Supabase, we change ONLY this file.
+// This file centralizes ALL data access.
 // App.js never touches a database or API directly.
 //
-// Phase 0: Google Sheets implementation (current)
-// Phase 1-3: Swap internals to Supabase, one table at a time
+// Phase 0: ✅ Abstraction layer created
+// Phase 1: ✅ Portfolios + Markets → Supabase
+// Phase 2: Contacts → Supabase (pending)
+// Phase 3: Deals → Supabase (pending)
 // ═══════════════════════════════════════════════════════════════════
 
+import { createClient } from "@supabase/supabase-js";
+
+// ── Supabase client (used by Portfolios, Markets) ────────────────
+const supabase = createClient(
+  process.env.REACT_APP_SUPABASE_URL,
+  process.env.REACT_APP_SUPABASE_ANON_KEY
+);
+
+// ── Google Sheets (still used by Deals, Contacts, MLS, Uploads, Investors) ──
 const SPREADSHEET_ID = process.env.REACT_APP_SPREADSHEET_ID;
 const API_KEY = process.env.REACT_APP_SHEETS_API_KEY;
 const SHEETS_WRITE_URL = process.env.REACT_APP_SHEETS_WRITE_URL;
@@ -345,197 +353,217 @@ export async function generateAISummary(deal) {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// CONTACTS / BUYERS
+// CONTACTS / BUYERS — Supabase (Phase 2)
 // ═══════════════════════════════════════════════════════════════════
 
 export async function getBuyers(teamEmails) {
-  const { headers, rows } = await sheetsRead("Contacts", "A1:BQ");
-  if (rows.length === 0) return [];
+  const emailsLower = teamEmails.map(e => e.toLowerCase());
 
-  const idx = makeIdx(headers);
-  const colRowId = idx("🔒 Row ID");
-  const colName = idx("Contact / Name");
-  const colFirstName = idx("Contact / First Name");
-  const colEmail = idx("Contact / Email");
-  const colPhone = idx("Contact / Phone");
-  const colType = idx("Contact / Type");
-  const colBuyerStatus = idx("Buyer / Status");
-  const colAssetPref = idx("Contact / Asset Preference");
-  const colTemperature = idx("Contact / Temperature");
-  const colManager = idx("Contact / Manager");
-  const colNotes = idx("Contact / Notes");
-  const colLeadSource = idx("Contact / Lead Source");
-  const colCompany = idx("Contact / Company");
-  const colDateAdded = idx("Date / Added");
-  const colLastContact = idx("Date / Last Contact");
-  const colFollowUpNotes = idx("Contact / Follow Up Notes");
-  const colUser = idx("User");
+  let query = supabase
+    .from("contacts")
+    .select("*")
+    .order("date_added", { ascending: false });
 
-  const parsed = rows.map(row => ({
-    rowId: g(row, colRowId),
-    name: g(row, colName),
-    firstName: g(row, colFirstName),
-    email: g(row, colEmail),
-    phone: g(row, colPhone),
-    contactType: g(row, colType),
-    buyerStatus: g(row, colBuyerStatus),
-    assetPreference: g(row, colAssetPref),
-    temperature: g(row, colTemperature),
-    manager: g(row, colManager),
-    notes: g(row, colNotes),
-    leadSource: g(row, colLeadSource),
-    company: g(row, colCompany),
-    dateAdded: g(row, colDateAdded),
-    lastContact: g(row, colLastContact),
-    followUpNotes: g(row, colFollowUpNotes),
-    user: g(row, colUser),
-  })).filter(c => c.name && c.name.trim() !== "");
-
-  // Team filtering
-  const teamList = teamEmails.map(e => e.toLowerCase());
-  if (teamList.length > 0) {
-    return parsed.filter(c => {
-      const contactUser = (c.user || "").toLowerCase().trim();
-      return contactUser && teamList.includes(contactUser);
-    });
+  // Team filtering via RLS handles org-level access,
+  // but we also filter by teamEmails for explicit team scoping
+  if (emailsLower.length > 0) {
+    query = query.in("user_email", emailsLower);
   }
-  return parsed;
+
+  const { data, error } = await query;
+  if (error) throw new Error("Failed to load contacts: " + error.message);
+
+  // Map Supabase columns back to the shape App.js expects
+  return (data || []).map(row => ({
+    rowId: row.id,
+    name: row.contact_name || "",
+    firstName: row.first_name || "",
+    email: row.email || "",
+    phone: row.phone || "",
+    contactType: row.contact_type || "",
+    buyerStatus: row.buyer_status || "",
+    assetPreference: row.asset_preference || "",
+    temperature: row.temperature || "",
+    manager: row.manager || "",
+    notes: row.notes || "",
+    leadSource: row.lead_source || "",
+    company: row.company || "",
+    dateAdded: row.date_added || "",
+    lastContact: row.last_contact || "",
+    followUpNotes: row.follow_up_notes || "",
+    user: row.user_email || "",
+  }));
 }
 
 export async function saveBuyer(form, userEmail, editingRowId = null) {
-  const buyerData = {
-    "Contact / Name": form.name,
-    "Contact / First Name": (form.name || "").split(" ")[0],
-    "Contact / Email": form.email,
-    "Contact / Phone": form.phone,
-    "Contact / Company": form.company,
-    "Contact / Type": "Buyer (Client)",
-    "Buyer / Status": form.buyerStatus || "New",
-    "Contact / Asset Preference": form.assetPreference,
-    "Contact / Temperature": form.temperature,
-    "Contact / Manager": form.manager,
-    "Contact / Notes": form.notes,
-    "Contact / Lead Source": form.leadSource,
-    "User": userEmail,
-    "Date / Added": new Date().toISOString(),
+  const row = {
+    user_email: userEmail.toLowerCase(),
+    contact_name: form.name,
+    first_name: (form.name || "").split(" ")[0],
+    email: form.email,
+    phone: form.phone,
+    company: form.company,
+    contact_type: form.contactType || "Buyer (Client)",
+    buyer_status: form.buyerStatus || "New",
+    asset_preference: form.assetPreference,
+    temperature: form.temperature,
+    manager: form.manager,
+    notes: form.notes,
+    lead_source: form.leadSource,
+    updated_at: new Date().toISOString(),
   };
 
-  const payload = editingRowId
-    ? { action: "edit_contact", rowId: editingRowId, updates: buyerData }
-    : { action: "add_contact", ...buyerData };
+  if (editingRowId) {
+    // Edit existing contact
+    const { error } = await supabase
+      .from("contacts")
+      .update(row)
+      .eq("id", editingRowId);
+    if (error) throw new Error("Failed to edit contact: " + error.message);
+  } else {
+    // New contact
+    row.date_added = new Date().toISOString();
 
-  await appsScriptPost(payload);
+    // Look up org_id for team sharing
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("org_id")
+      .eq("email", userEmail.toLowerCase())
+      .maybeSingle();
+    if (profile?.org_id) row.org_id = profile.org_id;
+
+    const { error } = await supabase.from("contacts").insert(row);
+    if (error) throw new Error("Failed to save contact: " + error.message);
+  }
 }
 
 // Slim contacts list (used by InvestorPipelineView for linking)
 export async function getContactsList() {
-  const { headers, rows } = await sheetsRead("Contacts", "A1:BQ");
-  if (rows.length === 0) return [];
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("id, contact_name, email, phone, company")
+    .order("contact_name", { ascending: true });
 
-  const idx = makeIdx(headers);
-  return rows.map(row => ({
-    rowId: g(row, idx("🔒 Row ID")),
-    name: g(row, idx("Contact / Name")),
-    email: g(row, idx("Contact / Email")),
-    phone: g(row, idx("Contact / Phone")),
-    company: g(row, idx("Contact / Company")),
-  })).filter(c => c.name);
+  if (error) throw new Error("Failed to load contacts list: " + error.message);
+
+  return (data || []).map(row => ({
+    rowId: row.id,
+    name: row.contact_name || "",
+    email: row.email || "",
+    phone: row.phone || "",
+    company: row.company || "",
+  }));
 }
 
 
 // ═══════════════════════════════════════════════════════════════════
-// PORTFOLIOS
+// PORTFOLIOS — Supabase (Phase 1)
 // ═══════════════════════════════════════════════════════════════════
 
 export async function getPortfolios(teamEmails) {
-  const { rows } = await sheetsRead("Portfolios", "A1:F");
-  if (rows.length === 0) return [];
-
   const emailsLower = teamEmails.map(e => e.toLowerCase());
-  const parsed = [];
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row[1] || !emailsLower.includes(row[1].toLowerCase())) continue;
-    parsed.push({
-      id: row[0] || "",
-      user: row[1] || "",
-      name: row[2] || "",
-      type: row[3] || "Owned",
-      dealAddresses: row[4] ? row[4].split("|||").filter(a => a) : [],
-      createdAt: row[5] || "",
-    });
-  }
-  return parsed;
+  const { data, error } = await supabase
+    .from("portfolios")
+    .select("*")
+    .in("user_email", emailsLower)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error("Failed to load portfolios: " + error.message);
+
+  // Map Supabase columns back to the shape App.js expects
+  return (data || []).map(row => ({
+    id: row.id,
+    user: row.user_email,
+    name: row.name,
+    type: row.type || "Owned",
+    dealAddresses: row.deal_addresses ? row.deal_addresses.split("|||").filter(a => a) : [],
+    createdAt: row.created_at || "",
+  }));
 }
 
 export async function savePortfolio(data, userEmail) {
   const newId = "p_" + Date.now();
-  const payload = {
-    action: "add_portfolio",
+  const row = {
     id: newId,
-    user: userEmail,
+    user_email: userEmail.toLowerCase(),
     name: data.name,
     type: data.type,
-    dealAddresses: data.dealAddresses,
-    createdAt: new Date().toISOString(),
+    deal_addresses: (data.dealAddresses || []).join("|||"),
+    created_at: new Date().toISOString(),
   };
-  const result = await appsScriptPost(payload);
-  return result.portfolio || {
+
+  // Try to look up org_id for team sharing
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("org_id")
+    .eq("email", userEmail.toLowerCase())
+    .maybeSingle();
+  if (profile?.org_id) row.org_id = profile.org_id;
+
+  const { error } = await supabase.from("portfolios").insert(row);
+  if (error) throw new Error("Failed to save portfolio: " + error.message);
+
+  return {
     id: newId,
     user: userEmail,
     name: data.name,
     type: data.type,
-    dealAddresses: data.dealAddresses,
-    createdAt: payload.createdAt,
+    dealAddresses: data.dealAddresses || [],
+    createdAt: row.created_at,
   };
 }
 
 export async function editPortfolio(id, data) {
-  await appsScriptPost({
-    action: "edit_portfolio",
-    id,
+  const updates = {
     name: data.name,
     type: data.type,
-    dealAddresses: data.dealAddresses,
-  });
+    deal_addresses: (data.dealAddresses || []).join("|||"),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from("portfolios")
+    .update(updates)
+    .eq("id", id);
+
+  if (error) throw new Error("Failed to edit portfolio: " + error.message);
 }
 
 export async function deletePortfolio(id) {
-  await appsScriptPost({ action: "delete_portfolio", id });
+  const { error } = await supabase
+    .from("portfolios")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw new Error("Failed to delete portfolio: " + error.message);
 }
 
 
 // ═══════════════════════════════════════════════════════════════════
-// MARKETS
+// MARKETS — Supabase (Phase 1)
 // ═══════════════════════════════════════════════════════════════════
 
 export async function getMarkets() {
-  const { headers, rows } = await sheetsRead("Markets", "A1:J100");
-  if (rows.length === 0) return null; // null signals "fall back to deal-based computation"
+  const { data, error } = await supabase
+    .from("markets")
+    .select("*")
+    .order("market_name", { ascending: true });
 
-  const idx = makeIdxCI(headers);
-  const colMarket = idx("Market");
-  const colMedianPPU = idx("Median Price Per Unit");
-  const colCapRate = idx("Cap Rate Avg");
-  const colRentGrowth = idx("Rent Growth YoY");
-  const colPopGrowth = idx("Population Growth");
-  const colAiSignal = idx("AI Signal");
-  const colRegion = idx("Region");
-  const colDealCount = idx("Deal Count");
-  const colAvgReapScore = idx("Avg REAP Score");
-  const colTotalVolume = idx("Total Volume");
+  if (error) throw new Error("Failed to load markets: " + error.message);
+  if (!data || data.length === 0) return null; // null signals "fall back to deal-based computation"
 
-  return rows.filter(row => g(row, colMarket)).map(row => ({
-    market: g(row, colMarket),
-    medianPPU: g(row, colMedianPPU),
-    capRateAvg: g(row, colCapRate),
-    rentGrowth: g(row, colRentGrowth),
-    popGrowth: g(row, colPopGrowth),
-    aiSignal: g(row, colAiSignal) || "Neutral",
-    region: g(row, colRegion) || "Other",
-    dealCount: g(row, colDealCount),
-    avgReapScore: g(row, colAvgReapScore),
-    totalVolume: g(row, colTotalVolume),
+  // Map Supabase columns back to the shape App.js expects
+  return data.map(row => ({
+    market: row.market_name,
+    medianPPU: row.median_price_per_unit != null ? String(row.median_price_per_unit) : "",
+    capRateAvg: row.cap_rate_avg != null ? String(row.cap_rate_avg) : "",
+    rentGrowth: row.rent_growth_yoy != null ? String(row.rent_growth_yoy) : "",
+    popGrowth: row.population_growth != null ? String(row.population_growth) : "",
+    aiSignal: row.ai_signal || "Neutral",
+    region: row.region || "Other",
+    dealCount: row.deal_count != null ? String(row.deal_count) : "",
+    avgReapScore: row.avg_reap_score != null ? String(row.avg_reap_score) : "",
+    totalVolume: row.total_volume != null ? String(row.total_volume) : "",
   }));
 }
 
