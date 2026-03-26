@@ -2,13 +2,20 @@
 // REAP | dataService.js — Data Access Abstraction Layer
 // ═══════════════════════════════════════════════════════════════════
 //
-// This file centralizes ALL data access.
-// App.js never touches a database or API directly.
+// ALL data flows through this file. App.js never touches a DB directly.
 //
 // Phase 0: ✅ Abstraction layer created
 // Phase 1: ✅ Portfolios + Markets → Supabase
-// Phase 2: Contacts → Supabase (pending)
-// Phase 3: Deals → Supabase (pending)
+// Phase 2: ✅ Contacts → Supabase
+// Phase 3: ✅ Deals → Supabase (with financial trigger)
+// Phase 3B: ✅ MLS Feed + File Uploads + Investors → Supabase
+//
+// Google Sheets: FULLY RETIRED (no reads or writes)
+// Apps Script: ONE remaining call (AI Summary → Claude API proxy)
+//   → Will migrate to Supabase Edge Function
+//
+// Supabase tables: deals, contacts, portfolios, markets,
+//   mls_listings, file_uploads, investors, investor_activities
 // ═══════════════════════════════════════════════════════════════════
 
 import { createClient } from "@supabase/supabase-js";
@@ -19,28 +26,10 @@ const supabase = createClient(
   process.env.REACT_APP_SUPABASE_ANON_KEY
 );
 
-// ── Google Sheets (still used by Deals, Contacts, MLS, Uploads, Investors) ──
-const SPREADSHEET_ID = process.env.REACT_APP_SPREADSHEET_ID;
-const API_KEY = process.env.REACT_APP_SHEETS_API_KEY;
+// ── Google Sheets (ONLY used for AI summary proxy — will migrate to Edge Function) ──
 const SHEETS_WRITE_URL = process.env.REACT_APP_SHEETS_WRITE_URL;
 
 // ── Helpers ──────────────────────────────────────────────────────
-
-function sheetsReadUrl(tab, range) {
-  return `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${tab}!${range}?key=${API_KEY}`;
-}
-
-async function sheetsRead(tab, range) {
-  const res = await fetch(sheetsReadUrl(tab, range));
-  if (!res.ok) {
-    if (res.status === 400) return { headers: [], rows: [] };
-    throw new Error(`Sheets API error: ${res.status}`);
-  }
-  const data = await res.json();
-  const all = data.values || [];
-  if (all.length < 2) return { headers: all[0] || [], rows: [] };
-  return { headers: all[0], rows: all.slice(1) };
-}
 
 async function appsScriptPost(payload) {
   if (!SHEETS_WRITE_URL) {
@@ -53,18 +42,6 @@ async function appsScriptPost(payload) {
   const result = await res.json();
   if (!result.success) throw new Error(result.error || "Write failed");
   return result;
-}
-
-function makeIdx(headers) {
-  return (name) => headers.findIndex(h => h && h.trim() === name.trim());
-}
-
-function makeIdxCI(headers) {
-  return (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
-}
-
-function g(row, col) {
-  return col >= 0 && col < row.length ? row[col] : "";
 }
 
 
@@ -513,67 +490,43 @@ export async function getMarkets() {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// MLS FEED
+// MLS FEED — Supabase (Phase 3B)
 // ═══════════════════════════════════════════════════════════════════
 
 export async function getListings() {
-  const { headers, rows } = await sheetsRead("MLS Feed", "A1:W");
-  if (rows.length === 0) return [];
+  const { data, error } = await supabase
+    .from("mls_listings")
+    .select("*")
+    .order("created_at", { ascending: false });
 
-  const idx = makeIdxCI(headers);
-  const col = {
-    mlsNumber: idx("ml number") >= 0 ? idx("ml number") : idx("mls number") >= 0 ? idx("mls number") : idx("mls #"),
-    status: idx("status"),
-    adom: idx("adom"),
-    cdom: idx("cdom"),
-    price: idx("current price") >= 0 ? idx("current price") : idx("price"),
-    address: idx("address"),
-    city: idx("city"),
-    county: idx("county"),
-    ownership: idx("ownership"),
-    propType: idx("prop type") >= 0 ? idx("prop type") : idx("property type"),
-    style: idx("property style"),
-    units: idx("total units"),
-    heatedArea: idx("heated area"),
-    lotAcres: idx("lot size acres"),
-    beds: idx("beds"),
-    baths: idx("bathrooms total") >= 0 ? idx("bathrooms total") : idx("baths"),
-    yearBuilt: idx("year built"),
-    ppsf: idx("$/sqft"),
-    agent: idx("list agent"),
-    publicRemarks: idx("public remarks"),
-    realtorRemarks: idx("realtor only remarks"),
-    zip: idx("zip"),
-    sqftTotal: idx("sqft total"),
-  };
+  if (error) throw new Error("Failed to load MLS listings: " + error.message);
 
-  const gt = (row, c) => c >= 0 && c < row.length ? (row[c] || "").trim() : "";
-  return rows.map((row, i) => ({
+  return (data || []).map((row, i) => ({
     rowIndex: i + 2,
-    mlsNumber: gt(row, col.mlsNumber),
-    status: gt(row, col.status),
-    adom: gt(row, col.adom),
-    cdom: gt(row, col.cdom),
-    price: gt(row, col.price),
-    address: gt(row, col.address),
-    city: gt(row, col.city),
-    county: gt(row, col.county),
-    ownership: gt(row, col.ownership),
-    propType: gt(row, col.propType),
-    style: gt(row, col.style),
-    units: gt(row, col.units),
-    heatedArea: gt(row, col.heatedArea),
-    lotAcres: gt(row, col.lotAcres),
-    beds: gt(row, col.beds),
-    baths: gt(row, col.baths),
-    yearBuilt: gt(row, col.yearBuilt),
-    ppsf: gt(row, col.ppsf),
-    agent: gt(row, col.agent),
-    publicRemarks: gt(row, col.publicRemarks),
-    realtorRemarks: gt(row, col.realtorRemarks),
-    zip: gt(row, col.zip),
-    sqftTotal: gt(row, col.sqftTotal),
-  })).filter(l => l.address || l.mlsNumber);
+    mlsNumber: row.mls_number || "",
+    status: row.status || "",
+    adom: row.adom || "",
+    cdom: row.cdom || "",
+    price: row.price != null ? String(row.price) : "",
+    address: row.address || "",
+    city: row.city || "",
+    county: row.county || "",
+    ownership: row.ownership || "",
+    propType: row.prop_type || "",
+    style: row.style || "",
+    units: row.units || "",
+    heatedArea: row.heated_area != null ? String(row.heated_area) : "",
+    lotAcres: row.lot_acres != null ? String(row.lot_acres) : "",
+    beds: row.beds || "",
+    baths: row.baths || "",
+    yearBuilt: row.year_built || "",
+    ppsf: row.ppsf || "",
+    agent: row.agent || "",
+    publicRemarks: row.public_remarks || "",
+    realtorRemarks: row.realtor_remarks || "",
+    zip: row.zip || "",
+    sqftTotal: row.sqft_total != null ? String(row.sqft_total) : "",
+  }));
 }
 
 export async function addListingToPipeline(listing, userEmail) {
@@ -615,136 +568,244 @@ export async function addListingToPipeline(listing, userEmail) {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// FILE UPLOADS
+// FILE UPLOADS — Supabase (Phase 3B)
 // ═══════════════════════════════════════════════════════════════════
 
 export async function getUploads() {
-  const { headers, rows } = await sheetsRead("File Uploads", "A1:E");
-  if (rows.length === 0) return [];
+  const { data, error } = await supabase
+    .from("file_uploads")
+    .select("*")
+    .order("uploaded_at", { ascending: false });
 
-  const idx = makeIdxCI(headers);
-  const colFilename = idx("filename") >= 0 ? idx("filename") : 0;
-  const colLink = idx("file link") >= 0 ? idx("file link") : idx("link") >= 0 ? idx("link") : 1;
-  const colDate = idx("uploaded at") >= 0 ? idx("uploaded at") : idx("date") >= 0 ? idx("date") : 2;
-  const colUser = idx("user") >= 0 ? idx("user") : 3;
-  const colStatus = idx("status") >= 0 ? idx("status") : 4;
+  if (error) throw new Error("Failed to load uploads: " + error.message);
 
-  const gt = (row, col) => col >= 0 && col < row.length ? (row[col] || "").trim() : "";
-  return rows.map((row, i) => ({
-    rowIndex: i + 2,
-    filename: gt(row, colFilename),
-    link: gt(row, colLink),
-    date: gt(row, colDate),
-    user: gt(row, colUser),
-    status: gt(row, colStatus) || "Uploaded",
-  })).filter(u => u.filename || u.link).reverse();
+  return (data || []).map(row => ({
+    rowIndex: row.id,
+    filename: row.filename || "",
+    link: row.file_link || "",
+    date: row.uploaded_at || "",
+    user: row.user_email || "",
+    status: row.status || "Uploaded",
+  }));
 }
 
 export async function uploadFile(file, userEmail) {
-  const base64 = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
-  await appsScriptPost({
-    action: "upload_file",
+  // For now, store file metadata in the table
+  // Full Supabase Storage integration can come later
+  const row = {
+    user_email: userEmail.toLowerCase(),
     filename: file.name,
-    mimeType: file.type || "text/csv",
-    base64,
-    user: userEmail,
-    uploadedAt: new Date().toISOString(),
-  });
+    mime_type: file.type || "application/octet-stream",
+    file_size: file.size,
+    status: "Uploaded",
+    uploaded_at: new Date().toISOString(),
+  };
+
+  // Look up org_id
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("org_id")
+    .eq("email", userEmail.toLowerCase())
+    .maybeSingle();
+  if (profile?.org_id) row.org_id = profile.org_id;
+
+  const { error } = await supabase.from("file_uploads").insert(row);
+  if (error) throw new Error("Failed to save upload record: " + error.message);
 }
 
 
 // ═══════════════════════════════════════════════════════════════════
-// INVESTORS
+// INVESTORS — Supabase (Phase 3B)
 // ═══════════════════════════════════════════════════════════════════
 
 export async function getInvestors(teamEmails) {
-  const { headers, rows } = await sheetsRead("Investors", "A1:Z");
-  if (rows.length === 0) return [];
+  const emailsLower = teamEmails.map(e => e.toLowerCase());
 
-  const idx = makeIdx(headers);
-  const parsed = rows.map(row => ({
-    id: g(row, idx("Investor ID")),
-    user: g(row, idx("User")),
-    investorName: g(row, idx("Investor Name")),
-    investorType: g(row, idx("Investor Type")),
-    pipelineStage: g(row, idx("Pipeline Stage")),
-    temperature: g(row, idx("Temperature")),
-    capitalRangeMin: g(row, idx("Capital Range Min")),
-    capitalRangeMax: g(row, idx("Capital Range Max")),
-    capitalCommitted: g(row, idx("Capital Committed")),
-    capitalFunded: g(row, idx("Capital Funded")),
-    investmentThesis: g(row, idx("Investment Thesis")),
-    preferredReturn: g(row, idx("Preferred Return")),
-    irrTarget: g(row, idx("IRR Target")),
-    holdPeriod: g(row, idx("Hold Period")),
-    assetPreference: g(row, idx("Asset Preference")),
-    geographyPreference: g(row, idx("Geography Preference")),
-    minDealSize: g(row, idx("Min Deal Size")),
-    equityStructure: g(row, idx("Equity Structure")),
-    leadSource: g(row, idx("Lead Source")),
-    contactIds: g(row, idx("Contact IDs")) ? g(row, idx("Contact IDs")).split("|||").filter(Boolean) : [],
-    linkedDealAddresses: g(row, idx("Linked Deal Addresses")) ? g(row, idx("Linked Deal Addresses")).split("|||").filter(Boolean) : [],
-    notes: g(row, idx("Notes")),
-    dateAdded: g(row, idx("Date Added")),
-    dateLastContact: g(row, idx("Date Last Contact")),
-    nextFollowUp: g(row, idx("Next Follow-Up")),
-    company: g(row, idx("Company / Entity")),
-  })).filter(inv => inv.investorName && inv.investorName.trim() !== "");
+  let query = supabase
+    .from("investors")
+    .select("*")
+    .order("date_added", { ascending: false });
 
-  // Team filtering
-  const teamList = teamEmails.map(e => e.toLowerCase());
-  if (teamList.length > 0) {
-    return parsed.filter(inv => {
-      const invUser = (inv.user || "").toLowerCase().trim();
-      return invUser && teamList.includes(invUser);
-    });
+  if (emailsLower.length > 0) {
+    query = query.in("user_email", emailsLower);
   }
-  return parsed;
+
+  const { data, error } = await query;
+  if (error) throw new Error("Failed to load investors: " + error.message);
+
+  return (data || []).map(row => ({
+    id: row.id,
+    user: row.user_email || "",
+    investorName: row.investor_name || "",
+    investorType: row.investor_type || "",
+    pipelineStage: row.pipeline_stage || "",
+    temperature: row.temperature || "",
+    capitalRangeMin: row.capital_range_min != null ? String(row.capital_range_min) : "",
+    capitalRangeMax: row.capital_range_max != null ? String(row.capital_range_max) : "",
+    capitalCommitted: row.capital_committed != null ? String(row.capital_committed) : "",
+    capitalFunded: row.capital_funded != null ? String(row.capital_funded) : "",
+    investmentThesis: row.investment_thesis || "",
+    preferredReturn: row.preferred_return || "",
+    irrTarget: row.irr_target || "",
+    holdPeriod: row.hold_period || "",
+    assetPreference: row.asset_preference || "",
+    geographyPreference: row.geography_preference || "",
+    minDealSize: row.min_deal_size != null ? String(row.min_deal_size) : "",
+    equityStructure: row.equity_structure || "",
+    leadSource: row.lead_source || "",
+    contactIds: row.contact_ids ? row.contact_ids.split("|||").filter(Boolean) : [],
+    linkedDealAddresses: row.linked_deal_addresses ? row.linked_deal_addresses.split("|||").filter(Boolean) : [],
+    notes: row.notes || "",
+    dateAdded: row.date_added || "",
+    dateLastContact: row.date_last_contact || "",
+    nextFollowUp: row.next_follow_up || "",
+    company: row.company || "",
+  }));
 }
 
 export async function saveInvestor(form, userEmail) {
-  const payload = { action: "add_investor", ...form, user: userEmail };
-  const result = await appsScriptPost(payload);
-  return result.investor || null;
+  const newId = "inv_" + Date.now();
+  const row = {
+    id: newId,
+    user_email: userEmail.toLowerCase(),
+    investor_name: form.investorName,
+    investor_type: form.investorType || null,
+    pipeline_stage: form.pipelineStage || null,
+    temperature: form.temperature || null,
+    capital_range_min: form.capitalRangeMin ? parseFloat(String(form.capitalRangeMin).replace(/[$,]/g, "")) || null : null,
+    capital_range_max: form.capitalRangeMax ? parseFloat(String(form.capitalRangeMax).replace(/[$,]/g, "")) || null : null,
+    investment_thesis: form.investmentThesis || null,
+    preferred_return: form.preferredReturn || null,
+    irr_target: form.irrTarget || null,
+    hold_period: form.holdPeriod || null,
+    asset_preference: form.assetPreference || null,
+    geography_preference: form.geographyPreference || null,
+    min_deal_size: form.minDealSize ? parseFloat(String(form.minDealSize).replace(/[$,]/g, "")) || null : null,
+    equity_structure: form.equityStructure || null,
+    lead_source: form.leadSource || null,
+    notes: form.notes || null,
+    company: form.company || null,
+    date_added: new Date().toISOString(),
+  };
+
+  // Look up org_id
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("org_id")
+    .eq("email", userEmail.toLowerCase())
+    .maybeSingle();
+  if (profile?.org_id) row.org_id = profile.org_id;
+
+  const { data, error } = await supabase
+    .from("investors")
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) throw new Error("Failed to save investor: " + error.message);
+
+  // Return in the shape App.js expects
+  return {
+    id: data.id,
+    user: data.user_email,
+    investorName: data.investor_name,
+    investorType: data.investor_type || "",
+    pipelineStage: data.pipeline_stage || "",
+    temperature: data.temperature || "",
+    dateAdded: data.date_added || "",
+    company: data.company || "",
+  };
 }
 
 export async function editInvestor(id, updates) {
-  await appsScriptPost({ action: "edit_investor", id, updates });
+  // Map App.js field names to Supabase column names
+  const row = {};
+  if (updates.investorName !== undefined) row.investor_name = updates.investorName;
+  if (updates.investorType !== undefined) row.investor_type = updates.investorType;
+  if (updates.pipelineStage !== undefined) row.pipeline_stage = updates.pipelineStage;
+  if (updates.temperature !== undefined) row.temperature = updates.temperature;
+  if (updates.capitalRangeMin !== undefined) row.capital_range_min = parseFloat(String(updates.capitalRangeMin).replace(/[$,]/g, "")) || null;
+  if (updates.capitalRangeMax !== undefined) row.capital_range_max = parseFloat(String(updates.capitalRangeMax).replace(/[$,]/g, "")) || null;
+  if (updates.capitalCommitted !== undefined) row.capital_committed = parseFloat(String(updates.capitalCommitted).replace(/[$,]/g, "")) || null;
+  if (updates.capitalFunded !== undefined) row.capital_funded = parseFloat(String(updates.capitalFunded).replace(/[$,]/g, "")) || null;
+  if (updates.investmentThesis !== undefined) row.investment_thesis = updates.investmentThesis;
+  if (updates.preferredReturn !== undefined) row.preferred_return = updates.preferredReturn;
+  if (updates.irrTarget !== undefined) row.irr_target = updates.irrTarget;
+  if (updates.holdPeriod !== undefined) row.hold_period = updates.holdPeriod;
+  if (updates.assetPreference !== undefined) row.asset_preference = updates.assetPreference;
+  if (updates.geographyPreference !== undefined) row.geography_preference = updates.geographyPreference;
+  if (updates.minDealSize !== undefined) row.min_deal_size = parseFloat(String(updates.minDealSize).replace(/[$,]/g, "")) || null;
+  if (updates.equityStructure !== undefined) row.equity_structure = updates.equityStructure;
+  if (updates.leadSource !== undefined) row.lead_source = updates.leadSource;
+  if (updates.notes !== undefined) row.notes = updates.notes;
+  if (updates.company !== undefined) row.company = updates.company;
+  if (updates.linkedDealAddresses !== undefined) row.linked_deal_addresses = (updates.linkedDealAddresses || []).join("|||");
+  if (updates.contactIds !== undefined) row.contact_ids = (updates.contactIds || []).join("|||");
+  if (updates.dateLastContact !== undefined) row.date_last_contact = updates.dateLastContact;
+  if (updates.nextFollowUp !== undefined) row.next_follow_up = updates.nextFollowUp;
+
+  row.updated_at = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("investors")
+    .update(row)
+    .eq("id", id);
+
+  if (error) throw new Error("Failed to edit investor: " + error.message);
 }
 
 export async function deleteInvestor(id) {
-  await appsScriptPost({ action: "delete_investor", id });
+  const { error } = await supabase
+    .from("investors")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw new Error("Failed to delete investor: " + error.message);
 }
 
 export async function getInvestorActivities() {
-  const { headers, rows } = await sheetsRead("Investor Activity", "A1:G");
-  if (rows.length === 0) return [];
+  const { data, error } = await supabase
+    .from("investor_activities")
+    .select("*")
+    .order("activity_date", { ascending: false });
 
-  const idx = makeIdx(headers);
-  return rows.map(row => ({
-    activityId: g(row, idx("Activity ID")),
-    investorId: g(row, idx("Investor ID")),
-    user: g(row, idx("User")),
-    activityType: g(row, idx("Activity Type")),
-    description: g(row, idx("Description")),
-    date: g(row, idx("Date")),
-    createdAt: g(row, idx("Created At")),
+  if (error) throw new Error("Failed to load activities: " + error.message);
+
+  return (data || []).map(row => ({
+    activityId: row.id,
+    investorId: row.investor_id || "",
+    user: row.user_email || "",
+    activityType: row.activity_type || "",
+    description: row.description || "",
+    date: row.activity_date || "",
+    createdAt: row.created_at || "",
   }));
 }
 
 export async function logInvestorActivity(investorId, userEmail, form) {
-  const payload = {
-    action: "add_investor_activity",
-    investorId,
-    user: userEmail,
-    ...form,
+  const row = {
+    investor_id: investorId,
+    user_email: userEmail.toLowerCase(),
+    activity_type: form.activityType || form.type || null,
+    description: form.description || null,
+    activity_date: form.date || new Date().toISOString(),
   };
-  const result = await appsScriptPost(payload);
-  return result.activity || null;
+
+  const { data, error } = await supabase
+    .from("investor_activities")
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) throw new Error("Failed to log activity: " + error.message);
+
+  return {
+    activityId: data.id,
+    investorId: data.investor_id,
+    user: data.user_email,
+    activityType: data.activity_type || "",
+    description: data.description || "",
+    date: data.activity_date || "",
+    createdAt: data.created_at || "",
+  };
 }
