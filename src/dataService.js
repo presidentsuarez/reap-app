@@ -11,8 +11,7 @@
 // Phase 3B: ✅ MLS Feed + File Uploads + Investors → Supabase
 //
 // Google Sheets: FULLY RETIRED (no reads or writes)
-// Apps Script: ONE remaining call (AI Summary → Claude API proxy)
-//   → Will migrate to Supabase Edge Function
+// ALL Google dependencies: ELIMINATED
 //
 // Supabase tables: deals, contacts, portfolios, markets,
 //   mls_listings, file_uploads, investors, investor_activities
@@ -26,23 +25,9 @@ const supabase = createClient(
   process.env.REACT_APP_SUPABASE_ANON_KEY
 );
 
-// ── Google Sheets (ONLY used for AI summary proxy — will migrate to Edge Function) ──
-const SHEETS_WRITE_URL = process.env.REACT_APP_SHEETS_WRITE_URL;
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-async function appsScriptPost(payload) {
-  if (!SHEETS_WRITE_URL) {
-    throw new Error("SHEETS_WRITE_URL not configured. Set REACT_APP_SHEETS_WRITE_URL in .env");
-  }
-  const res = await fetch(SHEETS_WRITE_URL, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  const result = await res.json();
-  if (!result.success) throw new Error(result.error || "Write failed");
-  return result;
-}
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -265,13 +250,16 @@ export async function editDeal(address, form) {
   if (error) throw new Error("Failed to edit deal: " + error.message);
 }
 
-// AI Summary — still uses Apps Script (server-side Claude API call)
-// Will migrate to Supabase Edge Function in a future phase
+// AI Summary — Supabase Edge Function (Session 12)
 export async function generateAISummary(deal) {
-  const result = await appsScriptPost({ action: "generate_summary", deal });
-  return result.summary;
-}
+  const { data, error } = await supabase.functions.invoke("generate-summary", {
+    body: { deal },
+  });
 
+  if (error) throw new Error("AI Summary error: " + error.message);
+  if (!data?.success) throw new Error(data?.error || "Failed to generate summary");
+  return data.summary;
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // CONTACTS / BUYERS — Supabase (Phase 2)
