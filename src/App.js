@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { loadStripe } from "@stripe/stripe-js";
-
-const SPREADSHEET_ID = process.env.REACT_APP_SPREADSHEET_ID;
-const API_KEY = process.env.REACT_APP_SHEETS_API_KEY;
-const SHEET_NAME = "Deals";
-const SHEETS_WRITE_URL = process.env.REACT_APP_SHEETS_WRITE_URL;
-const CONTACTS_SHEET_NAME = "Contacts";
-const MLS_FEED_SHEET_NAME = "MLS Feed";
-const FILE_UPLOADS_SHEET_NAME = "File Uploads";
+import {
+  getDeals, saveDeal, editDeal, generateAISummary,
+  getBuyers, saveBuyer, getContactsList,
+  getPortfolios, savePortfolio, editPortfolio, deletePortfolio,
+  getMarkets,
+  getListings, addListingToPipeline,
+  getUploads, uploadFile,
+  getInvestors, saveInvestor, editInvestor, deleteInvestor,
+  getInvestorActivities, logInvestorActivity,
+} from "./dataService";
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
@@ -33,6 +35,21 @@ const STATUS_CONFIG = {
   "Dead":           { color: "#dc2626", bg: "rgba(220,38,38,0.07)",   dot: "#dc2626" },
   "On Hold":        { color: "#64748b", bg: "rgba(100,116,135,0.08)", dot: "#94a3b8" },
 };
+
+const INVESTOR_STAGE_CONFIG = {
+  "Prospect":           { color: "#64748b", bg: "rgba(100,116,135,0.08)" },
+  "Initial Outreach":   { color: "#3b82f6", bg: "rgba(59,130,246,0.08)" },
+  "Meeting Scheduled":  { color: "#d97706", bg: "rgba(217,119,6,0.08)" },
+  "Due Diligence":      { color: "#7c3aed", bg: "rgba(124,58,237,0.08)" },
+  "Term Sheet":         { color: "#0891b2", bg: "rgba(8,145,178,0.08)" },
+  "Committed":          { color: "#16a34a", bg: "rgba(22,163,74,0.08)" },
+  "Funded":             { color: "#15803d", bg: "rgba(21,128,61,0.08)" },
+  "Passed":             { color: "#dc2626", bg: "rgba(220,38,38,0.07)" },
+};
+const INVESTOR_STAGES = Object.keys(INVESTOR_STAGE_CONFIG);
+const INVESTOR_TYPES = ["Individual / HNW", "Family Office", "Private Equity Fund", "Institutional"];
+const INVESTOR_TEMPS = ["Hot", "Warm", "Cold"];
+const TEMP_COLORS = { "Hot": "#16a34a", "Warm": "#d97706", "Cold": "#94a3b8" };
 
 const fmt = (n) => {
   const num = parseFloat(String(n).replace(/[$,]/g, ""));
@@ -1358,18 +1375,10 @@ function DealDetailView({ deal, onBack, onEdit, isMobile }) {
     setSummaryLoading(true);
     setSummaryError(null);
     try {
-      const res = await fetch(SHEETS_WRITE_URL, {
-        method: "POST",
-        body: JSON.stringify({ action: "generate_summary", deal }),
-      });
-      const result = await res.json();
-      if (result.success) {
-        setSummary(result.summary);
-      } else {
-        setSummaryError(result.error || "Failed to generate summary");
-      }
+      const result = await generateAISummary(deal);
+      setSummary(result);
     } catch (err) {
-      setSummaryError("Network error: " + err.message);
+      setSummaryError(err.message || "Failed to generate summary");
     } finally {
       setSummaryLoading(false);
     }
@@ -2649,36 +2658,11 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
   const fetchBuyers = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const range = `${CONTACTS_SHEET_NAME}!A1:BQ`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setBuyers([]); setLoading(false); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
-      const colRowId = idx("🔒 Row ID"); const colName = idx("Contact / Name"); const colFirstName = idx("Contact / First Name");
-      const colEmail = idx("Contact / Email"); const colPhone = idx("Contact / Phone"); const colType = idx("Contact / Type");
-      const colBuyerStatus = idx("Buyer / Status"); const colAssetPref = idx("Contact / Asset Preference");
-      const colTemperature = idx("Contact / Temperature"); const colManager = idx("Contact / Manager");
-      const colNotes = idx("Contact / Notes"); const colLeadSource = idx("Contact / Lead Source");
-      const colCompany = idx("Contact / Company"); const colDateAdded = idx("Date / Added");
-      const colLastContact = idx("Date / Last Contact"); const colFollowUpNotes = idx("Contact / Follow Up Notes");
-      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
-      const parsed = rows.slice(1).map(row => ({
-        rowId: g(row, colRowId), name: g(row, colName), firstName: g(row, colFirstName),
-        email: g(row, colEmail), phone: g(row, colPhone), contactType: g(row, colType),
-        buyerStatus: g(row, colBuyerStatus), assetPreference: g(row, colAssetPref),
-        temperature: g(row, colTemperature), manager: g(row, colManager), notes: g(row, colNotes),
-        leadSource: g(row, colLeadSource), company: g(row, colCompany), dateAdded: g(row, colDateAdded),
-        lastContact: g(row, colLastContact), followUpNotes: g(row, colFollowUpNotes),
-      }));
-      const allContacts = parsed.filter(c => c.name && c.name.trim() !== "");
-      // Filter by team emails if available (contacts don't have a strict User column, show all for now)
-      setBuyers(allContacts);
+      const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp : [];
+      const result = await getBuyers(teamList);
+      setBuyers(result);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
-  }, []);
+  }, [teamEmailsProp]);
 
   useEffect(() => { if (session) fetchBuyers(); }, [session, fetchBuyers]);
 
@@ -3156,24 +3140,7 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfoli
 
   var fetchPortfolios = function() {
     setPortfoliosLoading(true);
-    var range = "Portfolios!A1:F";
-    var url = "https://sheets.googleapis.com/v4/spreadsheets/" + SPREADSHEET_ID + "/values/" + range + "?key=" + API_KEY;
-    fetch(url).then(function(res) { return res.json(); }).then(function(data) {
-      var rows = data.values || [];
-      if (rows.length < 2) { setPortfolios([]); setPortfoliosLoading(false); return; }
-      var parsed = [];
-      for (var i = 1; i < rows.length; i++) {
-        var row = rows[i];
-        if (!row[1] || !emailsToShow.includes(row[1].toLowerCase())) continue;
-        parsed.push({
-          id: row[0] || "",
-          user: row[1] || "",
-          name: row[2] || "",
-          type: row[3] || "Owned",
-          dealAddresses: row[4] ? row[4].split("|||").filter(function(a) { return a; }) : [],
-          createdAt: row[5] || "",
-        });
-      }
+    getPortfolios(emailsToShow).then(function(parsed) {
       setPortfolios(parsed);
       setPortfoliosLoading(false);
     }).catch(function(err) {
@@ -3207,69 +3174,29 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfoli
 
   var handleCreateSave = function(data) {
     if (editingPortfolio) {
-      // Edit existing portfolio via Apps Script
-      fetch(SHEETS_WRITE_URL, {
-        method: "POST",
-        body: JSON.stringify({
-          action: "edit_portfolio",
-          id: editingPortfolio.id,
-          name: data.name,
-          type: data.type,
-          dealAddresses: data.dealAddresses,
-        }),
-      }).then(function(res) { return res.json(); }).then(function(result) {
-        if (result.success) {
-          var updatedP = Object.assign({}, editingPortfolio, data);
-          setPortfolios(portfolios.map(function(p) { return p.id === editingPortfolio.id ? updatedP : p; }));
-          if (selectedPortfolio && selectedPortfolio.id === editingPortfolio.id) {
-            setSelectedPortfolio(updatedP);
-          }
-        } else {
-          console.error("Edit portfolio error:", result.error);
+      // Edit existing portfolio
+      editPortfolio(editingPortfolio.id, data).then(function() {
+        var updatedP = Object.assign({}, editingPortfolio, data);
+        setPortfolios(portfolios.map(function(p) { return p.id === editingPortfolio.id ? updatedP : p; }));
+        if (selectedPortfolio && selectedPortfolio.id === editingPortfolio.id) {
+          setSelectedPortfolio(updatedP);
         }
-      }).catch(function(err) { console.error("Edit portfolio network error:", err); });
+      }).catch(function(err) { console.error("Edit portfolio error:", err); });
     } else {
-      // Create new portfolio via Apps Script
-      var newId = "p_" + Date.now();
-      var payload = {
-        action: "add_portfolio",
-        id: newId,
-        user: userEmail,
-        name: data.name,
-        type: data.type,
-        dealAddresses: data.dealAddresses,
-        createdAt: new Date().toISOString(),
-      };
-      fetch(SHEETS_WRITE_URL, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }).then(function(res) { return res.json(); }).then(function(result) {
-        if (result.success) {
-          setPortfolios(portfolios.concat([result.portfolio || {
-            id: newId, user: userEmail, name: data.name, type: data.type,
-            dealAddresses: data.dealAddresses, createdAt: payload.createdAt,
-          }]));
-        } else {
-          console.error("Add portfolio error:", result.error);
-        }
-      }).catch(function(err) { console.error("Add portfolio network error:", err); });
+      // Create new portfolio
+      savePortfolio(data, userEmail).then(function(newPortfolio) {
+        setPortfolios(portfolios.concat([newPortfolio]));
+      }).catch(function(err) { console.error("Add portfolio error:", err); });
     }
     setShowCreateModal(false);
     setEditingPortfolio(null);
   };
 
   var handleDelete = function(id) {
-    fetch(SHEETS_WRITE_URL, {
-      method: "POST",
-      body: JSON.stringify({ action: "delete_portfolio", id: id }),
-    }).then(function(res) { return res.json(); }).then(function(result) {
-      if (result.success) {
-        setPortfolios(portfolios.filter(function(p) { return p.id !== id; }));
-        if (selectedPortfolio && selectedPortfolio.id === id) backToPortfolios();
-      } else {
-        console.error("Delete portfolio error:", result.error);
-      }
-    }).catch(function(err) { console.error("Delete portfolio network error:", err); });
+    deletePortfolio(id).then(function() {
+      setPortfolios(portfolios.filter(function(p) { return p.id !== id; }));
+      if (selectedPortfolio && selectedPortfolio.id === id) backToPortfolios();
+    }).catch(function(err) { console.error("Delete portfolio error:", err); });
   };
 
   var getPortfolioStats = function(p) {
@@ -3628,46 +3555,13 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
     async function fetchMarkets() {
       setMarketsLoading(true);
       try {
-        const range = "Markets!A1:J100";
-        const url = "https://sheets.googleapis.com/v4/spreadsheets/" + SPREADSHEET_ID + "/values/" + range + "?key=" + API_KEY;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("Markets tab not found");
-        const data = await res.json();
-        const rows = data.values || [];
-        if (rows.length < 2) {
+        const result = await getMarkets();
+        if (result === null) {
           // Fall back to computing from deals
           computeFromDeals();
           return;
         }
-        const headers = rows[0];
-        const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
-        
-        const colMarket = idx("Market");
-        const colMedianPPU = idx("Median Price Per Unit");
-        const colCapRate = idx("Cap Rate Avg");
-        const colRentGrowth = idx("Rent Growth YoY");
-        const colPopGrowth = idx("Population Growth");
-        const colAiSignal = idx("AI Signal");
-        const colRegion = idx("Region");
-        const colDealCount = idx("Deal Count");
-        const colAvgReapScore = idx("Avg REAP Score");
-        const colTotalVolume = idx("Total Volume");
-
-        const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
-
-        const parsed = rows.slice(1).filter(row => g(row, colMarket)).map(row => ({
-          market: g(row, colMarket),
-          medianPPU: g(row, colMedianPPU),
-          capRateAvg: g(row, colCapRate),
-          rentGrowth: g(row, colRentGrowth),
-          popGrowth: g(row, colPopGrowth),
-          aiSignal: g(row, colAiSignal) || "Neutral",
-          region: g(row, colRegion) || "Other",
-          dealCount: g(row, colDealCount),
-          avgReapScore: g(row, colAvgReapScore),
-          totalVolume: g(row, colTotalVolume),
-        }));
-        setMarkets(parsed);
+        setMarkets(result);
       } catch (err) {
         console.warn("Markets tab not found, computing from deals:", err);
         computeFromDeals();
@@ -4619,69 +4513,8 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
   const fetchListings = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const range = `${MLS_FEED_SHEET_NAME}!A1:W`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setListings([]); setLoading(false); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
-      // Map all 23 columns
-      const col = {
-        mlsNumber: idx("ml number") >= 0 ? idx("ml number") : idx("mls number") >= 0 ? idx("mls number") : idx("mls #"),
-        status: idx("status"),
-        adom: idx("adom"),
-        cdom: idx("cdom"),
-        price: idx("current price") >= 0 ? idx("current price") : idx("price"),
-        address: idx("address"),
-        city: idx("city"),
-        county: idx("county"),
-        ownership: idx("ownership"),
-        propType: idx("prop type") >= 0 ? idx("prop type") : idx("property type"),
-        style: idx("property style"),
-        units: idx("total units"),
-        heatedArea: idx("heated area"),
-        lotAcres: idx("lot size acres"),
-        beds: idx("beds"),
-        baths: idx("bathrooms total") >= 0 ? idx("bathrooms total") : idx("baths"),
-        yearBuilt: idx("year built"),
-        ppsf: idx("$/sqft"),
-        agent: idx("list agent"),
-        publicRemarks: idx("public remarks"),
-        realtorRemarks: idx("realtor only remarks"),
-        zip: idx("zip"),
-        sqftTotal: idx("sqft total"),
-      };
-      const g = (row, c) => c >= 0 && c < row.length ? (row[c] || "").trim() : "";
-      const parsed = rows.slice(1).map((row, i) => ({
-        rowIndex: i + 2,
-        mlsNumber: g(row, col.mlsNumber),
-        status: g(row, col.status),
-        adom: g(row, col.adom),
-        cdom: g(row, col.cdom),
-        price: g(row, col.price),
-        address: g(row, col.address),
-        city: g(row, col.city),
-        county: g(row, col.county),
-        ownership: g(row, col.ownership),
-        propType: g(row, col.propType),
-        style: g(row, col.style),
-        units: g(row, col.units),
-        heatedArea: g(row, col.heatedArea),
-        lotAcres: g(row, col.lotAcres),
-        beds: g(row, col.beds),
-        baths: g(row, col.baths),
-        yearBuilt: g(row, col.yearBuilt),
-        ppsf: g(row, col.ppsf),
-        agent: g(row, col.agent),
-        publicRemarks: g(row, col.publicRemarks),
-        realtorRemarks: g(row, col.realtorRemarks),
-        zip: g(row, col.zip),
-        sqftTotal: g(row, col.sqftTotal),
-      })).filter(l => l.address || l.mlsNumber);
-      setListings(parsed);
+      const result = await getListings();
+      setListings(result);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -4694,30 +4527,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
   const handleAddToPipeline = async (listing) => {
     setAddingId(listing.rowIndex);
     try {
-      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
-      const dealData = {
-        "Deal / Name": listing.address || "MLS " + listing.mlsNumber,
-        "Property / Address": listing.address,
-        "City": listing.city,
-        "State": "",
-        "Zip Code": listing.zip,
-        "Type": listing.propType || "",
-        "Asking / Price": clean(listing.price),
-        "SQFT / Net": clean(listing.heatedArea || listing.sqftTotal),
-        "Units": clean(listing.units),
-        "Lot / Size Acres": clean(listing.lotAcres),
-        "Year Built": listing.yearBuilt,
-        "Deal / Status": "New",
-        "User": session?.user?.email || "",
-        "Date / Added": new Date().toLocaleDateString("en-US"),
-        "Source": "MLS Feed",
-        "MLS Number": listing.mlsNumber,
-      };
-      if (SHEETS_WRITE_URL) {
-        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(dealData) });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Failed to add deal");
-      }
+      await addListingToPipeline(listing, session?.user?.email || "");
       if (onAddToPipeline) onAddToPipeline();
     } catch (err) {
       alert("Error adding to pipeline: " + err.message);
@@ -5045,30 +4855,8 @@ function FileUploaderView({ session, isMobile }) {
   const fetchUploads = useCallback(async () => {
     setUploadsLoading(true);
     try {
-      const range = `${FILE_UPLOADS_SHEET_NAME}!A1:E`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) { setUploads([]); return; }
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setUploads([]); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
-      const colFilename = idx("filename") >= 0 ? idx("filename") : 0;
-      const colLink = idx("file link") >= 0 ? idx("file link") : idx("link") >= 0 ? idx("link") : 1;
-      const colDate = idx("uploaded at") >= 0 ? idx("uploaded at") : idx("date") >= 0 ? idx("date") : 2;
-      const colUser = idx("user") >= 0 ? idx("user") : 3;
-      const colStatus = idx("status") >= 0 ? idx("status") : 4;
-      const g = (row, col) => col >= 0 && col < row.length ? (row[col] || "").trim() : "";
-      const parsed = rows.slice(1).map((row, i) => ({
-        rowIndex: i + 2,
-        filename: g(row, colFilename),
-        link: g(row, colLink),
-        date: g(row, colDate),
-        user: g(row, colUser),
-        status: g(row, colStatus) || "Uploaded",
-      })).filter(u => u.filename || u.link);
-      setUploads(parsed.reverse());
+      const result = await getUploads();
+      setUploads(result);
     } catch (err) {
       console.error("Error fetching uploads:", err);
       setUploads([]);
@@ -5083,29 +4871,7 @@ function FileUploaderView({ session, isMobile }) {
     if (!file) return;
     setUploading(true);
     try {
-      // Read file as base64
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      // Send to Apps Script which uploads to Drive and writes row to File Uploads tab
-      if (SHEETS_WRITE_URL) {
-        const payload = {
-          action: "upload_file",
-          filename: file.name,
-          mimeType: file.type || "text/csv",
-          base64: base64,
-          user: session?.user?.email || "",
-          uploadedAt: new Date().toISOString(),
-        };
-        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Upload failed");
-      }
-
+      await uploadFile(file, session?.user?.email || "");
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       fetchUploads();
@@ -5234,6 +5000,680 @@ function FileUploaderView({ session, isMobile }) {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INVESTOR PIPELINE VIEW (Session 10)
+   ═══════════════════════════════════════════════════════════ */
+
+function InvestorStageBadge({ stage }) {
+  const cfg = INVESTOR_STAGE_CONFIG[stage] || INVESTOR_STAGE_CONFIG["Prospect"];
+  return (
+    <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", background: cfg.bg, color: cfg.color }}>{stage}</span>
+  );
+}
+
+function InvestorModal({ isOpen, onClose, onSave, saving, isMobile, investor }) {
+  const isEdit = !!investor;
+  const [form, setForm] = useState({
+    investorName: "", investorType: "Individual / HNW", pipelineStage: "Prospect",
+    temperature: "Warm", capitalRangeMin: "", capitalRangeMax: "", capitalCommitted: "",
+    capitalFunded: "", investmentThesis: "", preferredReturn: "", irrTarget: "",
+    holdPeriod: "", assetPreference: "", geographyPreference: "", minDealSize: "",
+    equityStructure: "", leadSource: "", notes: "", company: "", nextFollowUp: "",
+  });
+
+  useEffect(() => {
+    if (investor) {
+      setForm({
+        investorName: investor.investorName || "", investorType: investor.investorType || "Individual / HNW",
+        pipelineStage: investor.pipelineStage || "Prospect", temperature: investor.temperature || "Warm",
+        capitalRangeMin: investor.capitalRangeMin || "", capitalRangeMax: investor.capitalRangeMax || "",
+        capitalCommitted: investor.capitalCommitted || "", capitalFunded: investor.capitalFunded || "",
+        investmentThesis: investor.investmentThesis || "", preferredReturn: investor.preferredReturn || "",
+        irrTarget: investor.irrTarget || "", holdPeriod: investor.holdPeriod || "",
+        assetPreference: investor.assetPreference || "", geographyPreference: investor.geographyPreference || "",
+        minDealSize: investor.minDealSize || "", equityStructure: investor.equityStructure || "",
+        leadSource: investor.leadSource || "", notes: investor.notes || "",
+        company: investor.company || "", nextFollowUp: investor.nextFollowUp || "",
+      });
+    } else {
+      setForm({ investorName: "", investorType: "Individual / HNW", pipelineStage: "Prospect", temperature: "Warm", capitalRangeMin: "", capitalRangeMax: "", capitalCommitted: "", capitalFunded: "", investmentThesis: "", preferredReturn: "", irrTarget: "", holdPeriod: "", assetPreference: "", geographyPreference: "", minDealSize: "", equityStructure: "", leadSource: "", notes: "", company: "", nextFollowUp: "" });
+    }
+  }, [investor, isOpen]);
+
+  if (!isOpen) return null;
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const lbl = { fontSize: 12, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 };
+  const inpS = { width: "100%", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none" };
+  const selS = { ...inpS, appearance: "none", WebkitAppearance: "none" };
+  const row = { display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 12 };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1000, padding: isMobile ? 0 : 16 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "24px 24px 0 0" : 20, padding: isMobile ? "24px 20px 32px" : "28px 32px", width: "100%", maxWidth: 600, maxHeight: isMobile ? "90vh" : "85vh", overflow: "auto", animation: isMobile ? "slideUp 0.3s ease" : "fadeIn 0.2s ease" }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 20px" }}>{isEdit ? "Edit Investor" : "Add Investor"}</h2>
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, fontFamily: "'DM Sans', sans-serif" }}>Basic info</div>
+        <div style={row}>
+          <div><label style={lbl}>Investor name *</label><input style={inpS} value={form.investorName} onChange={e => set("investorName", e.target.value)} placeholder="Meridian Capital Partners" /></div>
+          <div><label style={lbl}>Company / entity</label><input style={inpS} value={form.company} onChange={e => set("company", e.target.value)} placeholder="Meridian Capital Partners LLC" /></div>
+        </div>
+        <div style={row}>
+          <div><label style={lbl}>Investor type</label><select style={selS} value={form.investorType} onChange={e => set("investorType", e.target.value)}>{INVESTOR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+          <div><label style={lbl}>Pipeline stage</label><select style={selS} value={form.pipelineStage} onChange={e => set("pipelineStage", e.target.value)}>{INVESTOR_STAGES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+        </div>
+        <div style={row}>
+          <div><label style={lbl}>Temperature</label><select style={selS} value={form.temperature} onChange={e => set("temperature", e.target.value)}>{INVESTOR_TEMPS.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+          <div><label style={lbl}>Lead source</label><input style={inpS} value={form.leadSource} onChange={e => set("leadSource", e.target.value)} placeholder="Referral, conference, etc." /></div>
+        </div>
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, marginTop: 20, fontFamily: "'DM Sans', sans-serif" }}>Capital</div>
+        <div style={row}>
+          <div><label style={lbl}>Capital range min ($)</label><input style={inpS} value={form.capitalRangeMin} onChange={e => set("capitalRangeMin", e.target.value)} placeholder="250000" /></div>
+          <div><label style={lbl}>Capital range max ($)</label><input style={inpS} value={form.capitalRangeMax} onChange={e => set("capitalRangeMax", e.target.value)} placeholder="1000000" /></div>
+        </div>
+        <div style={row}>
+          <div><label style={lbl}>Capital committed ($)</label><input style={inpS} value={form.capitalCommitted} onChange={e => set("capitalCommitted", e.target.value)} placeholder="500000" /></div>
+          <div><label style={lbl}>Capital funded ($)</label><input style={inpS} value={form.capitalFunded} onChange={e => set("capitalFunded", e.target.value)} placeholder="250000" /></div>
+        </div>
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, marginTop: 20, fontFamily: "'DM Sans', sans-serif" }}>Investment preferences</div>
+        <div style={row}>
+          <div><label style={lbl}>Preferred return (%)</label><input style={inpS} value={form.preferredReturn} onChange={e => set("preferredReturn", e.target.value)} placeholder="8" /></div>
+          <div><label style={lbl}>IRR target (%)</label><input style={inpS} value={form.irrTarget} onChange={e => set("irrTarget", e.target.value)} placeholder="15" /></div>
+        </div>
+        <div style={row}>
+          <div><label style={lbl}>Hold period</label><input style={inpS} value={form.holdPeriod} onChange={e => set("holdPeriod", e.target.value)} placeholder="3-5 years" /></div>
+          <div><label style={lbl}>Min deal size ($)</label><input style={inpS} value={form.minDealSize} onChange={e => set("minDealSize", e.target.value)} placeholder="5000000" /></div>
+        </div>
+        <div style={row}>
+          <div><label style={lbl}>Asset preference</label><input style={inpS} value={form.assetPreference} onChange={e => set("assetPreference", e.target.value)} placeholder="Multifamily, Mixed-Use" /></div>
+          <div><label style={lbl}>Geography preference</label><input style={inpS} value={form.geographyPreference} onChange={e => set("geographyPreference", e.target.value)} placeholder="FL, TX, GA" /></div>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Equity structure</label><input style={inpS} value={form.equityStructure} onChange={e => set("equityStructure", e.target.value)} placeholder="LP – 90/10 split" />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Investment thesis</label><textarea style={{ ...inpS, minHeight: 60, resize: "vertical" }} value={form.investmentThesis} onChange={e => set("investmentThesis", e.target.value)} placeholder="Value-add multifamily in Southeast US..." />
+        </div>
+        <div style={row}>
+          <div><label style={lbl}>Next follow-up</label><input style={inpS} type="date" value={form.nextFollowUp} onChange={e => set("nextFollowUp", e.target.value)} /></div>
+          <div />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={lbl}>Notes</label><textarea style={{ ...inpS, minHeight: 60, resize: "vertical" }} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Additional notes..." />
+        </div>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+          <button onClick={() => onSave(form)} disabled={saving || !form.investorName} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: !form.investorName ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", opacity: !form.investorName ? 0.5 : 1, boxShadow: "0 4px 14px rgba(22,163,74,0.25)" }}>{saving ? "Saving..." : isEdit ? "Update Investor" : "Add Investor"}</button>
+        </div>
+      </div>
+      <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+    </div>
+  );
+}
+
+function ActivityModal({ isOpen, onClose, onSave, saving, isMobile }) {
+  const [form, setForm] = useState({ activityType: "Call", description: "", date: new Date().toISOString().split("T")[0] });
+  useEffect(() => { if (isOpen) setForm({ activityType: "Call", description: "", date: new Date().toISOString().split("T")[0] }); }, [isOpen]);
+  if (!isOpen) return null;
+  const lbl = { fontSize: 12, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 };
+  const inpS = { width: "100%", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none" };
+  const types = ["Call", "Email", "Meeting", "Note", "Document Sent", "Follow-Up", "Other"];
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1000, padding: isMobile ? 0 : 16 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "24px 24px 0 0" : 20, padding: isMobile ? "24px 20px 32px" : "28px 32px", width: "100%", maxWidth: 480 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 20px" }}>Log Activity</h2>
+        <div style={{ marginBottom: 12 }}><label style={lbl}>Type</label><select style={{ ...inpS, appearance: "none" }} value={form.activityType} onChange={e => setForm(f => ({ ...f, activityType: e.target.value }))}>{types.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+        <div style={{ marginBottom: 12 }}><label style={lbl}>Date</label><input type="date" style={inpS} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
+        <div style={{ marginBottom: 16 }}><label style={lbl}>Description</label><textarea style={{ ...inpS, minHeight: 80, resize: "vertical" }} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="What happened?" /></div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+          <button onClick={() => onSave(form)} disabled={saving || !form.description} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: !form.description ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", opacity: !form.description ? 0.5 : 1, boxShadow: "0 4px 14px rgba(22,163,74,0.25)" }}>{saving ? "Saving..." : "Log Activity"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivity, onLinkDeal, deals, isMobile, contacts }) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const tabs = ["overview", "contacts", "capital", "linked deals", "communications", "documents"];
+  const initials = (investor.investorName || "??").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+  const committed = num(investor.capitalCommitted) || 0;
+  const funded = num(investor.capitalFunded) || 0;
+  const pctFunded = committed > 0 ? Math.round((funded / committed) * 100) : 0;
+  const linkedAddresses = investor.linkedDealAddresses || [];
+  const linkedDeals = deals.filter(d => linkedAddresses.includes(d.address));
+  const investorContacts = (investor.contactIds || []).filter(id => id).map(id => contacts.find(c => c.rowId === id)).filter(Boolean);
+  const investorActivities = activities.filter(a => a.investorId === investor.id);
+  const actTypeColors = { "Call": "#16a34a", "Email": "#3b82f6", "Meeting": "#7c3aed", "Note": "#64748b", "Document Sent": "#d97706", "Follow-Up": "#0891b2", "Other": "#94a3b8" };
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", padding: isMobile ? "16px 16px 80px" : "28px 36px" }}>
+      <button onClick={onBack} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#64748b", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "4px 0", marginBottom: 16 }}>
+        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Back to investors
+      </button>
+
+      {/* Header card */}
+      <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? "18px 16px" : "24px 28px", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 18, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{initials}</div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>{investor.investorName}</h1>
+            <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 8px" }}>{investor.investorType}{investor.company ? ` · ${investor.company}` : ""}</p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <InvestorStageBadge stage={investor.pipelineStage} />
+              <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", background: investor.temperature === "Hot" ? "rgba(22,163,74,0.08)" : investor.temperature === "Warm" ? "rgba(217,119,6,0.08)" : "rgba(100,116,135,0.08)", color: TEMP_COLORS[investor.temperature] || "#94a3b8" }}>{investor.temperature || "—"}</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={onEdit} style={{ padding: "8px 16px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Edit</button>
+            <button onClick={onLogActivity} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}>Log activity</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stat cards */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+        <div style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Committed</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{committed ? fmt(committed) : "—"}</div>
+        </div>
+        <div style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Funded</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{funded ? fmt(funded) : "—"}</div>
+          {committed > 0 && <div style={{ height: 5, borderRadius: 3, background: "#f1f5f9", marginTop: 6 }}><div style={{ height: "100%", borderRadius: 3, background: "#16a34a", width: `${pctFunded}%` }} /></div>}
+        </div>
+        <div style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Deals linked</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{linkedDeals.length}</div>
+        </div>
+        <div style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>IRR target</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{investor.irrTarget ? `${investor.irrTarget}%` : "—"}</div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: "12px 12px 0 0", border: "1px solid #e2e8f0", borderBottom: "none", padding: isMobile ? "0 8px" : "0 20px", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        {tabs.map(t => (
+          <button key={t} onClick={() => setActiveTab(t)} style={{ background: "transparent", border: "none", borderBottom: activeTab === t ? "2px solid #16a34a" : "2px solid transparent", padding: isMobile ? "12px 12px" : "12px 18px", color: activeTab === t ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize", whiteSpace: "nowrap", flexShrink: 0, transition: "all 0.15s" }}>{t}</button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div style={{ background: "#fff", borderRadius: "0 0 12px 12px", border: "1px solid #e2e8f0", borderTop: "1px solid #e2e8f0", padding: isMobile ? "20px 16px" : "24px 28px" }}>
+        {activeTab === "overview" && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Investor profile <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "12px 24px", fontSize: 13, marginBottom: 24 }}>
+              {[
+                ["Investor name", investor.investorName], ["Type", investor.investorType],
+                ["Pipeline stage", investor.pipelineStage], ["Temperature", investor.temperature],
+                ["Capital range", investor.capitalRangeMin || investor.capitalRangeMax ? `${investor.capitalRangeMin ? fmt(investor.capitalRangeMin) : "—"} – ${investor.capitalRangeMax ? fmt(investor.capitalRangeMax) : "—"}` : "—"],
+                ["Investment thesis", investor.investmentThesis || "—"],
+                ["Preferred return", investor.preferredReturn ? `${investor.preferredReturn}%` : "—"],
+                ["IRR target", investor.irrTarget ? `${investor.irrTarget}%` : "—"],
+                ["Hold period", investor.holdPeriod || "—"],
+                ["Lead source", investor.leadSource || "—"],
+                ["Date added", fmtDate(investor.dateAdded)],
+                ["Last contact", fmtDate(investor.dateLastContact)],
+                ["Next follow-up", fmtDate(investor.nextFollowUp)],
+                ["Company", investor.company || "—"],
+              ].map(([label, value], i) => (
+                <div key={i}>
+                  <div style={{ color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif", marginBottom: 2 }}>{label}</div>
+                  <div style={{ color: "#0f172a", fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}>{value || "—"}</div>
+                </div>
+              ))}
+            </div>
+            {investor.notes && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Notes <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+                <p style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6 }}>{investor.notes}</p>
+              </>
+            )}
+          </>
+        )}
+
+        {activeTab === "contacts" && (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Contacts ({investorContacts.length})</div>
+            </div>
+            {investorContacts.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
+                No contacts linked yet. Link contacts from the Contacts module.
+              </div>
+            ) : investorContacts.map((c, i) => {
+              const ci = (c.name || "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", border: "1px solid #f1f5f9", borderRadius: 10, marginBottom: 8 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(59,130,246,0.08)", color: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{ci}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{c.name}</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{[c.email, c.phone, c.company].filter(Boolean).join(" · ")}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+
+        {activeTab === "capital" && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Capital commitments <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Total committed</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{committed ? fmt(committed) : "—"}</div>
+              </div>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Total funded</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{funded ? fmt(funded) : "—"}</div>
+              </div>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Remaining balance</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{committed > 0 ? fmt(committed - funded) : "—"}</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Fund preferences <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "12px 24px", fontSize: 13 }}>
+              {[
+                ["Asset class", investor.assetPreference], ["Geography", investor.geographyPreference],
+                ["Min deal size", investor.minDealSize ? fmt(investor.minDealSize) : "—"],
+                ["Return target (IRR)", investor.irrTarget ? `${investor.irrTarget}%+` : "—"],
+                ["Preferred return", investor.preferredReturn ? `${investor.preferredReturn}%` : "—"],
+                ["Equity structure", investor.equityStructure || "—"],
+              ].map(([label, value], i) => (
+                <div key={i}>
+                  <div style={{ color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif", marginBottom: 2 }}>{label}</div>
+                  <div style={{ color: "#0f172a", fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}>{value || "—"}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {activeTab === "linked deals" && (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Linked deals ({linkedDeals.length})</div>
+              <button onClick={onLinkDeal} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Link deal</button>
+            </div>
+            {linkedDeals.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No deals linked yet. Click "Link deal" to associate deals with this investor.</div>
+            ) : linkedDeals.map((d, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", border: "1px solid #f1f5f9", borderRadius: 10, marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{d.address}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{d.units ? d.units + " units · " : ""}{d.status || "—"}{d.reapScore ? " · REAP Score: " + Math.round(num(d.reapScore)) : ""}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#16a34a", fontFamily: "'DM Sans', sans-serif" }}>{d.offer ? fmt(d.offer) : "—"}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>deal value</div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {activeTab === "communications" && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Activity log <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+            {investorActivities.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No activity logged yet. Click "Log activity" to start tracking communications.</div>
+            ) : investorActivities.sort((a, b) => new Date(b.date) - new Date(a.date)).map((a, i) => (
+              <div key={i} style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: "1px solid #f8fafc" }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: actTypeColors[a.activityType] || "#94a3b8", marginTop: 5, flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.5 }}>{a.description}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{fmtDate(a.date)}{a.user ? ` · ${fmtUserName(a.user)}` : ""} · {a.activityType}</div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {activeTab === "documents" && (
+          <div style={{ textAlign: "center", padding: 40, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            Subscription agreements, PPMs, K-1s, and investor letters will appear here.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LinkDealModal({ isOpen, onClose, deals, linkedAddresses, onLink, isMobile }) {
+  const [search, setSearch] = useState("");
+  if (!isOpen) return null;
+  const available = deals.filter(d => d.address && !linkedAddresses.includes(d.address));
+  const filtered = available.filter(d => (d.address || "").toLowerCase().includes(search.toLowerCase()) || (d.city || "").toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1000, padding: isMobile ? 0 : 16 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "24px 24px 0 0" : 20, padding: isMobile ? "24px 20px 32px" : "28px 32px", width: "100%", maxWidth: 500, maxHeight: isMobile ? "70vh" : "60vh", display: "flex", flexDirection: "column" }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 16px" }}>Link Deal to Investor</h2>
+        <input placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: "100%", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", marginBottom: 12 }} />
+        <div style={{ flex: 1, overflow: "auto" }}>
+          {filtered.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 24, color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No available deals to link.</div>
+          ) : filtered.map((d, i) => (
+            <button key={i} onClick={() => onLink(d.address)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", border: "1px solid #f1f5f9", borderRadius: 10, marginBottom: 6, background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "'DM Sans', sans-serif" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{d.address}</div>
+                <div style={{ fontSize: 11, color: "#94a3b8" }}>{d.city}{d.state ? `, ${d.state}` : ""} · {d.status} · {d.offer ? fmt(d.offer) : "—"}</div>
+              </div>
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, deals }) {
+  const [investors, setInvestors] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [stageFilter, setStageFilter] = useState(null);
+  const [typeFilter, setTypeFilter] = useState("");
+  const [hoveredRow, setHoveredRow] = useState(null);
+  const [selectedInvestor, setSelectedInvestor] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [editingInvestor, setEditingInvestor] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  const [showLinkDealModal, setShowLinkDealModal] = useState(false);
+  const searchRef = useRef(null);
+
+  useEffect(() => { if (searchOpen && searchRef.current) searchRef.current.focus(); }, [searchOpen]);
+
+  const userEmail = session?.user?.email || "";
+
+  const fetchInvestors = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp : [];
+      const result = await getInvestors(teamList);
+      setInvestors(result);
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  }, [teamEmailsProp]);
+
+  const fetchActivities = useCallback(async () => {
+    try {
+      const result = await getInvestorActivities();
+      setActivities(result);
+    } catch { setActivities([]); }
+  }, []);
+
+  const fetchContacts = useCallback(async () => {
+    try {
+      const result = await getContactsList();
+      setContacts(result);
+    } catch { setContacts([]); }
+  }, []);
+
+  useEffect(() => { if (session) { fetchInvestors(); fetchActivities(); fetchContacts(); } }, [session, fetchInvestors, fetchActivities, fetchContacts]);
+
+  const handleSaveInvestor = async (form) => {
+    setSaving(true);
+    try {
+      if (editingInvestor) {
+        await editInvestor(editingInvestor.id, form);
+        setInvestors(prev => prev.map(inv => inv.id === editingInvestor.id ? { ...inv, ...form } : inv));
+        if (selectedInvestor && selectedInvestor.id === editingInvestor.id) setSelectedInvestor(prev => ({ ...prev, ...form }));
+      } else {
+        const newInvestor = await saveInvestor(form, userEmail);
+        if (newInvestor) setInvestors(prev => [...prev, newInvestor]);
+        else await fetchInvestors();
+      }
+      setShowModal(false);
+      setEditingInvestor(null);
+    } catch (err) { alert("Error saving investor: " + err.message); } finally { setSaving(false); }
+  };
+
+  const handleLogActivity = async (form) => {
+    if (!selectedInvestor) return;
+    setSaving(true);
+    try {
+      const newActivity = await logInvestorActivity(selectedInvestor.id, userEmail, form);
+      if (newActivity) setActivities(prev => [...prev, newActivity]);
+      else await fetchActivities();
+      setSelectedInvestor(prev => ({ ...prev, dateLastContact: new Date().toISOString() }));
+      setInvestors(prev => prev.map(inv => inv.id === selectedInvestor.id ? { ...inv, dateLastContact: new Date().toISOString() } : inv));
+      setShowActivityModal(false);
+    } catch (err) { alert("Error: " + err.message); } finally { setSaving(false); }
+  };
+
+  const handleLinkDeal = async (address) => {
+    if (!selectedInvestor) return;
+    const newAddresses = [...(selectedInvestor.linkedDealAddresses || []), address];
+    try {
+      await editInvestor(selectedInvestor.id, { linkedDealAddresses: newAddresses });
+      setSelectedInvestor(prev => ({ ...prev, linkedDealAddresses: newAddresses }));
+      setInvestors(prev => prev.map(inv => inv.id === selectedInvestor.id ? { ...inv, linkedDealAddresses: newAddresses } : inv));
+      setShowLinkDealModal(false);
+    } catch (err) { alert("Error: " + err.message); }
+  };
+
+  const handleDeleteInvestor = async (id) => {
+    if (!window.confirm("Delete this investor? This cannot be undone.")) return;
+    try {
+      await deleteInvestor(id);
+      setInvestors(prev => prev.filter(inv => inv.id !== id));
+      if (selectedInvestor && selectedInvestor.id === id) setSelectedInvestor(null);
+    } catch (err) { alert("Error: " + err.message); }
+  };
+
+  // Filtering
+  const stageFilters = INVESTOR_STAGES.map(s => ({ label: s, match: inv => (inv.pipelineStage || "").trim() === s }));
+  const typeFiltered = typeFilter ? investors.filter(inv => (inv.investorType || "").toLowerCase().includes(typeFilter.toLowerCase())) : investors;
+  const textFiltered = typeFiltered.filter(inv =>
+    (inv.investorName || "").toLowerCase().includes(search.toLowerCase()) ||
+    (inv.company || "").toLowerCase().includes(search.toLowerCase()) ||
+    (inv.investorType || "").toLowerCase().includes(search.toLowerCase())
+  );
+  const stageFiltered = stageFilter !== null ? textFiltered.filter(stageFilters[stageFilter].match) : textFiltered;
+
+  // Pipeline stats
+  const totalCommitted = investors.reduce((s, inv) => s + (num(inv.capitalCommitted) || 0), 0);
+  const totalFunded = investors.reduce((s, inv) => s + (num(inv.capitalFunded) || 0), 0);
+  const totalPipeline = investors.reduce((s, inv) => s + (num(inv.capitalRangeMax) || num(inv.capitalCommitted) || 0), 0);
+
+  if (loading) return <LoadingSpinner />;
+  if (error) return <ErrorState message={error} onRetry={fetchInvestors} />;
+
+  if (selectedInvestor) {
+    return (
+      <>
+        <InvestorDetailView
+          investor={selectedInvestor} activities={activities} deals={deals} contacts={contacts}
+          isMobile={isMobile}
+          onBack={() => setSelectedInvestor(null)}
+          onEdit={() => { setEditingInvestor(selectedInvestor); setShowModal(true); }}
+          onLogActivity={() => setShowActivityModal(true)}
+          onLinkDeal={() => setShowLinkDealModal(true)}
+        />
+        <InvestorModal isOpen={showModal} onClose={() => { setShowModal(false); setEditingInvestor(null); }} onSave={handleSaveInvestor} saving={saving} isMobile={isMobile} investor={editingInvestor} />
+        <ActivityModal isOpen={showActivityModal} onClose={() => setShowActivityModal(false)} onSave={handleLogActivity} saving={saving} isMobile={isMobile} />
+        <LinkDealModal isOpen={showLinkDealModal} onClose={() => setShowLinkDealModal(false)} deals={deals} linkedAddresses={selectedInvestor.linkedDealAddresses || []} onLink={handleLinkDeal} isMobile={isMobile} />
+      </>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+      <InvestorModal isOpen={showModal} onClose={() => { setShowModal(false); setEditingInvestor(null); }} onSave={handleSaveInvestor} saving={saving} isMobile={isMobile} investor={editingInvestor} />
+
+      {/* Header */}
+      {isMobile ? (
+        <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "14px 16px" }}>
+          {searchOpen ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, animation: "fadeIn 0.2s ease" }}>
+              <div style={{ position: "relative", flex: 1 }}>
+                <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
+                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search investors..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px 10px 32px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: "100%" }} />
+              </div>
+              <button onClick={() => { setSearchOpen(false); setSearch(""); }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "8px 4px", whiteSpace: "nowrap" }}>Cancel</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <h1 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Investors</h1>
+                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{stageFilter !== null ? stageFiltered.length + " " + stageFilters[stageFilter].label.toLowerCase() : investors.length + " investors"}</p>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
+                </button>
+                <button onClick={() => { setEditingInvestor(null); setShowModal(true); }} style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(22,163,74,0.35)" }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5}><path d="M12 5v14M5 12h14" /></svg>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ padding: "28px 36px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+            <div>
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Investor Pipeline</h1>
+              <p style={{ fontSize: 13, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{investors.length} investor{investors.length !== 1 ? "s" : ""} in pipeline</p>
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div style={{ position: "relative" }}>
+                <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search investors..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px 10px 34px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 240, transition: "border 0.15s" }} />
+              </div>
+              <button onClick={() => { setEditingInvestor(null); setShowModal(true); }} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 4px 14px rgba(22,163,74,0.25)", display: "flex", alignItems: "center", gap: 6 }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14" /></svg> Add Investor
+              </button>
+            </div>
+          </div>
+
+          {/* Stat cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+            <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#16a34a", borderRadius: "14px 14px 0 0" }} />
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Total investors</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{investors.length}</div>
+            </div>
+            <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#3b82f6", borderRadius: "14px 14px 0 0" }} />
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Pipeline value</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{totalPipeline ? fmt(totalPipeline) : "—"}</div>
+            </div>
+            <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#d97706", borderRadius: "14px 14px 0 0" }} />
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Capital committed</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{totalCommitted ? fmt(totalCommitted) : "—"}</div>
+            </div>
+            <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#7c3aed", borderRadius: "14px 14px 0 0" }} />
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Capital funded</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{totalFunded ? fmt(totalFunded) : "—"}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stage filter chips */}
+      <div style={{ padding: isMobile ? "10px 16px" : "0 36px", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div style={{ display: "flex", gap: 6, minWidth: "max-content" }}>
+          <button onClick={() => setStageFilter(null)} style={{ padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, border: "1px solid", borderColor: stageFilter === null ? "#16a34a" : "#e2e8f0", background: stageFilter === null ? "#16a34a" : "#fff", color: stageFilter === null ? "#fff" : "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>All ({investors.length})</button>
+          {stageFilters.map((sf, i) => {
+            const count = textFiltered.filter(sf.match).length;
+            const cfg = INVESTOR_STAGE_CONFIG[sf.label];
+            return (
+              <button key={sf.label} onClick={() => setStageFilter(stageFilter === i ? null : i)} style={{ padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, border: "1px solid", borderColor: stageFilter === i ? cfg.color : "#e2e8f0", background: stageFilter === i ? cfg.bg : "#fff", color: stageFilter === i ? cfg.color : "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>{sf.label} ({count})</button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Table / Cards */}
+      <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 16px" : "16px 36px 36px" }}>
+        {stageFiltered.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "60px 20px" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 14, background: "rgba(22,163,74,0.08)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+              <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 6px" }}>{investors.length === 0 ? "No investors yet" : "No matching investors"}</h3>
+            <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginBottom: 20 }}>{investors.length === 0 ? "Add your first investor to start building your capital pipeline." : "Try adjusting your search or filters."}</p>
+            {investors.length === 0 && (
+              <button onClick={() => { setEditingInvestor(null); setShowModal(true); }} style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 4px 14px rgba(22,163,74,0.25)" }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} style={{ verticalAlign: "middle", marginRight: 6 }}><path d="M12 5v14M5 12h14" /></svg>Add Investor
+              </button>
+            )}
+          </div>
+        ) : isMobile ? (
+          stageFiltered.map((inv, i) => (
+            <div key={inv.id || i} onClick={() => setSelectedInvestor(inv)} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "16px", marginBottom: 10, cursor: "pointer", transition: "all 0.15s" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{(inv.investorName || "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.investorName}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{inv.investorType}</div>
+                </div>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2}><path d="M9 18l6-6-6-6" /></svg>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                <InvestorStageBadge stage={inv.pipelineStage} />
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: TEMP_COLORS[inv.temperature] || "#94a3b8", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: TEMP_COLORS[inv.temperature] || "#94a3b8" }} />{inv.temperature || "—"}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>
+                <span>{inv.capitalRangeMin || inv.capitalRangeMax ? `${inv.capitalRangeMin ? fmt(inv.capitalRangeMin) : "—"} – ${inv.capitalRangeMax ? fmt(inv.capitalRangeMax) : "—"}` : "—"}</span>
+                <span>{fmtDate(inv.dateLastContact)}</span>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  {["Investor", "Type", "Stage", "Capital range", "Temperature", "Last contact"].map(h => (
+                    <th key={h} style={{ textAlign: "left", padding: "12px 16px", fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {stageFiltered.map((inv, i) => (
+                  <tr key={inv.id || i} onClick={() => setSelectedInvestor(inv)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ cursor: "pointer", background: hoveredRow === i ? "#f8fafc" : "transparent", transition: "background 0.1s", borderBottom: "1px solid #f8fafc" }}>
+                    <td style={{ padding: "14px 16px", fontWeight: 600, color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>{inv.investorName}</td>
+                    <td style={{ padding: "14px 16px", color: "#64748b", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>{inv.investorType}</td>
+                    <td style={{ padding: "14px 16px" }}><InvestorStageBadge stage={inv.pipelineStage} /></td>
+                    <td style={{ padding: "14px 16px", color: "#64748b", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>{inv.capitalRangeMin || inv.capitalRangeMax ? `${inv.capitalRangeMin ? fmt(inv.capitalRangeMin) : "—"} – ${inv.capitalRangeMax ? fmt(inv.capitalRangeMax) : "—"}` : "—"}</td>
+                    <td style={{ padding: "14px 16px" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: TEMP_COLORS[inv.temperature] || "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: TEMP_COLORS[inv.temperature] || "#94a3b8" }} />{inv.temperature || "—"}
+                      </span>
+                    </td>
+                    <td style={{ padding: "14px 16px", color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>{fmtDate(inv.dateLastContact)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5655,195 +6095,8 @@ export default function ReapApp() {
     setLoading(true);
     setError(null);
     try {
-      // Fetch ALL columns (267 columns = roughly A:JK)
-      const range = `${SHEET_NAME}!A1:KZ`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setDeals([]); setLoading(false); return; }
-
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
-
-      // Core fields
-      const colUser = idx("User");
-      const colDate = idx("Date / Added");
-      const colStatus = idx("Deal / Status");
-      const colAddress = idx("Property / Address");
-      const colType = idx("Type");
-      const colOffer = idx("Investment / Our Offer");
-      const colNetSqft = idx("Investment / Our Offer $ per SFT");
-      const colSqft = idx("SQFT / Net");
-      const colUnits = idx("Units");
-      const colPurchase = idx("Purchase Price");
-      const colImprovement = idx("Improvement / Budget");
-      const colARV = idx("ARV / Value");
-      const colProfit = idx("Profit");
-      const colROI = idx("Investment / ROI");
-      const colCTV = idx("Cost to Value / Percent (CTV)");
-      const colAAR = idx("AAR");
-      const colProfitability = idx("Profitability");
-      const colSource = idx("Source");
-      const colCity = idx("City");
-      const colState = idx("State");
-
-      // Financial fields (Step 27)
-      const colCapRate = idx("Asking / Cap Rate");
-      const colDSCR = idx("DSCR");
-      const colNOIAnnual = idx("Proforma / Net Operating Income - Annual(NOI)");
-      const colNOIMonthly = idx("Proforma / Net Operating Income - Monthly");
-      const colNOIPerSF = idx("Proforma / Net Operating Income  $ per SQFT (NOI)");
-      const colCashFlowMonthly = idx("Cash Flow Pre Tax (Monthly)");
-      const colProformaRevenueAnnual = idx("Proforma / Revenue - Annual");
-      const colProformaRevenueMonthly = idx("Proforma / Revenue - Monthly");
-      const colProformaRentPerSF = idx("Proforma / Rent per SF");
-      const colProformaExpensesPct = idx("Proforma / Expenses (%)");
-      const colProformaExpensesAnnual = idx("Proforma / Expenses - Annual ($)");
-      const colProformaExpensesMonthly = idx("Proforma / Expenses - Monthly ($)");
-      const colProformaExpensesPerSF = idx("Proforma / Expenses $ per SFT");
-      const colProformaVacancy = idx("Proforma / Vacancy (%)");
-      const colBridgeLoanTotal = idx("Bridge / Loan Total");
-      const colBridgeInterestRate = idx("Bridge / Interest Rate (%)");
-      const colBridgeInterestMonthly = idx("Bridge / Interest Cost (Monthly)");
-      const colBridgePoints = idx("Bridge / Points (%)");
-      const colBridgeTotalCost = idx("Bridge / Total Cost");
-      const colBridgeLTC = idx("Bridge / Loan to Cost (LTC)");
-      const colBridgeLTV = idx("Bridge / Loan to Value (LTV)");
-      const colEquityRequired = idx("Equity / Required");
-      const colRefiLoanAmount = idx("Refinance / Loan Amount");
-      const colRefiPctARV = idx("Refinance / % of Appraisal (ARV)");
-      const colRefiInterestRate = idx("Refinance / Interest Rate (%)");
-      const colRefiCashFlow = idx("Refinance / Cash Flow (Annual)");
-      const colCashOutRefi = idx("Cash Out at Refi");
-      const colProfitAtRefi = idx("Profit at Refi");
-      const colEquityAfterRefi = idx("Equity / Left in the Deal after Refi ");
-      const colRefiValuation = idx("Refinance Valuation");
-      const colReapScore = idx("REAP / Score");
-      // Existing Financials
-      const colExistingRevenueAnnual = idx("Existing Financials / Revenue - Annual");
-      const colExistingRevenueMonthly = idx("Existing Financials / Revenue - Monthly");
-      const colExistingRevenuePerSF = idx("Existing Financials / Revenue Per SQFT");
-      const colExistingNOI = idx("Existing Financials / Net Income (NOI)");
-      const colExistingExpensePct = idx("Existing Financials / Expense Percentage");
-      const colExistingExpenses = idx("Existing Expenses ($)");
-      const colExistingCapRate = idx("Investment / Existing Financials / Our Offer Cap Rate");
-      const colAnnualTaxes = idx("Annual Taxes (New)");
-      const colInsuranceCost = idx("Insurance / Cost (Annual)");
-      const colEquityMultiple = idx("Equity Multiple");
-      // Edit-related fields
-      const colAskingPrice = idx("Asking / Price");
-      const colAcqCostToClose = idx("Acquisition / Cost to Close %");
-      const colMonths = idx("Months");
-      const colDispCostOfSale = idx("Disposition / Cost of Sale (% of ARV)");
-      const colBridgeAcqPct = idx("Bridge / Acquisition Financed (%)");
-      const colBridgeImprovPct = idx("Bridge / Improvement Financing (%)");
-      const colRefiPoints = idx("Refinance / Points (%)");
-      const colRefiTerm = idx("Refinance / Term (years)");
-      const colLotAcres = idx("Lot / Size Acres");
-      const colYearBuilt = idx("Year Built");
-      const colDealName = idx("Deal / Name");
-      const colZip = idx("Zip Code");
-      const colClass = idx("Class");
-
-      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
-
-      const parsed = rows.slice(1).map(row => ({
-        // Core
-        user: g(row, colUser),
-        date: g(row, colDate),
-        status: g(row, colStatus),
-        address: g(row, colAddress),
-        type: g(row, colType),
-        offer: g(row, colOffer),
-        netSqft: g(row, colNetSqft),
-        sqft: g(row, colSqft),
-        units: g(row, colUnits),
-        purchasePrice: g(row, colPurchase),
-        improvementBudget: g(row, colImprovement),
-        arv: g(row, colARV),
-        profit: g(row, colProfit),
-        roi: g(row, colROI),
-        ctv: g(row, colCTV),
-        aar: g(row, colAAR),
-        profitability: g(row, colProfitability),
-        source: g(row, colSource),
-        city: g(row, colCity),
-        state: g(row, colState),
-        // Financials
-        capRate: g(row, colCapRate),
-        dscr: g(row, colDSCR),
-        noiAnnual: g(row, colNOIAnnual),
-        noiMonthly: g(row, colNOIMonthly),
-        noiPerSF: g(row, colNOIPerSF),
-        cashFlowMonthly: g(row, colCashFlowMonthly),
-        proformaRevenueAnnual: g(row, colProformaRevenueAnnual),
-        proformaRevenueMonthly: g(row, colProformaRevenueMonthly),
-        proformaRentPerSF: g(row, colProformaRentPerSF),
-        proformaExpensesPct: g(row, colProformaExpensesPct),
-        proformaExpensesAnnual: g(row, colProformaExpensesAnnual),
-        proformaExpensesMonthly: g(row, colProformaExpensesMonthly),
-        proformaExpensesPerSF: g(row, colProformaExpensesPerSF),
-        proformaVacancy: g(row, colProformaVacancy),
-        bridgeLoanTotal: g(row, colBridgeLoanTotal),
-        bridgeInterestRate: g(row, colBridgeInterestRate),
-        bridgeInterestMonthly: g(row, colBridgeInterestMonthly),
-        bridgePoints: g(row, colBridgePoints),
-        bridgeTotalCost: g(row, colBridgeTotalCost),
-        bridgeLTC: g(row, colBridgeLTC),
-        bridgeLTV: g(row, colBridgeLTV),
-        equityRequired: g(row, colEquityRequired),
-        refiLoanAmount: g(row, colRefiLoanAmount),
-        refiPctARV: g(row, colRefiPctARV),
-        refiInterestRate: g(row, colRefiInterestRate),
-        refiCashFlow: g(row, colRefiCashFlow),
-        cashOutRefi: g(row, colCashOutRefi),
-        profitAtRefi: g(row, colProfitAtRefi),
-        equityAfterRefi: g(row, colEquityAfterRefi),
-        refiValuation: g(row, colRefiValuation),
-        reapScore: g(row, colReapScore),
-        equityMultiple: g(row, colEquityMultiple),
-        // Edit-related fields
-        askingPrice: g(row, colAskingPrice),
-        acqCostToClose: g(row, colAcqCostToClose),
-        months: g(row, colMonths),
-        dispCostOfSale: g(row, colDispCostOfSale),
-        bridgeAcqPct: g(row, colBridgeAcqPct),
-        bridgeImprovPct: g(row, colBridgeImprovPct),
-        refiPoints: g(row, colRefiPoints),
-        refiTerm: g(row, colRefiTerm),
-        lotAcres: g(row, colLotAcres),
-        yearBuilt: g(row, colYearBuilt),
-        dealName: g(row, colDealName),
-        zip: g(row, colZip),
-        dealClass: g(row, colClass),
-        // Existing Financials
-        existingRevenueAnnual: g(row, colExistingRevenueAnnual),
-        existingRevenueMonthly: g(row, colExistingRevenueMonthly),
-        existingRevenuePerSF: g(row, colExistingRevenuePerSF),
-        existingNOI: g(row, colExistingNOI),
-        existingExpensePct: g(row, colExistingExpensePct),
-        existingExpenses: g(row, colExistingExpenses),
-        existingCapRate: g(row, colExistingCapRate),
-        annualTaxes: g(row, colAnnualTaxes),
-        insuranceCost: g(row, colInsuranceCost),
-      })).filter(d => d.address);
-
-      // Filter to team's deals (org members see all team deals, solo users see only their own)
       const emailsToShow = teamEmails.length > 0 ? teamEmails : [session?.user?.email?.toLowerCase() || ""];
-      const userDeals = parsed.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
-
-      // Sort newest first
-      userDeals.sort((a, b) => {
-        const da = new Date(a.date);
-        const db = new Date(b.date);
-        if (isNaN(da.getTime()) && isNaN(db.getTime())) return 0;
-        if (isNaN(da.getTime())) return 1;
-        if (isNaN(db.getTime())) return -1;
-        return db - da;
-      });
-
+      const userDeals = await getDeals(emailsToShow);
       setDeals(userDeals);
     } catch (err) {
       setError(err.message);
@@ -5870,63 +6123,7 @@ export default function ReapApp() {
   const handleSaveDeal = async (form) => {
     setSavingDeal(true);
     try {
-      const today = new Date().toLocaleDateString("en-US");
-      const dealData = {
-        "Deal / Name": form.dealName,
-        "Property / Address": form.address,
-        "City": form.city,
-        "State": form.state,
-        "Zip Code": form.zip,
-        "Type": form.type,
-        "Class": form.class,
-        "SQFT / Net": form.sqft,
-        "Units": form.units,
-        "Year Built": form.yearBuilt,
-        "Asking / Price": form.askingPrice.replace(/[$,]/g, ""),
-        "Investment / Our Offer": form.ourOffer.replace(/[$,]/g, ""),
-        "Lot / Size Acres": form.lotAcres,
-        "Date / Added": today,
-        "Deal / Status": "New",
-        "User": session?.user?.email || "",
-        "Source": "REAP App",
-      };
-
-      if (SHEETS_WRITE_URL) {
-        const res = await fetch(SHEETS_WRITE_URL, {
-          method: "POST",
-          body: JSON.stringify(dealData),
-        });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Write failed");
-      } else {
-        // Fallback: alert user to set up write URL
-        alert("Deal saved locally. To write to Google Sheets, deploy the Apps Script and add REACT_APP_SHEETS_WRITE_URL to your .env file. See google-apps-script.js for instructions.");
-      }
-
-      // Build a local deal object so we can open it immediately
-      const newDeal = {
-        user: session?.user?.email || "",
-        date: today,
-        status: "New",
-        address: form.address,
-        type: form.type,
-        offer: form.ourOffer,
-        netSqft: "",
-        sqft: form.sqft,
-        units: form.units,
-        purchasePrice: "",
-        improvementBudget: "",
-        arv: "",
-        profit: "",
-        roi: "",
-        ctv: "",
-        aar: "",
-        profitability: "",
-        source: "REAP App",
-        city: form.city,
-        state: form.state,
-        askingPrice: form.askingPrice,
-      };
+      const newDeal = await saveDeal(form, session?.user?.email || "");
 
       setShowNewDeal(false);
 
@@ -5953,49 +6150,7 @@ export default function ReapApp() {
   const handleEditDeal = async (form) => {
     setEditSaving(true);
     try {
-      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
-      const updates = {
-        "Deal / Status": form.status,
-        "Type": form.type,
-        "SQFT / Net": clean(form.sqft),
-        "Units": clean(form.units),
-        "Year Built": clean(form.yearBuilt),
-        "Lot / Size Acres": clean(form.lotAcres),
-        "Class": form.class,
-        "Asking / Price": clean(form.askingPrice),
-        "Investment / Our Offer": clean(form.ourOffer),
-        "Purchase Price": clean(form.purchasePrice),
-        "Acquisition / Cost to Close %": clean(form.acqCostToClose),
-        "Improvement / Budget": clean(form.improvementBudget),
-        "ARV / Value": clean(form.arvValue),
-        "Months": clean(form.months),
-        "Disposition / Cost of Sale (% of ARV)": clean(form.dispCostOfSale),
-        "Proforma / Revenue - Annual": clean(form.proformaRevenueAnnual),
-        "Proforma / Expenses (%)": clean(form.proformaExpensesPct),
-        "Proforma / Vacancy (%)": clean(form.proformaVacancy),
-        "Existing Financials / Revenue - Annual": clean(form.existingRevenueAnnual),
-        "Existing Financials / Expense Percentage": clean(form.existingExpensePct),
-        "Annual Taxes (New)": clean(form.annualTaxes),
-        "Insurance / Cost (Annual)": clean(form.insuranceCost),
-        "Bridge / Acquisition Financed (%)": clean(form.bridgeAcqPct),
-        "Bridge / Improvement Financing (%)": clean(form.bridgeImprovPct),
-        "Bridge / Interest Rate (%)": clean(form.bridgeInterestRate),
-        "Bridge / Points (%)": clean(form.bridgePoints),
-        "Refinance / % of Appraisal (ARV)": clean(form.refiPctARV),
-        "Refinance / Interest Rate (%)": clean(form.refiInterestRate),
-        "Refinance / Points (%)": clean(form.refiPoints),
-        "Refinance / Term (years)": clean(form.refiTerm),
-      };
-
-      if (SHEETS_WRITE_URL) {
-        const res = await fetch(SHEETS_WRITE_URL, {
-          method: "POST",
-          body: JSON.stringify({ action: "edit_deal", address: selectedDeal.address, updates }),
-        });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Edit failed");
-      }
-
+      await editDeal(selectedDeal.address, form);
       setShowEditDeal(false);
       // Don't null selectedDeal — stay on the deal detail view
       // fetchDeals will refresh the data, and the sync effect below updates selectedDeal
@@ -6030,31 +6185,7 @@ export default function ReapApp() {
   const handleSaveBuyer = async (form) => {
     setSavingBuyer(true);
     try {
-      const buyerData = {
-        "Contact / Name": form.name,
-        "Contact / First Name": form.name.split(" ")[0],
-        "Contact / Email": form.email,
-        "Contact / Phone": form.phone,
-        "Contact / Company": form.company,
-        "Contact / Type": "Buyer (Client)",
-        "Buyer / Status": form.buyerStatus || "New",
-        "Contact / Asset Preference": form.assetPreference,
-        "Contact / Temperature": form.temperature,
-        "Contact / Manager": form.manager,
-        "Contact / Notes": form.notes,
-        "Contact / Lead Source": form.leadSource,
-        "User": session?.user?.email || "",
-        "Date / Added": new Date().toISOString(),
-      };
-
-      if (SHEETS_WRITE_URL) {
-        const payload = editingBuyer?.rowId
-          ? { action: "edit_contact", rowId: editingBuyer.rowId, updates: buyerData }
-          : { action: "add_contact", ...buyerData };
-        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Write failed");
-      }
+      await saveBuyer(form, session?.user?.email || "", editingBuyer?.rowId || null);
 
       setShowBuyerModal(false);
       setEditingBuyer(null);
@@ -6074,13 +6205,14 @@ export default function ReapApp() {
   const initials = userName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   const FEATURE_NAV_MAP = {
     pipeline: "pipeline", portfolios: "portfolio", analytics: "dashboard",
-    contacts: "contacts", markets: "market_intel", mls: "mls_feed", uploader: "file_uploader"
+    contacts: "contacts", investors: "investor_pipeline", markets: "market_intel", mls: "mls_feed", uploader: "file_uploader"
   };
   const allNavItems = [
     { id: "pipeline", label: "Deals", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
     { id: "portfolios", label: "Portfolios", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/><polyline points="2 15.5 12 8.5 22 15.5"/></svg> },
     { id: "analytics", label: "Dashboard", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
     { id: "contacts", label: "Contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+    { id: "investors", label: "Investors", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
     { id: "markets", label: "Markets", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
     { id: "mls", label: "MLS Feed", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
     { id: "uploader", label: "File Uploader", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> },
@@ -6219,6 +6351,8 @@ export default function ReapApp() {
               <PortfolioView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
             ) : activeNav === "contacts" ? (
               <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
+            ) : activeNav === "investors" ? (
+              <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} />
             ) : activeNav === "analytics" ? (
               <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
             ) : activeNav === "markets" ? (
@@ -6258,6 +6392,8 @@ export default function ReapApp() {
               ? <PortfolioView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
               : activeNav === "contacts"
               ? <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
+              : activeNav === "investors"
+              ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} />
               : activeNav === "analytics"
                 ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
                 : activeNav === "markets"
