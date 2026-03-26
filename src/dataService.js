@@ -69,283 +69,227 @@ function g(row, col) {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// DEALS
+// DEALS — Supabase (Phase 3)
 // ═══════════════════════════════════════════════════════════════════
 
 export async function getDeals(teamEmails) {
-  const { headers, rows } = await sheetsRead("Deals", "A1:KZ");
-  if (rows.length === 0) return [];
-
-  const idx = makeIdx(headers);
-
-  // Core fields
-  const colUser = idx("User");
-  const colDate = idx("Date / Added");
-  const colStatus = idx("Deal / Status");
-  const colAddress = idx("Property / Address");
-  const colType = idx("Type");
-  const colOffer = idx("Investment / Our Offer");
-  const colNetSqft = idx("Investment / Our Offer $ per SFT");
-  const colSqft = idx("SQFT / Net");
-  const colUnits = idx("Units");
-  const colPurchase = idx("Purchase Price");
-  const colImprovement = idx("Improvement / Budget");
-  const colARV = idx("ARV / Value");
-  const colProfit = idx("Profit");
-  const colROI = idx("Investment / ROI");
-  const colCTV = idx("Cost to Value / Percent (CTV)");
-  const colAAR = idx("AAR");
-  const colProfitability = idx("Profitability");
-  const colSource = idx("Source");
-  const colCity = idx("City");
-  const colState = idx("State");
-
-  // Financial fields
-  const colCapRate = idx("Asking / Cap Rate");
-  const colDSCR = idx("DSCR");
-  const colNOIAnnual = idx("Proforma / Net Operating Income - Annual(NOI)");
-  const colNOIMonthly = idx("Proforma / Net Operating Income - Monthly");
-  const colNOIPerSF = idx("Proforma / Net Operating Income  $ per SQFT (NOI)");
-  const colCashFlowMonthly = idx("Cash Flow Pre Tax (Monthly)");
-  const colProformaRevenueAnnual = idx("Proforma / Revenue - Annual");
-  const colProformaRevenueMonthly = idx("Proforma / Revenue - Monthly");
-  const colProformaRentPerSF = idx("Proforma / Rent per SF");
-  const colProformaExpensesPct = idx("Proforma / Expenses (%)");
-  const colProformaExpensesAnnual = idx("Proforma / Expenses - Annual ($)");
-  const colProformaExpensesMonthly = idx("Proforma / Expenses - Monthly ($)");
-  const colProformaExpensesPerSF = idx("Proforma / Expenses $ per SFT");
-  const colProformaVacancy = idx("Proforma / Vacancy (%)");
-  const colBridgeLoanTotal = idx("Bridge / Loan Total");
-  const colBridgeInterestRate = idx("Bridge / Interest Rate (%)");
-  const colBridgeInterestMonthly = idx("Bridge / Interest Cost (Monthly)");
-  const colBridgePoints = idx("Bridge / Points (%)");
-  const colBridgeTotalCost = idx("Bridge / Total Cost");
-  const colBridgeLTC = idx("Bridge / Loan to Cost (LTC)");
-  const colBridgeLTV = idx("Bridge / Loan to Value (LTV)");
-  const colEquityRequired = idx("Equity / Required");
-  const colRefiLoanAmount = idx("Refinance / Loan Amount");
-  const colRefiPctARV = idx("Refinance / % of Appraisal (ARV)");
-  const colRefiInterestRate = idx("Refinance / Interest Rate (%)");
-  const colRefiCashFlow = idx("Refinance / Cash Flow (Annual)");
-  const colCashOutRefi = idx("Cash Out at Refi");
-  const colProfitAtRefi = idx("Profit at Refi");
-  const colEquityAfterRefi = idx("Equity / Left in the Deal after Refi ");
-  const colRefiValuation = idx("Refinance Valuation");
-  const colReapScore = idx("REAP / Score");
-  const colEquityMultiple = idx("Equity Multiple");
-
-  // Existing Financials
-  const colExistingRevenueAnnual = idx("Existing Financials / Revenue - Annual");
-  const colExistingRevenueMonthly = idx("Existing Financials / Revenue - Monthly");
-  const colExistingRevenuePerSF = idx("Existing Financials / Revenue Per SQFT");
-  const colExistingNOI = idx("Existing Financials / Net Income (NOI)");
-  const colExistingExpensePct = idx("Existing Financials / Expense Percentage");
-  const colExistingExpenses = idx("Existing Expenses ($)");
-  const colExistingCapRate = idx("Investment / Existing Financials / Our Offer Cap Rate");
-  const colAnnualTaxes = idx("Annual Taxes (New)");
-  const colInsuranceCost = idx("Insurance / Cost (Annual)");
-
-  // Edit-related fields
-  const colAskingPrice = idx("Asking / Price");
-  const colAcqCostToClose = idx("Acquisition / Cost to Close %");
-  const colMonths = idx("Months");
-  const colDispCostOfSale = idx("Disposition / Cost of Sale (% of ARV)");
-  const colBridgeAcqPct = idx("Bridge / Acquisition Financed (%)");
-  const colBridgeImprovPct = idx("Bridge / Improvement Financing (%)");
-  const colRefiPoints = idx("Refinance / Points (%)");
-  const colRefiTerm = idx("Refinance / Term (years)");
-  const colLotAcres = idx("Lot / Size Acres");
-  const colYearBuilt = idx("Year Built");
-  const colDealName = idx("Deal / Name");
-  const colZip = idx("Zip Code");
-  const colClass = idx("Class");
-
-  const parsed = rows.map(row => ({
-    // Core
-    user: g(row, colUser),
-    date: g(row, colDate),
-    status: g(row, colStatus),
-    address: g(row, colAddress),
-    type: g(row, colType),
-    offer: g(row, colOffer),
-    netSqft: g(row, colNetSqft),
-    sqft: g(row, colSqft),
-    units: g(row, colUnits),
-    purchasePrice: g(row, colPurchase),
-    improvementBudget: g(row, colImprovement),
-    arv: g(row, colARV),
-    profit: g(row, colProfit),
-    roi: g(row, colROI),
-    ctv: g(row, colCTV),
-    aar: g(row, colAAR),
-    profitability: g(row, colProfitability),
-    source: g(row, colSource),
-    city: g(row, colCity),
-    state: g(row, colState),
-    // Financials
-    capRate: g(row, colCapRate),
-    dscr: g(row, colDSCR),
-    noiAnnual: g(row, colNOIAnnual),
-    noiMonthly: g(row, colNOIMonthly),
-    noiPerSF: g(row, colNOIPerSF),
-    cashFlowMonthly: g(row, colCashFlowMonthly),
-    proformaRevenueAnnual: g(row, colProformaRevenueAnnual),
-    proformaRevenueMonthly: g(row, colProformaRevenueMonthly),
-    proformaRentPerSF: g(row, colProformaRentPerSF),
-    proformaExpensesPct: g(row, colProformaExpensesPct),
-    proformaExpensesAnnual: g(row, colProformaExpensesAnnual),
-    proformaExpensesMonthly: g(row, colProformaExpensesMonthly),
-    proformaExpensesPerSF: g(row, colProformaExpensesPerSF),
-    proformaVacancy: g(row, colProformaVacancy),
-    bridgeLoanTotal: g(row, colBridgeLoanTotal),
-    bridgeInterestRate: g(row, colBridgeInterestRate),
-    bridgeInterestMonthly: g(row, colBridgeInterestMonthly),
-    bridgePoints: g(row, colBridgePoints),
-    bridgeTotalCost: g(row, colBridgeTotalCost),
-    bridgeLTC: g(row, colBridgeLTC),
-    bridgeLTV: g(row, colBridgeLTV),
-    equityRequired: g(row, colEquityRequired),
-    refiLoanAmount: g(row, colRefiLoanAmount),
-    refiPctARV: g(row, colRefiPctARV),
-    refiInterestRate: g(row, colRefiInterestRate),
-    refiCashFlow: g(row, colRefiCashFlow),
-    cashOutRefi: g(row, colCashOutRefi),
-    profitAtRefi: g(row, colProfitAtRefi),
-    equityAfterRefi: g(row, colEquityAfterRefi),
-    refiValuation: g(row, colRefiValuation),
-    reapScore: g(row, colReapScore),
-    equityMultiple: g(row, colEquityMultiple),
-    // Edit-related fields
-    askingPrice: g(row, colAskingPrice),
-    acqCostToClose: g(row, colAcqCostToClose),
-    months: g(row, colMonths),
-    dispCostOfSale: g(row, colDispCostOfSale),
-    bridgeAcqPct: g(row, colBridgeAcqPct),
-    bridgeImprovPct: g(row, colBridgeImprovPct),
-    refiPoints: g(row, colRefiPoints),
-    refiTerm: g(row, colRefiTerm),
-    lotAcres: g(row, colLotAcres),
-    yearBuilt: g(row, colYearBuilt),
-    dealName: g(row, colDealName),
-    zip: g(row, colZip),
-    dealClass: g(row, colClass),
-    // Existing Financials
-    existingRevenueAnnual: g(row, colExistingRevenueAnnual),
-    existingRevenueMonthly: g(row, colExistingRevenueMonthly),
-    existingRevenuePerSF: g(row, colExistingRevenuePerSF),
-    existingNOI: g(row, colExistingNOI),
-    existingExpensePct: g(row, colExistingExpensePct),
-    existingExpenses: g(row, colExistingExpenses),
-    existingCapRate: g(row, colExistingCapRate),
-    annualTaxes: g(row, colAnnualTaxes),
-    insuranceCost: g(row, colInsuranceCost),
-  })).filter(d => d.address);
-
-  // Filter to team's deals
   const emailsLower = teamEmails.map(e => e.toLowerCase());
-  const userDeals = parsed.filter(d => emailsLower.includes((d.user || "").toLowerCase()));
 
-  // Sort newest first
-  userDeals.sort((a, b) => {
-    const da = new Date(a.date);
-    const db = new Date(b.date);
-    if (isNaN(da.getTime()) && isNaN(db.getTime())) return 0;
-    if (isNaN(da.getTime())) return 1;
-    if (isNaN(db.getTime())) return -1;
-    return db - da;
-  });
+  const { data, error } = await supabase
+    .from("deals")
+    .select("*")
+    .in("user_email", emailsLower)
+    .order("date_added", { ascending: false });
 
-  return userDeals;
+  if (error) throw new Error("Failed to load deals: " + error.message);
+
+  // Map Supabase columns to the shape App.js expects
+  return (data || []).map(row => ({
+    user: row.user_email || "",
+    date: row.date_added || "",
+    status: row.deal_status || "",
+    address: row.property_address || "",
+    type: row.type || "",
+    offer: row.our_offer != null ? String(row.our_offer) : "",
+    netSqft: row.net_sqft_price != null ? String(row.net_sqft_price) : "",
+    sqft: row.sqft_net != null ? String(row.sqft_net) : "",
+    units: row.units != null ? String(row.units) : "",
+    purchasePrice: row.purchase_price != null ? String(row.purchase_price) : "",
+    improvementBudget: row.improvement_budget != null ? String(row.improvement_budget) : "",
+    arv: row.arv_value != null ? String(row.arv_value) : "",
+    profit: row.profit != null ? String(row.profit) : "",
+    roi: row.roi != null ? String(row.roi) : "",
+    ctv: row.ctv != null ? String(row.ctv) : "",
+    aar: row.aar != null ? String(row.aar) : "",
+    profitability: row.profitability || "",
+    source: row.source || "",
+    city: row.city || "",
+    state: row.state || "",
+    // Financials
+    capRate: row.cap_rate != null ? String(row.cap_rate) : "",
+    dscr: row.dscr != null ? String(row.dscr) : "",
+    noiAnnual: row.noi_annual != null ? String(row.noi_annual) : "",
+    noiMonthly: row.noi_monthly != null ? String(row.noi_monthly) : "",
+    noiPerSF: row.noi_per_sf != null ? String(row.noi_per_sf) : "",
+    cashFlowMonthly: row.cash_flow_monthly != null ? String(row.cash_flow_monthly) : "",
+    proformaRevenueAnnual: row.proforma_revenue_annual != null ? String(row.proforma_revenue_annual) : "",
+    proformaRevenueMonthly: row.proforma_revenue_monthly != null ? String(row.proforma_revenue_monthly) : "",
+    proformaRentPerSF: row.proforma_rent_per_sf != null ? String(row.proforma_rent_per_sf) : "",
+    proformaExpensesPct: row.proforma_expenses_pct != null ? String(row.proforma_expenses_pct) : "",
+    proformaExpensesAnnual: row.proforma_expenses_annual != null ? String(row.proforma_expenses_annual) : "",
+    proformaExpensesMonthly: row.proforma_expenses_monthly != null ? String(row.proforma_expenses_monthly) : "",
+    proformaExpensesPerSF: row.proforma_expenses_per_sf != null ? String(row.proforma_expenses_per_sf) : "",
+    proformaVacancy: row.proforma_vacancy_pct != null ? String(row.proforma_vacancy_pct) : "",
+    bridgeLoanTotal: row.bridge_loan_total != null ? String(row.bridge_loan_total) : "",
+    bridgeInterestRate: row.bridge_interest_rate != null ? String(row.bridge_interest_rate) : "",
+    bridgeInterestMonthly: row.bridge_interest_monthly != null ? String(row.bridge_interest_monthly) : "",
+    bridgePoints: row.bridge_points_pct != null ? String(row.bridge_points_pct) : "",
+    bridgeTotalCost: row.bridge_total_cost != null ? String(row.bridge_total_cost) : "",
+    bridgeLTC: row.bridge_ltc != null ? String(row.bridge_ltc) : "",
+    bridgeLTV: row.bridge_ltv != null ? String(row.bridge_ltv) : "",
+    equityRequired: row.equity_required != null ? String(row.equity_required) : "",
+    refiLoanAmount: row.refi_loan_amount != null ? String(row.refi_loan_amount) : "",
+    refiPctARV: row.refi_pct_arv != null ? String(row.refi_pct_arv) : "",
+    refiInterestRate: row.refi_interest_rate != null ? String(row.refi_interest_rate) : "",
+    refiCashFlow: row.refi_cash_flow_annual != null ? String(row.refi_cash_flow_annual) : "",
+    cashOutRefi: row.cash_out_refi != null ? String(row.cash_out_refi) : "",
+    profitAtRefi: row.profit_at_refi != null ? String(row.profit_at_refi) : "",
+    equityAfterRefi: row.equity_after_refi != null ? String(row.equity_after_refi) : "",
+    refiValuation: row.refi_valuation != null ? String(row.refi_valuation) : "",
+    reapScore: row.reap_score != null ? String(row.reap_score) : "",
+    equityMultiple: row.equity_multiple != null ? String(row.equity_multiple) : "",
+    // Edit-related fields (inputs)
+    askingPrice: row.asking_price != null ? String(row.asking_price) : "",
+    acqCostToClose: row.acq_cost_to_close_pct != null ? String(row.acq_cost_to_close_pct) : "",
+    months: row.months != null ? String(row.months) : "",
+    dispCostOfSale: row.disp_cost_of_sale_pct != null ? String(row.disp_cost_of_sale_pct) : "",
+    bridgeAcqPct: row.bridge_acq_financed_pct != null ? String(row.bridge_acq_financed_pct) : "",
+    bridgeImprovPct: row.bridge_improv_financed_pct != null ? String(row.bridge_improv_financed_pct) : "",
+    refiPoints: row.refi_points_pct != null ? String(row.refi_points_pct) : "",
+    refiTerm: row.refi_term_years != null ? String(row.refi_term_years) : "",
+    lotAcres: row.lot_acres != null ? String(row.lot_acres) : "",
+    yearBuilt: row.year_built != null ? String(row.year_built) : "",
+    dealName: row.deal_name || "",
+    zip: row.zip_code || "",
+    dealClass: row.class || "",
+    // Existing Financials
+    existingRevenueAnnual: row.existing_revenue_annual != null ? String(row.existing_revenue_annual) : "",
+    existingRevenueMonthly: row.existing_revenue_monthly != null ? String(row.existing_revenue_monthly) : "",
+    existingRevenuePerSF: row.existing_revenue_per_sf != null ? String(row.existing_revenue_per_sf) : "",
+    existingNOI: row.existing_noi != null ? String(row.existing_noi) : "",
+    existingExpensePct: row.existing_expense_pct != null ? String(row.existing_expense_pct) : "",
+    existingExpenses: row.existing_expenses != null ? String(row.existing_expenses) : "",
+    existingCapRate: row.existing_cap_rate != null ? String(row.existing_cap_rate) : "",
+    annualTaxes: row.annual_taxes != null ? String(row.annual_taxes) : "",
+    insuranceCost: row.insurance_cost_annual != null ? String(row.insurance_cost_annual) : "",
+    // Supabase ID (for editing by ID instead of address)
+    _id: row.id,
+  }));
 }
 
 export async function saveDeal(dealForm, userEmail) {
-  const today = new Date().toLocaleDateString("en-US");
-  const dealData = {
-    "Deal / Name": dealForm.dealName,
-    "Property / Address": dealForm.address,
-    "City": dealForm.city,
-    "State": dealForm.state,
-    "Zip Code": dealForm.zip,
-    "Type": dealForm.type,
-    "Class": dealForm.class,
-    "SQFT / Net": dealForm.sqft,
-    "Units": dealForm.units,
-    "Year Built": dealForm.yearBuilt,
-    "Asking / Price": (dealForm.askingPrice || "").replace(/[$,]/g, ""),
-    "Investment / Our Offer": (dealForm.ourOffer || "").replace(/[$,]/g, ""),
-    "Lot / Size Acres": dealForm.lotAcres,
-    "Date / Added": today,
-    "Deal / Status": "New",
-    "User": userEmail,
-    "Source": "REAP App",
+  const clean = (v) => {
+    if (!v) return null;
+    const n = parseFloat(String(v).replace(/[$,]/g, ""));
+    return isNaN(n) ? null : n;
   };
 
-  await appsScriptPost(dealData);
+  const row = {
+    user_email: userEmail.toLowerCase(),
+    date_added: new Date().toISOString(),
+    deal_status: "New",
+    property_address: dealForm.address,
+    deal_name: dealForm.dealName || null,
+    type: dealForm.type || null,
+    city: dealForm.city || null,
+    state: dealForm.state || null,
+    zip_code: dealForm.zip || null,
+    class: dealForm.class || null,
+    sqft_net: clean(dealForm.sqft),
+    units: dealForm.units ? parseInt(dealForm.units, 10) || null : null,
+    year_built: dealForm.yearBuilt ? parseInt(dealForm.yearBuilt, 10) || null : null,
+    lot_acres: clean(dealForm.lotAcres),
+    asking_price: clean(dealForm.askingPrice),
+    our_offer: clean(dealForm.ourOffer),
+    source: "REAP App",
+  };
 
-  // Return a local deal object for immediate UI update
+  // Look up org_id
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("org_id")
+    .eq("email", userEmail.toLowerCase())
+    .maybeSingle();
+  if (profile?.org_id) row.org_id = profile.org_id;
+
+  const { data, error } = await supabase
+    .from("deals")
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) throw new Error("Failed to save deal: " + error.message);
+
+  // Return local deal object for immediate UI update
+  // The trigger will have computed the financial fields
   return {
     user: userEmail,
-    date: today,
+    date: row.date_added,
     status: "New",
     address: dealForm.address,
-    type: dealForm.type,
-    offer: dealForm.ourOffer,
+    type: dealForm.type || "",
+    offer: dealForm.ourOffer || "",
     netSqft: "",
-    sqft: dealForm.sqft,
-    units: dealForm.units,
+    sqft: dealForm.sqft || "",
+    units: dealForm.units || "",
     purchasePrice: "",
     improvementBudget: "",
     arv: "",
-    profit: "",
-    roi: "",
+    profit: data?.profit != null ? String(data.profit) : "",
+    roi: data?.roi != null ? String(data.roi) : "",
     ctv: "",
     aar: "",
     profitability: "",
     source: "REAP App",
-    city: dealForm.city,
-    state: dealForm.state,
-    askingPrice: dealForm.askingPrice,
+    city: dealForm.city || "",
+    state: dealForm.state || "",
+    askingPrice: dealForm.askingPrice || "",
+    _id: data?.id,
   };
 }
 
 export async function editDeal(address, form) {
-  const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
-  const updates = {
-    "Deal / Status": form.status,
-    "Type": form.type,
-    "SQFT / Net": clean(form.sqft),
-    "Units": clean(form.units),
-    "Year Built": clean(form.yearBuilt),
-    "Lot / Size Acres": clean(form.lotAcres),
-    "Class": form.class,
-    "Asking / Price": clean(form.askingPrice),
-    "Investment / Our Offer": clean(form.ourOffer),
-    "Purchase Price": clean(form.purchasePrice),
-    "Acquisition / Cost to Close %": clean(form.acqCostToClose),
-    "Improvement / Budget": clean(form.improvementBudget),
-    "ARV / Value": clean(form.arvValue),
-    "Months": clean(form.months),
-    "Disposition / Cost of Sale (% of ARV)": clean(form.dispCostOfSale),
-    "Proforma / Revenue - Annual": clean(form.proformaRevenueAnnual),
-    "Proforma / Expenses (%)": clean(form.proformaExpensesPct),
-    "Proforma / Vacancy (%)": clean(form.proformaVacancy),
-    "Existing Financials / Revenue - Annual": clean(form.existingRevenueAnnual),
-    "Existing Financials / Expense Percentage": clean(form.existingExpensePct),
-    "Annual Taxes (New)": clean(form.annualTaxes),
-    "Insurance / Cost (Annual)": clean(form.insuranceCost),
-    "Bridge / Acquisition Financed (%)": clean(form.bridgeAcqPct),
-    "Bridge / Improvement Financing (%)": clean(form.bridgeImprovPct),
-    "Bridge / Interest Rate (%)": clean(form.bridgeInterestRate),
-    "Bridge / Points (%)": clean(form.bridgePoints),
-    "Refinance / % of Appraisal (ARV)": clean(form.refiPctARV),
-    "Refinance / Interest Rate (%)": clean(form.refiInterestRate),
-    "Refinance / Points (%)": clean(form.refiPoints),
-    "Refinance / Term (years)": clean(form.refiTerm),
+  const clean = (v) => {
+    if (!v && v !== 0) return null;
+    const n = parseFloat(String(v).replace(/[$,]/g, ""));
+    return isNaN(n) ? null : n;
   };
 
-  await appsScriptPost({ action: "edit_deal", address, updates });
+  const updates = {
+    deal_status: form.status,
+    type: form.type,
+    sqft_net: clean(form.sqft),
+    units: form.units ? parseInt(String(form.units).replace(/,/g, ""), 10) || null : null,
+    year_built: form.yearBuilt ? parseInt(String(form.yearBuilt).replace(/,/g, ""), 10) || null : null,
+    lot_acres: clean(form.lotAcres),
+    class: form.class,
+    asking_price: clean(form.askingPrice),
+    our_offer: clean(form.ourOffer),
+    purchase_price: clean(form.purchasePrice),
+    acq_cost_to_close_pct: clean(form.acqCostToClose),
+    improvement_budget: clean(form.improvementBudget),
+    arv_value: clean(form.arvValue),
+    months: clean(form.months),
+    disp_cost_of_sale_pct: clean(form.dispCostOfSale),
+    proforma_revenue_annual: clean(form.proformaRevenueAnnual),
+    proforma_expenses_pct: clean(form.proformaExpensesPct),
+    proforma_vacancy_pct: clean(form.proformaVacancy),
+    existing_revenue_annual: clean(form.existingRevenueAnnual),
+    existing_expense_pct: clean(form.existingExpensePct),
+    annual_taxes: clean(form.annualTaxes),
+    insurance_cost_annual: clean(form.insuranceCost),
+    bridge_acq_financed_pct: clean(form.bridgeAcqPct),
+    bridge_improv_financed_pct: clean(form.bridgeImprovPct),
+    bridge_interest_rate: clean(form.bridgeInterestRate),
+    bridge_points_pct: clean(form.bridgePoints),
+    refi_pct_arv: clean(form.refiPctARV),
+    refi_interest_rate: clean(form.refiInterestRate),
+    refi_points_pct: clean(form.refiPoints),
+    refi_term_years: clean(form.refiTerm),
+    updated_at: new Date().toISOString(),
+  };
+
+  // Edit by address (matching current behavior)
+  const { error } = await supabase
+    .from("deals")
+    .update(updates)
+    .eq("property_address", address);
+
+  if (error) throw new Error("Failed to edit deal: " + error.message);
 }
 
+// AI Summary — still uses Apps Script (server-side Claude API call)
+// Will migrate to Supabase Edge Function in a future phase
 export async function generateAISummary(deal) {
   const result = await appsScriptPost({ action: "generate_summary", deal });
   return result.summary;
@@ -633,26 +577,40 @@ export async function getListings() {
 }
 
 export async function addListingToPipeline(listing, userEmail) {
-  const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
-  const dealData = {
-    "Deal / Name": listing.address || "MLS " + listing.mlsNumber,
-    "Property / Address": listing.address,
-    "City": listing.city,
-    "State": "",
-    "Zip Code": listing.zip,
-    "Type": listing.propType || "",
-    "Asking / Price": clean(listing.price),
-    "SQFT / Net": clean(listing.heatedArea || listing.sqftTotal),
-    "Units": clean(listing.units),
-    "Lot / Size Acres": clean(listing.lotAcres),
-    "Year Built": listing.yearBuilt,
-    "Deal / Status": "New",
-    "User": userEmail,
-    "Date / Added": new Date().toLocaleDateString("en-US"),
-    "Source": "MLS Feed",
-    "MLS Number": listing.mlsNumber,
+  const clean = (v) => {
+    if (!v) return null;
+    const n = parseFloat(String(v).replace(/[$,]/g, ""));
+    return isNaN(n) ? null : n;
   };
-  await appsScriptPost(dealData);
+
+  const row = {
+    user_email: userEmail.toLowerCase(),
+    date_added: new Date().toISOString(),
+    deal_status: "New",
+    property_address: listing.address,
+    deal_name: listing.address || "MLS " + listing.mlsNumber,
+    city: listing.city || null,
+    zip_code: listing.zip || null,
+    type: listing.propType || null,
+    asking_price: clean(listing.price),
+    sqft_net: clean(listing.heatedArea || listing.sqftTotal),
+    units: listing.units ? parseInt(listing.units, 10) || null : null,
+    lot_acres: clean(listing.lotAcres),
+    year_built: listing.yearBuilt ? parseInt(listing.yearBuilt, 10) || null : null,
+    source: "MLS Feed",
+    metadata: listing.mlsNumber ? { mls_number: listing.mlsNumber } : {},
+  };
+
+  // Look up org_id
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("org_id")
+    .eq("email", userEmail.toLowerCase())
+    .maybeSingle();
+  if (profile?.org_id) row.org_id = profile.org_id;
+
+  const { error } = await supabase.from("deals").insert(row);
+  if (error) throw new Error("Failed to add listing to pipeline: " + error.message);
 }
 
 
