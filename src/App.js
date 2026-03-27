@@ -2,15 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { loadStripe } from "@stripe/stripe-js";
 
-const SPREADSHEET_ID = process.env.REACT_APP_SPREADSHEET_ID;
-const API_KEY = process.env.REACT_APP_SHEETS_API_KEY;
-const SHEET_NAME = "Deals";
-const SHEETS_WRITE_URL = process.env.REACT_APP_SHEETS_WRITE_URL;
-const CONTACTS_SHEET_NAME = "Contacts";
-const MLS_FEED_SHEET_NAME = "MLS Feed";
-const FILE_UPLOADS_SHEET_NAME = "File Uploads";
-const INVESTORS_SHEET_NAME = "Investors";
-const INVESTOR_ACTIVITY_SHEET_NAME = "Investor Activity";
+// All data fetched from Supabase (migrated from Google Sheets)
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
@@ -147,7 +139,7 @@ function LoadingSpinner() {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, background: "#f8fafc" }}>
       <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-      <p style={{ color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading deals from Google Sheets...</p>
+      <p style={{ color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading deals...</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
@@ -1361,8 +1353,8 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   );
 }
 
-function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab, onTabChange }) {
-  const [activeTab, setActiveTab] = useState(initialTab || "overview");
+function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail }) {
+  const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
   const tabs = ["overview", "financials", "ai underwriting", "ai summary", "documents", "activity"];
@@ -1370,26 +1362,6 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
   const [copied, setCopied] = useState(false);
-
-  // ── Supabase UUID lookup (deal._id may be missing if fetched from Sheets) ──
-  const [dealId, setDealId] = useState(deal?._id || null);
-  useEffect(() => {
-    if (deal?._id) { setDealId(deal._id); return; }
-    if (!deal?.address) return;
-    supabase
-      .from("deals")
-      .select("id")
-      .eq("address", deal.address)
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => { if (data?.id) setDealId(data.id); });
-  }, [deal?.address, deal?._id]);
-
-  // Sync tab with parent for URL routing
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    if (onTabChange) onTabChange(tab);
-  };
 
   // ── Documents tab state ──
   const [documents, setDocuments] = useState([]);
@@ -1408,13 +1380,13 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
 
   // ── Fetch documents ──
   const fetchDocuments = useCallback(async () => {
-    if (!dealId) return;
+    if (!deal?._id) return;
     setDocsLoading(true);
     try {
       const { data, error } = await supabase
         .from("deal_documents")
         .select("*")
-        .eq("deal_id", dealId)
+        .eq("deal_id", deal._id)
         .order("uploaded_at", { ascending: false });
       if (error) throw error;
       setDocuments(data || []);
@@ -1423,17 +1395,17 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
     } finally {
       setDocsLoading(false);
     }
-  }, [dealId]);
+  }, [deal?._id]);
 
   // ── Fetch activities ──
   const fetchActivities = useCallback(async () => {
-    if (!dealId) return;
+    if (!deal?._id) return;
     setActivitiesLoading(true);
     try {
       const { data, error } = await supabase
         .from("deal_activities")
         .select("*")
-        .eq("deal_id", dealId)
+        .eq("deal_id", deal._id)
         .order("activity_date", { ascending: false });
       if (error) throw error;
       setActivities(data || []);
@@ -1442,17 +1414,17 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
     } finally {
       setActivitiesLoading(false);
     }
-  }, [dealId]);
+  }, [deal?._id]);
 
-  // Load docs/activities when tab switches or dealId resolves
+  // Load docs/activities when tab switches
   useEffect(() => {
-    if (activeTab === "documents" && dealId) fetchDocuments();
-    if (activeTab === "activity" && dealId) fetchActivities();
-  }, [activeTab, dealId]);
+    if (activeTab === "documents" && documents.length === 0 && !docsLoading) fetchDocuments();
+    if (activeTab === "activity" && activities.length === 0 && !activitiesLoading) fetchActivities();
+  }, [activeTab, deal?._id]);
 
   // ── Upload document ──
   const handleUploadFiles = async (files) => {
-    if (!files || files.length === 0 || !dealId) return;
+    if (!files || files.length === 0 || !deal?._id) return;
     setUploading(true);
     setUploadError(null);
     try {
@@ -1461,7 +1433,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
           setUploadError(`${file.name} exceeds 50MB limit`);
           continue;
         }
-        const storagePath = `${dealId}/${Date.now()}_${file.name}`;
+        const storagePath = `${deal._id}/${Date.now()}_${file.name}`;
         const { error: storageErr } = await supabase.storage
           .from("deal-documents")
           .upload(storagePath, file, { upsert: false });
@@ -1469,7 +1441,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
         const { error: dbErr } = await supabase
           .from("deal_documents")
           .insert({
-            deal_id: dealId,
+            deal_id: deal._id,
             user_email: userEmail,
             filename: file.name,
             file_size: file.size,
@@ -1479,7 +1451,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
         if (dbErr) throw dbErr;
         // Auto-log activity
         await supabase.from("deal_activities").insert({
-          deal_id: dealId,
+          deal_id: deal._id,
           user_email: userEmail,
           activity_type: "Document Added",
           description: `Uploaded "${file.name}"`,
@@ -1531,7 +1503,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
     setActivitySaving(true);
     try {
       const { error } = await supabase.from("deal_activities").insert({
-        deal_id: dealId,
+        deal_id: deal._id,
         user_email: userEmail,
         activity_type: activityForm.type,
         description: activityForm.description.trim(),
@@ -1583,12 +1555,13 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
     setSummaryLoading(true);
     setSummaryError(null);
     try {
-      const res = await fetch(SHEETS_WRITE_URL, {
+      const res = await fetch(process.env.REACT_APP_SUPABASE_URL + "/functions/v1/generate-summary", {
         method: "POST",
-        body: JSON.stringify({ action: "generate_summary", deal }),
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + process.env.REACT_APP_SUPABASE_ANON_KEY },
+        body: JSON.stringify({ deal }),
       });
       const result = await res.json();
-      if (result.success) {
+      if (result.summary) {
         setSummary(result.summary);
       } else {
         setSummaryError(result.error || "Failed to generate summary");
@@ -1694,7 +1667,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
         {/* Tabs */}
         <div style={{ display: "flex", gap: 0, marginBottom: isMobile ? 20 : 28, borderBottom: "1px solid #e2e8f0", overflowX: isMobile ? "auto" : "visible", WebkitOverflowScrolling: "touch" }}>
           {tabs.map(t => (
-            <button key={t} onClick={() => handleTabChange(t)} style={{ background: "transparent", border: "none", borderBottom: activeTab === t ? "2px solid #16a34a" : "2px solid transparent", padding: isMobile ? "10px 14px" : "10px 20px", color: activeTab === t ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize", transition: "all 0.15s", marginBottom: -1, whiteSpace: "nowrap", flexShrink: 0 }}>{t}</button>
+            <button key={t} onClick={() => setActiveTab(t)} style={{ background: "transparent", border: "none", borderBottom: activeTab === t ? "2px solid #16a34a" : "2px solid transparent", padding: isMobile ? "10px 14px" : "10px 20px", color: activeTab === t ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize", transition: "all 0.15s", marginBottom: -1, whiteSpace: "nowrap", flexShrink: 0 }}>{t}</button>
           ))}
         </div>
 
@@ -2074,240 +2047,6 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
   );
 }
 
-// ═══════════════════════════════════════════════════════
-// Privacy Policy & Terms of Service
-// ═══════════════════════════════════════════════════════
-
-function LegalPageView({ page, onBack }) {
-  const isPrivacy = page === "privacy";
-  const title = isPrivacy ? "Privacy Policy" : "Terms of Service";
-  const lastUpdated = "March 26, 2026";
-
-  const sectionStyle = { marginBottom: 32 };
-  const headingStyle = { fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", letterSpacing: "-0.01em" };
-  const textStyle = { fontSize: 14, color: "#475569", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.8, margin: "0 0 12px" };
-  const listStyle = { fontSize: 14, color: "#475569", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.8, margin: "0 0 12px", paddingLeft: 24 };
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap');`}</style>
-      {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "16px 24px", display: "flex", alignItems: "center", gap: 16, position: "sticky", top: 0, zIndex: 10 }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: "#64748b", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", padding: 0 }}>
-          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
-          Back
-        </button>
-        <div style={{ flex: 1 }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-          </div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.04em" }}>REAP</span>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "40px 24px 80px" }}>
-        <div style={{ marginBottom: 40 }}>
-          <p style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 8px" }}>Legal</p>
-          <h1 style={{ fontSize: 32, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 8px", letterSpacing: "-0.02em" }}>{title}</h1>
-          <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Last updated: {lastUpdated}</p>
-        </div>
-
-        {/* Toggle between privacy and terms */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 36 }}>
-          <a href="#privacy" style={{ padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", textDecoration: "none", border: "1.5px solid", borderColor: isPrivacy ? "#16a34a" : "#e2e8f0", background: isPrivacy ? "rgba(22,163,74,0.06)" : "#fff", color: isPrivacy ? "#16a34a" : "#64748b", transition: "all 0.15s" }}>Privacy Policy</a>
-          <a href="#terms" style={{ padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", textDecoration: "none", border: "1.5px solid", borderColor: !isPrivacy ? "#16a34a" : "#e2e8f0", background: !isPrivacy ? "rgba(22,163,74,0.06)" : "#fff", color: !isPrivacy ? "#16a34a" : "#64748b", transition: "all 0.15s" }}>Terms of Service</a>
-        </div>
-
-        {isPrivacy ? (
-          <>
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>1. Introduction</h2>
-              <p style={textStyle}>REAP Technologies LLC ("REAP," "we," "us," or "our") operates the REAP Real Estate Analytics Platform available at app.getreap.ai and getreap.ai (the "Service"). This Privacy Policy describes how we collect, use, store, and protect your information when you use our Service.</p>
-              <p style={textStyle}>By using REAP, you agree to the collection and use of information in accordance with this policy. If you do not agree, please do not use the Service.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>2. Information We Collect</h2>
-              <p style={textStyle}><strong>Account Information:</strong> When you create an account, we collect your name, email address, and authentication credentials. If you sign in via Google OAuth, we receive your name, email, and profile picture from Google.</p>
-              <p style={textStyle}><strong>Deal and Business Data:</strong> Information you enter into the platform including real estate deal details, financial metrics, contact information, investor records, documents, and activity logs. This is your proprietary data.</p>
-              <p style={textStyle}><strong>Payment Information:</strong> When you subscribe, payment is processed by Stripe. We do not store your credit card number. Stripe provides us with your subscription status, plan type, and billing email.</p>
-              <p style={textStyle}><strong>Usage Data:</strong> We may collect information about how you access and use the Service, including your IP address, browser type, device information, pages visited, and timestamps.</p>
-              <p style={textStyle}><strong>Uploaded Files:</strong> Documents you upload to deal records (e.g., PSAs, inspection reports, appraisals) are stored securely in our cloud infrastructure.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>3. How We Use Your Information</h2>
-              <p style={textStyle}>We use the information we collect to:</p>
-              <ul style={listStyle}>
-                <li>Provide, maintain, and improve the Service</li>
-                <li>Process your transactions and manage your subscription</li>
-                <li>Generate AI-powered deal analysis and executive summaries using your deal data</li>
-                <li>Send you service-related communications (account verification, billing, updates)</li>
-                <li>Respond to your requests and provide customer support</li>
-                <li>Detect, prevent, and address technical issues and security threats</li>
-              </ul>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>4. AI Processing</h2>
-              <p style={textStyle}>REAP uses AI (powered by Anthropic's Claude) to generate deal summaries, underwriting analysis, and other insights. Your deal data is sent to the AI provider solely to generate your requested output. We do not use your data to train AI models. AI-generated outputs are provided for informational purposes only and do not constitute financial, legal, or investment advice.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>5. Data Storage and Security</h2>
-              <p style={textStyle}>Your data is stored on Supabase (hosted on AWS infrastructure) with row-level security policies that ensure users can only access their own data. Uploaded documents are stored in private, authenticated storage buckets. All data is transmitted over HTTPS/TLS encryption.</p>
-              <p style={textStyle}>While we implement industry-standard security measures, no method of electronic storage or transmission is 100% secure. We cannot guarantee absolute security.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>6. Data Sharing</h2>
-              <p style={textStyle}>We do not sell, rent, or trade your personal information or deal data. We may share information with:</p>
-              <ul style={listStyle}>
-                <li><strong>Service Providers:</strong> Supabase (database/storage), Stripe (payments), Anthropic (AI processing), Google (authentication) — only as necessary to operate the Service</li>
-                <li><strong>Team Members:</strong> If you are part of an organization on REAP, other members of your organization may see shared deal and contact data</li>
-                <li><strong>Legal Requirements:</strong> If required by law, subpoena, or government request</li>
-              </ul>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>7. Your Rights</h2>
-              <p style={textStyle}>You may:</p>
-              <ul style={listStyle}>
-                <li>Access, update, or delete your account information at any time through the Settings page</li>
-                <li>Export or delete your deal data by contacting us</li>
-                <li>Close your account by contacting support@getreap.ai</li>
-              </ul>
-              <p style={textStyle}>If you are a California resident, you may have additional rights under the CCPA. If you are located in the EU/EEA, you may have additional rights under GDPR. Contact us to exercise these rights.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>8. Cookies</h2>
-              <p style={textStyle}>We use essential cookies and local storage to maintain your authentication session and app preferences. We do not use advertising or third-party tracking cookies.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>9. Children's Privacy</h2>
-              <p style={textStyle}>REAP is not intended for users under the age of 18. We do not knowingly collect information from children.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>10. Changes to This Policy</h2>
-              <p style={textStyle}>We may update this Privacy Policy from time to time. We will notify you of material changes by posting the new policy on this page and updating the "Last updated" date. Continued use of the Service after changes constitutes acceptance.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>11. Contact Us</h2>
-              <p style={textStyle}>If you have questions about this Privacy Policy, contact us at:</p>
-              <p style={textStyle}><strong>REAP Technologies LLC</strong><br />Email: support@getreap.ai</p>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>1. Acceptance of Terms</h2>
-              <p style={textStyle}>These Terms of Service ("Terms") govern your access to and use of the REAP Real Estate Analytics Platform ("Service") operated by REAP Technologies LLC ("REAP," "we," "us," or "our"). By creating an account or using the Service, you agree to be bound by these Terms. If you do not agree, do not use the Service.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>2. Description of Service</h2>
-              <p style={textStyle}>REAP is a real estate analytics platform that allows users to track deals, manage contacts and investors, perform financial analysis, generate AI-powered insights, upload documents, and collaborate with team members. The Service is available at app.getreap.ai.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>3. Account Registration</h2>
-              <p style={textStyle}>You must create an account to use the Service. You agree to provide accurate and complete information, maintain the security of your password, and promptly update your information if it changes. You are responsible for all activity that occurs under your account. You must be at least 18 years old to use the Service.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>4. Subscription and Billing</h2>
-              <p style={textStyle}>REAP offers a 14-day free trial. After the trial period, a paid subscription is required to continue using the Service. Subscription plans include Starter ($99/month) and Team ($499/month). All payments are processed through Stripe.</p>
-              <p style={textStyle}>Subscriptions renew automatically on a monthly basis. You may cancel at any time, and your access will continue through the end of the current billing period. Refunds are not provided for partial months.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>5. Your Data</h2>
-              <p style={textStyle}>You retain all ownership rights to the data you enter into REAP, including deal information, contacts, investors, uploaded documents, and financial data ("Your Data"). We do not claim ownership of Your Data.</p>
-              <p style={textStyle}>You grant REAP a limited license to use Your Data solely to provide the Service to you, including processing it through AI features you initiate. We will not use Your Data for any other purpose without your consent.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>6. Acceptable Use</h2>
-              <p style={textStyle}>You agree not to:</p>
-              <ul style={listStyle}>
-                <li>Use the Service for any unlawful purpose or in violation of any applicable laws</li>
-                <li>Attempt to gain unauthorized access to other users' accounts or data</li>
-                <li>Interfere with or disrupt the Service or its infrastructure</li>
-                <li>Reverse engineer, decompile, or attempt to extract the source code of the Service</li>
-                <li>Use the Service to store or transmit malicious code</li>
-                <li>Resell, sublicense, or redistribute the Service without written permission</li>
-                <li>Use automated tools to scrape or collect data from the Service</li>
-              </ul>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>7. AI-Generated Content</h2>
-              <p style={textStyle}>The Service includes AI-powered features such as deal summaries, underwriting analysis, and REAP Scores. AI-generated content is provided for informational purposes only and does not constitute financial, investment, legal, or professional advice. You should independently verify all AI-generated outputs before making business decisions. REAP is not liable for any decisions made based on AI-generated content.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>8. Team and Organization Features</h2>
-              <p style={textStyle}>If you create or join an organization on REAP, you acknowledge that other members of your organization may have access to shared deal data, contacts, and other information within the organization workspace. Organization owners are responsible for managing member access and permissions.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>9. Intellectual Property</h2>
-              <p style={textStyle}>The Service, including its design, code, features, branding, and documentation, is the intellectual property of REAP Technologies LLC and is protected by applicable intellectual property laws. Your subscription grants you a limited, non-exclusive, non-transferable license to use the Service for its intended purpose.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>10. Disclaimers</h2>
-              <p style={textStyle}>THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT. WE DO NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, OR SECURE.</p>
-              <p style={textStyle}>REAP does not provide financial, investment, legal, or tax advice. All deal metrics, scores, and analyses are estimates based on user-provided data and should not be solely relied upon for investment decisions.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>11. Limitation of Liability</h2>
-              <p style={textStyle}>TO THE MAXIMUM EXTENT PERMITTED BY LAW, REAP TECHNOLOGIES LLC SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, DATA, OR BUSINESS OPPORTUNITIES ARISING FROM YOUR USE OF THE SERVICE. OUR TOTAL LIABILITY SHALL NOT EXCEED THE AMOUNT YOU PAID US IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>12. Termination</h2>
-              <p style={textStyle}>We may suspend or terminate your access to the Service at any time for violation of these Terms or for any other reason with reasonable notice. You may close your account at any time by contacting support@getreap.ai. Upon termination, your right to use the Service ceases, though we may retain Your Data for a reasonable period to allow you to export it.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>13. Governing Law</h2>
-              <p style={textStyle}>These Terms shall be governed by and construed in accordance with the laws of the State of Florida, without regard to its conflict of law provisions. Any disputes arising under these Terms shall be resolved in the state or federal courts located in Hillsborough County, Florida.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>14. Changes to Terms</h2>
-              <p style={textStyle}>We may update these Terms from time to time. We will provide notice of material changes by updating the "Last updated" date and, where appropriate, notifying you via email. Continued use of the Service after changes constitutes acceptance of the updated Terms.</p>
-            </div>
-
-            <div style={sectionStyle}>
-              <h2 style={headingStyle}>15. Contact Us</h2>
-              <p style={textStyle}>If you have questions about these Terms, contact us at:</p>
-              <p style={textStyle}><strong>REAP Technologies LLC</strong><br />Email: support@getreap.ai</p>
-            </div>
-          </>
-        )}
-
-        {/* Footer */}
-        <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 24, marginTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>© 2026 REAP Technologies LLC. All rights reserved.</span>
-          <div style={{ display: "flex", gap: 16 }}>
-            <a href="#privacy" style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", textDecoration: "none", fontWeight: 600 }}>Privacy Policy</a>
-            <a href="#terms" style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", textDecoration: "none", fontWeight: 600 }}>Terms of Service</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AuthScreen({ onAuth }) {
   const [mode, setMode] = useState(() => {
     const params = window.location.search;
@@ -2653,10 +2392,10 @@ function AuthScreen({ onAuth }) {
             </div>
 
             <div style={{ position: "absolute", bottom: 24, left: 56, right: 56, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#B0BAB4", fontFamily: "'DM Sans', sans-serif" }}>
-              <span>© 2026 REAP Technologies LLC</span>
+              <span>© 2026 REAP Analytics, Inc.</span>
               <div style={{ display: "flex", gap: 20 }}>
-                <a href="#privacy" className="reap-link" style={{ color: "#B0BAB4", textDecoration: "none", transition: "opacity 0.15s" }}>Privacy</a>
-                <a href="#terms" className="reap-link" style={{ color: "#B0BAB4", textDecoration: "none", transition: "opacity 0.15s" }}>Terms</a>
+                <a href="https://getreap.ai" className="reap-link" style={{ color: "#B0BAB4", textDecoration: "none", transition: "opacity 0.15s" }}>Privacy</a>
+                <a href="https://getreap.ai" className="reap-link" style={{ color: "#B0BAB4", textDecoration: "none", transition: "opacity 0.15s" }}>Terms</a>
               </div>
             </div>
           </div>
@@ -3006,7 +2745,7 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
       {/* Uniform Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px" : "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Pipeline Dashboard</h1>
+          <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Command Center</h1>
           <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{deals.length} deals · as of today</p>
         </div>
       </div>
@@ -3321,42 +3060,21 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
   const fetchBuyers = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const range = `${CONTACTS_SHEET_NAME}!A1:BQ`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setBuyers([]); setLoading(false); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
-      const colRowId = idx("🔒 Row ID"); const colName = idx("Contact / Name"); const colFirstName = idx("Contact / First Name");
-      const colEmail = idx("Contact / Email"); const colPhone = idx("Contact / Phone"); const colType = idx("Contact / Type");
-      const colBuyerStatus = idx("Buyer / Status"); const colAssetPref = idx("Contact / Asset Preference");
-      const colTemperature = idx("Contact / Temperature"); const colManager = idx("Contact / Manager");
-      const colNotes = idx("Contact / Notes"); const colLeadSource = idx("Contact / Lead Source");
-      const colCompany = idx("Contact / Company"); const colDateAdded = idx("Date / Added");
-      const colLastContact = idx("Date / Last Contact"); const colFollowUpNotes = idx("Contact / Follow Up Notes");
-      const colUser = idx("User");
-      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
-      const parsed = rows.slice(1).map(row => ({
-        rowId: g(row, colRowId), name: g(row, colName), firstName: g(row, colFirstName),
-        email: g(row, colEmail), phone: g(row, colPhone), contactType: g(row, colType),
-        buyerStatus: g(row, colBuyerStatus), assetPreference: g(row, colAssetPref),
-        temperature: g(row, colTemperature), manager: g(row, colManager), notes: g(row, colNotes),
-        leadSource: g(row, colLeadSource), company: g(row, colCompany), dateAdded: g(row, colDateAdded),
-        lastContact: g(row, colLastContact), followUpNotes: g(row, colFollowUpNotes),
-        user: g(row, colUser),
-      }));
-      const allContacts = parsed.filter(c => c.name && c.name.trim() !== "");
-      // Strict filter by team emails — contacts must have a User value matching the team
+      const { data: rows, error: fetchErr } = await supabase.from("contacts").select("*").order("date_added", { ascending: false });
+      if (fetchErr) throw new Error(fetchErr.message);
+      const parsed = (rows || []).map(r => ({
+        rowId: r.id, name: r.contact_name || "", firstName: r.first_name || "",
+        email: r.email || "", phone: r.phone || "", contactType: r.contact_type || "",
+        buyerStatus: r.buyer_status || "", assetPreference: r.asset_preference || "",
+        temperature: r.temperature || "", manager: r.manager || "", notes: r.notes || "",
+        leadSource: r.lead_source || "", company: r.company || "", dateAdded: r.date_added || "",
+        lastContact: r.last_contact || "", followUpNotes: r.follow_up_notes || "",
+        user: r.user_email || "",
+      })).filter(c => c.name && c.name.trim() !== "");
       const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
       const filtered = teamList.length > 0
-        ? allContacts.filter(c => {
-            const contactUser = (c.user || "").toLowerCase().trim();
-            return contactUser && teamList.includes(contactUser);
-          })
-        : allContacts;
+        ? parsed.filter(c => { const contactUser = (c.user || "").toLowerCase().trim(); return contactUser && teamList.includes(contactUser); })
+        : parsed;
       setBuyers(filtered);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [teamEmailsProp]);
@@ -3835,32 +3553,24 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfoli
   var userEmail = session && session.user ? session.user.email : "";
   var emailsToShow = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp : [userEmail.toLowerCase()];
 
-  var fetchPortfolios = function() {
+  var fetchPortfolios = async function() {
     setPortfoliosLoading(true);
-    var range = "Portfolios!A1:F";
-    var url = "https://sheets.googleapis.com/v4/spreadsheets/" + SPREADSHEET_ID + "/values/" + range + "?key=" + API_KEY;
-    fetch(url).then(function(res) { return res.json(); }).then(function(data) {
-      var rows = data.values || [];
-      if (rows.length < 2) { setPortfolios([]); setPortfoliosLoading(false); return; }
-      var parsed = [];
-      for (var i = 1; i < rows.length; i++) {
-        var row = rows[i];
-        if (!row[1] || !emailsToShow.includes(row[1].toLowerCase())) continue;
-        parsed.push({
-          id: row[0] || "",
-          user: row[1] || "",
-          name: row[2] || "",
-          type: row[3] || "Owned",
-          dealAddresses: row[4] ? row[4].split("|||").filter(function(a) { return a; }) : [],
-          createdAt: row[5] || "",
-        });
-      }
+    try {
+      var { data: rows, error: fetchErr } = await supabase.from("portfolios").select("*").order("created_at", { ascending: false });
+      if (fetchErr) throw new Error(fetchErr.message);
+      var parsed = (rows || []).filter(function(r) { return emailsToShow.includes((r.user_email || "").toLowerCase()); }).map(function(r) {
+        return {
+          id: r.id || "",
+          user: r.user_email || "",
+          name: r.name || "",
+          type: r.type || "Owned",
+          dealAddresses: r.deal_addresses ? r.deal_addresses.split("|||").filter(function(a) { return a; }) : [],
+          createdAt: r.created_at || "",
+        };
+      });
       setPortfolios(parsed);
-      setPortfoliosLoading(false);
-    }).catch(function(err) {
-      console.error("Error fetching portfolios:", err);
-      setPortfoliosLoading(false);
-    });
+    } catch(err) { console.error("Error fetching portfolios:", err); }
+    setPortfoliosLoading(false);
   };
 
   useEffect(function() {
@@ -3886,71 +3596,32 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfoli
     if (onHashUpdate) onHashUpdate("portfolios");
   };
 
-  var handleCreateSave = function(data) {
-    if (editingPortfolio) {
-      // Edit existing portfolio via Apps Script
-      fetch(SHEETS_WRITE_URL, {
-        method: "POST",
-        body: JSON.stringify({
-          action: "edit_portfolio",
-          id: editingPortfolio.id,
-          name: data.name,
-          type: data.type,
-          dealAddresses: data.dealAddresses,
-        }),
-      }).then(function(res) { return res.json(); }).then(function(result) {
-        if (result.success) {
-          var updatedP = Object.assign({}, editingPortfolio, data);
-          setPortfolios(portfolios.map(function(p) { return p.id === editingPortfolio.id ? updatedP : p; }));
-          if (selectedPortfolio && selectedPortfolio.id === editingPortfolio.id) {
-            setSelectedPortfolio(updatedP);
-          }
-        } else {
-          console.error("Edit portfolio error:", result.error);
-        }
-      }).catch(function(err) { console.error("Edit portfolio network error:", err); });
-    } else {
-      // Create new portfolio via Apps Script
-      var newId = "p_" + Date.now();
-      var payload = {
-        action: "add_portfolio",
-        id: newId,
-        user: userEmail,
-        name: data.name,
-        type: data.type,
-        dealAddresses: data.dealAddresses,
-        createdAt: new Date().toISOString(),
-      };
-      fetch(SHEETS_WRITE_URL, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }).then(function(res) { return res.json(); }).then(function(result) {
-        if (result.success) {
-          setPortfolios(portfolios.concat([result.portfolio || {
-            id: newId, user: userEmail, name: data.name, type: data.type,
-            dealAddresses: data.dealAddresses, createdAt: payload.createdAt,
-          }]));
-        } else {
-          console.error("Add portfolio error:", result.error);
-        }
-      }).catch(function(err) { console.error("Add portfolio network error:", err); });
-    }
+  var handleCreateSave = async function(data) {
+    try {
+      if (editingPortfolio) {
+        var { error } = await supabase.from("portfolios").update({ name: data.name, type: data.type, deal_addresses: (data.dealAddresses || []).join("|||") }).eq("id", editingPortfolio.id);
+        if (error) throw error;
+        var updatedP = Object.assign({}, editingPortfolio, data);
+        setPortfolios(portfolios.map(function(p) { return p.id === editingPortfolio.id ? updatedP : p; }));
+        if (selectedPortfolio && selectedPortfolio.id === editingPortfolio.id) setSelectedPortfolio(updatedP);
+      } else {
+        var newId = "p_" + Date.now();
+        var { error } = await supabase.from("portfolios").insert({ id: newId, user_email: userEmail, org_id: null, name: data.name, type: data.type, deal_addresses: (data.dealAddresses || []).join("|||") });
+        if (error) throw error;
+        setPortfolios(portfolios.concat([{ id: newId, user: userEmail, name: data.name, type: data.type, dealAddresses: data.dealAddresses || [], createdAt: new Date().toISOString() }]));
+      }
+    } catch(err) { console.error("Portfolio save error:", err); }
     setShowCreateModal(false);
     setEditingPortfolio(null);
   };
 
-  var handleDelete = function(id) {
-    fetch(SHEETS_WRITE_URL, {
-      method: "POST",
-      body: JSON.stringify({ action: "delete_portfolio", id: id }),
-    }).then(function(res) { return res.json(); }).then(function(result) {
-      if (result.success) {
-        setPortfolios(portfolios.filter(function(p) { return p.id !== id; }));
-        if (selectedPortfolio && selectedPortfolio.id === id) backToPortfolios();
-      } else {
-        console.error("Delete portfolio error:", result.error);
-      }
-    }).catch(function(err) { console.error("Delete portfolio network error:", err); });
+  var handleDelete = async function(id) {
+    try {
+      var { error } = await supabase.from("portfolios").delete().eq("id", id);
+      if (error) throw error;
+      setPortfolios(portfolios.filter(function(p) { return p.id !== id; }));
+      if (selectedPortfolio && selectedPortfolio.id === id) backToPortfolios();
+    } catch(err) { console.error("Delete portfolio error:", err); }
   };
 
   var getPortfolioStats = function(p) {
@@ -4119,7 +3790,7 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfoli
 /* ═══════════════════════════════════════════════════════════════════
    MARKET INTELLIGENCE — Session 8
    Heat map placeholder + trending markets table
-   Reads from "Markets" tab in Google Sheets
+   Reads from Supabase markets table
    ═══════════════════════════════════════════════════════════════════ */
 
 const AI_SIGNAL_CONFIG = {
@@ -4304,53 +3975,29 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
     return isNaN(n) ? NaN : n;
   };
 
-  // Fetch Markets tab from Google Sheets
+  // Fetch Markets from Supabase
   useEffect(() => {
     async function fetchMarkets() {
       setMarketsLoading(true);
       try {
-        const range = "Markets!A1:J100";
-        const url = "https://sheets.googleapis.com/v4/spreadsheets/" + SPREADSHEET_ID + "/values/" + range + "?key=" + API_KEY;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("Markets tab not found");
-        const data = await res.json();
-        const rows = data.values || [];
-        if (rows.length < 2) {
-          // Fall back to computing from deals
-          computeFromDeals();
-          return;
-        }
-        const headers = rows[0];
-        const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
-        
-        const colMarket = idx("Market");
-        const colMedianPPU = idx("Median Price Per Unit");
-        const colCapRate = idx("Cap Rate Avg");
-        const colRentGrowth = idx("Rent Growth YoY");
-        const colPopGrowth = idx("Population Growth");
-        const colAiSignal = idx("AI Signal");
-        const colRegion = idx("Region");
-        const colDealCount = idx("Deal Count");
-        const colAvgReapScore = idx("Avg REAP Score");
-        const colTotalVolume = idx("Total Volume");
-
-        const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
-
-        const parsed = rows.slice(1).filter(row => g(row, colMarket)).map(row => ({
-          market: g(row, colMarket),
-          medianPPU: g(row, colMedianPPU),
-          capRateAvg: g(row, colCapRate),
-          rentGrowth: g(row, colRentGrowth),
-          popGrowth: g(row, colPopGrowth),
-          aiSignal: g(row, colAiSignal) || "Neutral",
-          region: g(row, colRegion) || "Other",
-          dealCount: g(row, colDealCount),
-          avgReapScore: g(row, colAvgReapScore),
-          totalVolume: g(row, colTotalVolume),
+        const { data: rows, error: fetchErr } = await supabase.from("markets").select("*");
+        if (fetchErr) throw new Error(fetchErr.message);
+        if (!rows || rows.length === 0) { computeFromDeals(); return; }
+        const parsed = rows.map(r => ({
+          market: r.market_name || "",
+          medianPPU: r.median_price_per_unit != null ? String(r.median_price_per_unit) : "",
+          capRateAvg: r.cap_rate_avg != null ? String(r.cap_rate_avg) : "",
+          rentGrowth: r.rent_growth_yoy != null ? String(r.rent_growth_yoy) : "",
+          popGrowth: r.population_growth != null ? String(r.population_growth) : "",
+          aiSignal: r.ai_signal || "Neutral",
+          region: r.region || "Other",
+          dealCount: r.deal_count != null ? String(r.deal_count) : "",
+          avgReapScore: r.avg_reap_score != null ? String(r.avg_reap_score) : "",
+          totalVolume: r.total_volume != null ? String(r.total_volume) : "",
         }));
         setMarkets(parsed);
       } catch (err) {
-        console.warn("Markets tab not found, computing from deals:", err);
+        console.warn("Markets fetch failed, computing from deals:", err);
         computeFromDeals();
       }
       setMarketsLoading(false);
@@ -4576,7 +4223,7 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
             {sorted.length === 0 ? (
               <div style={{ textAlign: "center", padding: "32px 16px" }}>
                 <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: 0 }}>No markets found</p>
-                <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0" }}>Add markets in your Google Sheets "Markets" tab</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0" }}>No markets data found</p>
               </div>
             ) : sorted.map((m, i) => (
               <div key={i} style={{
@@ -4637,7 +4284,7 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
               <tbody>
                 {sorted.length === 0 ? (
                   <tr><td colSpan={8} style={{ textAlign: "center", padding: "40px 16px", color: "#94a3b8", fontSize: 14 }}>
-                    No markets found. Add data to your "Markets" tab in Google Sheets, or add deals with city data.
+                    No markets found. Add market data in Supabase, or add deals with city data.
                   </td></tr>
                 ) : sorted.map((m, i) => (
                   <tr key={i} style={{
@@ -5306,74 +4953,37 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
   const fetchListings = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const range = `${MLS_FEED_SHEET_NAME}!A1:W`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setListings([]); setLoading(false); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
-      // Map all 23 columns
-      const col = {
-        mlsNumber: idx("ml number") >= 0 ? idx("ml number") : idx("mls number") >= 0 ? idx("mls number") : idx("mls #"),
-        status: idx("status"),
-        adom: idx("adom"),
-        cdom: idx("cdom"),
-        price: idx("current price") >= 0 ? idx("current price") : idx("price"),
-        address: idx("address"),
-        city: idx("city"),
-        county: idx("county"),
-        ownership: idx("ownership"),
-        propType: idx("prop type") >= 0 ? idx("prop type") : idx("property type"),
-        style: idx("property style"),
-        units: idx("total units"),
-        heatedArea: idx("heated area"),
-        lotAcres: idx("lot size acres"),
-        beds: idx("beds"),
-        baths: idx("bathrooms total") >= 0 ? idx("bathrooms total") : idx("baths"),
-        yearBuilt: idx("year built"),
-        ppsf: idx("$/sqft"),
-        agent: idx("list agent"),
-        publicRemarks: idx("public remarks"),
-        realtorRemarks: idx("realtor only remarks"),
-        zip: idx("zip"),
-        sqftTotal: idx("sqft total"),
-      };
-      const g = (row, c) => c >= 0 && c < row.length ? (row[c] || "").trim() : "";
-      const parsed = rows.slice(1).map((row, i) => ({
+      const { data: rows, error: fetchErr } = await supabase.from("mls_listings").select("*").order("created_at", { ascending: false });
+      if (fetchErr) throw new Error(fetchErr.message);
+      const v = (val) => val != null ? String(val) : "";
+      const parsed = (rows || []).map((r, i) => ({
         rowIndex: i + 2,
-        mlsNumber: g(row, col.mlsNumber),
-        status: g(row, col.status),
-        adom: g(row, col.adom),
-        cdom: g(row, col.cdom),
-        price: g(row, col.price),
-        address: g(row, col.address),
-        city: g(row, col.city),
-        county: g(row, col.county),
-        ownership: g(row, col.ownership),
-        propType: g(row, col.propType),
-        style: g(row, col.style),
-        units: g(row, col.units),
-        heatedArea: g(row, col.heatedArea),
-        lotAcres: g(row, col.lotAcres),
-        beds: g(row, col.beds),
-        baths: g(row, col.baths),
-        yearBuilt: g(row, col.yearBuilt),
-        ppsf: g(row, col.ppsf),
-        agent: g(row, col.agent),
-        publicRemarks: g(row, col.publicRemarks),
-        realtorRemarks: g(row, col.realtorRemarks),
-        zip: g(row, col.zip),
-        sqftTotal: g(row, col.sqftTotal),
+        mlsNumber: r.mls_number || "",
+        status: r.status || "",
+        adom: v(r.adom),
+        cdom: v(r.cdom),
+        price: v(r.price),
+        address: r.address || "",
+        city: r.city || "",
+        county: r.county || "",
+        ownership: r.ownership || "",
+        propType: r.prop_type || "",
+        style: r.style || "",
+        units: v(r.units),
+        heatedArea: v(r.heated_area),
+        lotAcres: v(r.lot_acres),
+        beds: v(r.beds),
+        baths: v(r.baths),
+        yearBuilt: v(r.year_built),
+        ppsf: v(r.ppsf),
+        agent: r.agent || "",
+        publicRemarks: r.public_remarks || "",
+        realtorRemarks: r.realtor_remarks || "",
+        zip: r.zip || "",
+        sqftTotal: v(r.sqft_total),
       })).filter(l => l.address || l.mlsNumber);
       setListings(parsed);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchListings(); }, [fetchListings]);
@@ -5400,11 +5010,23 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
         "Source": "MLS Feed",
         "MLS Number": listing.mlsNumber,
       };
-      if (SHEETS_WRITE_URL) {
-        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(dealData) });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Failed to add deal");
-      }
+      const { error: insertErr } = await supabase.from("deals").insert({
+        user_email: session?.user?.email || "",
+        deal_name: dealData["Deal / Name"],
+        property_address: dealData["Property / Address"],
+        city: dealData["City"],
+        state: dealData["State"],
+        zip_code: dealData["Zip Code"],
+        type: dealData["Type"],
+        asking_price: parseFloat(dealData["Asking / Price"]) || null,
+        sqft_net: parseFloat(dealData["SQFT / Net"]) || null,
+        units: parseInt(dealData["Units"]) || null,
+        lot_acres: parseFloat(dealData["Lot / Size Acres"]) || null,
+        year_built: dealData["Year Built"] || null,
+        deal_status: "New",
+        source: "MLS Feed",
+      });
+      if (insertErr) throw new Error(insertErr.message);
       if (onAddToPipeline) onAddToPipeline();
     } catch (err) {
       alert("Error adding to pipeline: " + err.message);
@@ -5732,36 +5354,18 @@ function FileUploaderView({ session, isMobile }) {
   const fetchUploads = useCallback(async () => {
     setUploadsLoading(true);
     try {
-      const range = `${FILE_UPLOADS_SHEET_NAME}!A1:E`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) { setUploads([]); return; }
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setUploads([]); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
-      const colFilename = idx("filename") >= 0 ? idx("filename") : 0;
-      const colLink = idx("file link") >= 0 ? idx("file link") : idx("link") >= 0 ? idx("link") : 1;
-      const colDate = idx("uploaded at") >= 0 ? idx("uploaded at") : idx("date") >= 0 ? idx("date") : 2;
-      const colUser = idx("user") >= 0 ? idx("user") : 3;
-      const colStatus = idx("status") >= 0 ? idx("status") : 4;
-      const g = (row, col) => col >= 0 && col < row.length ? (row[col] || "").trim() : "";
-      const parsed = rows.slice(1).map((row, i) => ({
-        rowIndex: i + 2,
-        filename: g(row, colFilename),
-        link: g(row, colLink),
-        date: g(row, colDate),
-        user: g(row, colUser),
-        status: g(row, colStatus) || "Uploaded",
+      const { data: rows, error: fetchErr } = await supabase.from("file_uploads").select("*").order("uploaded_at", { ascending: false });
+      if (fetchErr) { setUploads([]); return; }
+      const parsed = (rows || []).map(r => ({
+        rowIndex: r.id,
+        filename: r.filename || "",
+        link: r.file_link || "",
+        date: r.uploaded_at || "",
+        user: r.user_email || "",
+        status: r.status || "Uploaded",
       })).filter(u => u.filename || u.link);
-      setUploads(parsed.reverse());
-    } catch (err) {
-      console.error("Error fetching uploads:", err);
-      setUploads([]);
-    } finally {
-      setUploadsLoading(false);
-    }
+      setUploads(parsed);
+    } catch (err) { console.error("Error fetching uploads:", err); setUploads([]); } finally { setUploadsLoading(false); }
   }, []);
 
   useEffect(() => { fetchUploads(); }, [fetchUploads]);
@@ -5778,20 +5382,13 @@ function FileUploaderView({ session, isMobile }) {
         reader.readAsDataURL(file);
       });
 
-      // Send to Apps Script which uploads to Drive and writes row to File Uploads tab
-      if (SHEETS_WRITE_URL) {
-        const payload = {
-          action: "upload_file",
-          filename: file.name,
-          mimeType: file.type || "text/csv",
-          base64: base64,
-          user: session?.user?.email || "",
-          uploadedAt: new Date().toISOString(),
-        };
-        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Upload failed");
-      }
+      const { error: insertErr } = await supabase.from("file_uploads").insert({
+        user_email: session?.user?.email || "",
+        filename: file.name,
+        mime_type: file.type || "text/csv",
+        status: "Uploaded",
+      });
+      if (insertErr) throw new Error(insertErr.message);
 
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -6330,40 +5927,29 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
   const fetchInvestors = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const range = `${INVESTORS_SHEET_NAME}!A1:Z`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) { if (res.status === 400) { setInvestors([]); setLoading(false); return; } throw new Error(`API error: ${res.status}`); }
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setInvestors([]); setLoading(false); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
-      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
-      const parsed = rows.slice(1).map(row => ({
-        id: g(row, idx("Investor ID")), user: g(row, idx("User")),
-        investorName: g(row, idx("Investor Name")), investorType: g(row, idx("Investor Type")),
-        pipelineStage: g(row, idx("Pipeline Stage")), temperature: g(row, idx("Temperature")),
-        capitalRangeMin: g(row, idx("Capital Range Min")), capitalRangeMax: g(row, idx("Capital Range Max")),
-        capitalCommitted: g(row, idx("Capital Committed")), capitalFunded: g(row, idx("Capital Funded")),
-        investmentThesis: g(row, idx("Investment Thesis")), preferredReturn: g(row, idx("Preferred Return")),
-        irrTarget: g(row, idx("IRR Target")), holdPeriod: g(row, idx("Hold Period")),
-        assetPreference: g(row, idx("Asset Preference")), geographyPreference: g(row, idx("Geography Preference")),
-        minDealSize: g(row, idx("Min Deal Size")), equityStructure: g(row, idx("Equity Structure")),
-        leadSource: g(row, idx("Lead Source")),
-        contactIds: g(row, idx("Contact IDs")) ? g(row, idx("Contact IDs")).split("|||").filter(Boolean) : [],
-        linkedDealAddresses: g(row, idx("Linked Deal Addresses")) ? g(row, idx("Linked Deal Addresses")).split("|||").filter(Boolean) : [],
-        notes: g(row, idx("Notes")), dateAdded: g(row, idx("Date Added")),
-        dateLastContact: g(row, idx("Date Last Contact")), nextFollowUp: g(row, idx("Next Follow-Up")),
-        company: g(row, idx("Company / Entity")),
+      const { data: rows, error: fetchErr } = await supabase.from("investors").select("*").order("date_added", { ascending: false });
+      if (fetchErr) throw new Error(fetchErr.message);
+      const v = (val) => val != null ? String(val) : "";
+      const parsed = (rows || []).map(r => ({
+        id: r.id, user: r.user_email || "",
+        investorName: r.investor_name || "", investorType: r.investor_type || "",
+        pipelineStage: r.pipeline_stage || "", temperature: r.temperature || "",
+        capitalRangeMin: v(r.capital_range_min), capitalRangeMax: v(r.capital_range_max),
+        capitalCommitted: v(r.capital_committed), capitalFunded: v(r.capital_funded),
+        investmentThesis: r.investment_thesis || "", preferredReturn: v(r.preferred_return),
+        irrTarget: v(r.irr_target), holdPeriod: v(r.hold_period),
+        assetPreference: r.asset_preference || "", geographyPreference: r.geography_preference || "",
+        minDealSize: v(r.min_deal_size), equityStructure: r.equity_structure || "",
+        leadSource: r.lead_source || "",
+        contactIds: r.contact_ids ? r.contact_ids.split("|||").filter(Boolean) : [],
+        linkedDealAddresses: r.linked_deal_addresses ? r.linked_deal_addresses.split("|||").filter(Boolean) : [],
+        notes: r.notes || "", dateAdded: r.date_added || "",
+        dateLastContact: r.date_last_contact || "", nextFollowUp: r.next_follow_up || "",
+        company: r.company || "",
       })).filter(inv => inv.investorName && inv.investorName.trim() !== "");
-      // Strict filter by team emails — investors must have a User value matching the team
       const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
       const filtered = teamList.length > 0
-        ? parsed.filter(inv => {
-            const invUser = (inv.user || "").toLowerCase().trim();
-            return invUser && teamList.includes(invUser);
-          })
+        ? parsed.filter(inv => { const invUser = (inv.user || "").toLowerCase().trim(); return invUser && teamList.includes(invUser); })
         : parsed;
       setInvestors(filtered);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
@@ -6371,41 +5957,25 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
 
   const fetchActivities = useCallback(async () => {
     try {
-      const range = `${INVESTOR_ACTIVITY_SHEET_NAME}!A1:G`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) { setActivities([]); return; }
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setActivities([]); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
-      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
-      setActivities(rows.slice(1).map(row => ({
-        activityId: g(row, idx("Activity ID")), investorId: g(row, idx("Investor ID")),
-        user: g(row, idx("User")), activityType: g(row, idx("Activity Type")),
-        description: g(row, idx("Description")), date: g(row, idx("Date")),
-        createdAt: g(row, idx("Created At")),
+      const { data: rows, error: fetchErr } = await supabase.from("investor_activities").select("*").order("created_at", { ascending: false });
+      if (fetchErr || !rows) { setActivities([]); return; }
+      setActivities(rows.map(r => ({
+        activityId: r.id, investorId: r.investor_id || "",
+        user: r.user_email || "", activityType: r.activity_type || "",
+        description: r.description || "", date: r.activity_date || "",
+        createdAt: r.created_at || "",
       })));
     } catch { setActivities([]); }
   }, []);
 
   const fetchContacts = useCallback(async () => {
     try {
-      const range = `${CONTACTS_SHEET_NAME}!A1:BQ`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) { setContacts([]); return; }
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setContacts([]); return; }
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
-      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
-      setContacts(rows.slice(1).map(row => ({
-        rowId: g(row, idx("🔒 Row ID")), name: g(row, idx("Contact / Name")),
-        email: g(row, idx("Contact / Email")), phone: g(row, idx("Contact / Phone")),
-        company: g(row, idx("Contact / Company")),
+      const { data: rows, error: fetchErr } = await supabase.from("contacts").select("id, contact_name, email, phone, company");
+      if (fetchErr || !rows) { setContacts([]); return; }
+      setContacts(rows.map(r => ({
+        rowId: r.id, name: r.contact_name || "",
+        email: r.email || "", phone: r.phone || "",
+        company: r.company || "",
       })).filter(c => c.name));
     } catch { setContacts([]); }
   }, []);
@@ -6416,19 +5986,33 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
     setSaving(true);
     try {
       if (editingInvestor) {
-        const payload = { action: "edit_investor", id: editingInvestor.id, updates: form };
-        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Edit failed");
+        const updates = {};
+        if (form.investorName !== undefined) updates.investor_name = form.investorName;
+        if (form.investorType !== undefined) updates.investor_type = form.investorType;
+        if (form.pipelineStage !== undefined) updates.pipeline_stage = form.pipelineStage;
+        if (form.temperature !== undefined) updates.temperature = form.temperature;
+        if (form.capitalRangeMin !== undefined) updates.capital_range_min = parseFloat(form.capitalRangeMin) || null;
+        if (form.capitalRangeMax !== undefined) updates.capital_range_max = parseFloat(form.capitalRangeMax) || null;
+        if (form.capitalCommitted !== undefined) updates.capital_committed = parseFloat(form.capitalCommitted) || null;
+        if (form.notes !== undefined) updates.notes = form.notes;
+        if (form.company !== undefined) updates.company = form.company;
+        if (form.nextFollowUp !== undefined) updates.next_follow_up = form.nextFollowUp || null;
+        if (form.linkedDealAddresses !== undefined) updates.linked_deal_addresses = (form.linkedDealAddresses || []).join("|||");
+        const { error } = await supabase.from("investors").update(updates).eq("id", editingInvestor.id);
+        if (error) throw new Error(error.message);
         setInvestors(prev => prev.map(inv => inv.id === editingInvestor.id ? { ...inv, ...form } : inv));
         if (selectedInvestor && selectedInvestor.id === editingInvestor.id) setSelectedInvestor(prev => ({ ...prev, ...form }));
       } else {
-        const payload = { action: "add_investor", ...form, user: userEmail };
-        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Add failed");
-        if (result.investor) setInvestors(prev => [...prev, result.investor]);
-        else await fetchInvestors();
+        const newId = "inv_" + Date.now();
+        const { error } = await supabase.from("investors").insert({
+          id: newId, user_email: userEmail, investor_name: form.investorName || "",
+          investor_type: form.investorType || "", pipeline_stage: form.pipelineStage || "Prospect",
+          temperature: form.temperature || "Warm", capital_range_min: parseFloat(form.capitalRangeMin) || null,
+          capital_range_max: parseFloat(form.capitalRangeMax) || null, notes: form.notes || "",
+          company: form.company || "", date_added: new Date().toISOString(),
+        });
+        if (error) throw new Error(error.message);
+        await fetchInvestors();
       }
       setShowModal(false);
       setEditingInvestor(null);
@@ -6439,12 +6023,13 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
     if (!selectedInvestor) return;
     setSaving(true);
     try {
-      const payload = { action: "add_investor_activity", investorId: selectedInvestor.id, user: userEmail, ...form };
-      const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || "Failed");
-      if (result.activity) setActivities(prev => [...prev, result.activity]);
-      else await fetchActivities();
+      const { error } = await supabase.from("investor_activities").insert({
+        investor_id: selectedInvestor.id, user_email: userEmail,
+        activity_type: form.activityType || "", description: form.description || "",
+        activity_date: form.date || new Date().toISOString(),
+      });
+      if (error) throw new Error(error.message);
+      await fetchActivities();
       setSelectedInvestor(prev => ({ ...prev, dateLastContact: new Date().toISOString() }));
       setInvestors(prev => prev.map(inv => inv.id === selectedInvestor.id ? { ...inv, dateLastContact: new Date().toISOString() } : inv));
       setShowActivityModal(false);
@@ -6455,10 +6040,8 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
     if (!selectedInvestor) return;
     const newAddresses = [...(selectedInvestor.linkedDealAddresses || []), address];
     try {
-      const payload = { action: "edit_investor", id: selectedInvestor.id, updates: { linkedDealAddresses: newAddresses } };
-      const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || "Failed");
+      const { error } = await supabase.from("investors").update({ linked_deal_addresses: newAddresses.join("|||") }).eq("id", selectedInvestor.id);
+      if (error) throw new Error(error.message);
       setSelectedInvestor(prev => ({ ...prev, linkedDealAddresses: newAddresses }));
       setInvestors(prev => prev.map(inv => inv.id === selectedInvestor.id ? { ...inv, linkedDealAddresses: newAddresses } : inv));
       setShowLinkDealModal(false);
@@ -6468,12 +6051,10 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
   const handleDeleteInvestor = async (id) => {
     if (!window.confirm("Delete this investor? This cannot be undone.")) return;
     try {
-      const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify({ action: "delete_investor", id }) });
-      const result = await res.json();
-      if (result.success) {
-        setInvestors(prev => prev.filter(inv => inv.id !== id));
-        if (selectedInvestor && selectedInvestor.id === id) setSelectedInvestor(null);
-      }
+      const { error } = await supabase.from("investors").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+      setInvestors(prev => prev.filter(inv => inv.id !== id));
+      if (selectedInvestor && selectedInvestor.id === id) setSelectedInvestor(null);
     } catch (err) { alert("Error: " + err.message); }
   };
 
@@ -6702,11 +6283,8 @@ export default function ReapApp() {
   const [editingBuyer, setEditingBuyer] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [showLegalPage, setShowLegalPage] = useState(null);
   const [pendingDealAddress, setPendingDealAddress] = useState(null);
-  const [pendingDealTab, setPendingDealTab] = useState(null);
   const [pendingPortfolioId, setPendingPortfolioId] = useState(null);
-  const [dealDetailTab, setDealDetailTab] = useState("overview");
 
   // ── Organization / Team state ──
   const [orgData, setOrgData] = useState(null);           // { id, name, owner_email, plan_tier }
@@ -6721,71 +6299,30 @@ export default function ReapApp() {
   const [featureFlags, setFeatureFlags] = useState([]);    // raw feature_flags rows
 
   // --- Hash-based routing ---
-  // Format: command | realestate/pipeline | realestate/dashboard | realestate/portfolios
-  //         deal/{address} | deal/{address}/documents | deal/{address}/activity | deal/{address}/financials ...
-  //         contacts/contacts | contacts/investors | research | mls/feed | mls/upload
-  //         profile | portfolio/{id}
   const updateHash = useCallback((hash) => {
     if (window.location.hash !== "#" + hash) {
       window.location.hash = hash;
     }
   }, []);
 
-  const parseHashRoute = useCallback((hash) => {
-    if (!hash) return null;
-    // Deal detail: deal/{address} or deal/{address}/{tab}
-    if (hash.startsWith("deal/")) {
-      const rest = hash.slice(5); // after "deal/"
-      const dealTabs = ["overview","financials","ai%20underwriting","ai%20summary","documents","activity"];
-      // Check if last segment is a known tab
-      const lastSlash = rest.lastIndexOf("/");
-      if (lastSlash > 0) {
-        const possibleTab = rest.slice(lastSlash + 1);
-        if (dealTabs.includes(possibleTab.toLowerCase())) {
-          const addr = decodeURIComponent(rest.slice(0, lastSlash));
-          const tab = decodeURIComponent(possibleTab);
-          return { type: "deal", address: addr, tab };
-        }
-      }
-      return { type: "deal", address: decodeURIComponent(rest), tab: "overview" };
-    }
-    if (hash.startsWith("portfolio/")) return { type: "portfolio", id: decodeURIComponent(hash.slice(10)) };
-    if (hash === "profile") return { type: "profile" };
-    if (hash === "privacy" || hash === "terms") return { type: "legal", page: hash };
-    // Nav with subtab: realestate/pipeline, contacts/investors, mls/upload
-    const slashIdx = hash.indexOf("/");
-    if (slashIdx > 0) {
-      const nav = hash.slice(0, slashIdx);
-      const sub = hash.slice(slashIdx + 1);
-      if (["realestate","contacts","mls"].includes(nav)) return { type: "nav", nav, sub };
-    }
-    if (["command","realestate","contacts","research","mls"].includes(hash)) return { type: "nav", nav: hash };
-    return null;
-  }, []);
-
   // Parse hash on initial load
   useEffect(() => {
     const hash = window.location.hash.replace("#", "");
-    const route = parseHashRoute(hash);
-    if (!route) return;
-    if (route.type === "deal") {
+    if (!hash) return;
+    if (hash.startsWith("deal/")) {
+      const addr = decodeURIComponent(hash.replace("deal/", ""));
       setActiveNav("realestate"); setRealEstateTab("pipeline");
-      setPendingDealAddress(route.address);
-      setPendingDealTab(route.tab);
-    } else if (route.type === "portfolio") {
+      setPendingDealAddress(addr);
+    } else if (hash.startsWith("portfolio/")) {
+      const id = decodeURIComponent(hash.replace("portfolio/", ""));
       setActiveNav("realestate"); setRealEstateTab("portfolios");
-      setPendingPortfolioId(route.id);
-    } else if (route.type === "profile") {
+      setPendingPortfolioId(id);
+    } else if (hash === "profile") {
       setShowProfile(true);
-    } else if (route.type === "legal") {
-      setShowLegalPage(route.page);
-    } else if (route.type === "nav") {
-      setActiveNav(route.nav);
-      if (route.nav === "realestate" && route.sub) setRealEstateTab(route.sub);
-      if (route.nav === "contacts" && route.sub) setContactsTab(route.sub);
-      if (route.nav === "mls" && route.sub) setMlsTab(route.sub);
+    } else if (["command","realestate","contacts","research","mls"].includes(hash)) {
+      setActiveNav(hash);
     }
-  }, [parseHashRoute]);
+  }, []);
 
   // Resolve pending deal once deals are loaded
   useEffect(() => {
@@ -6793,53 +6330,41 @@ export default function ReapApp() {
       const deal = deals.find(d => d.address === pendingDealAddress);
       if (deal) {
         setSelectedDeal(deal);
-        if (pendingDealTab) setDealDetailTab(pendingDealTab);
         if (isMobile) setDealTransition(true);
       }
       setPendingDealAddress(null);
-      setPendingDealTab(null);
     }
-  }, [pendingDealAddress, deals, isMobile, pendingDealTab]);
+  }, [pendingDealAddress, deals, isMobile]);
 
   // Listen for browser back/forward
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash.replace("#", "");
-      const route = parseHashRoute(hash);
-      if (!route) return;
-      if (route.type === "deal") {
-        const deal = deals.find(d => d.address === route.address);
+      if (hash.startsWith("deal/")) {
+        const addr = decodeURIComponent(hash.replace("deal/", ""));
+        const deal = deals.find(d => d.address === addr);
         if (deal) {
           setActiveNav("realestate"); setRealEstateTab("pipeline");
           setShowProfile(false);
           setSelectedDeal(deal);
-          setDealDetailTab(route.tab);
           if (isMobile) setDealTransition(true);
         }
-      } else if (route.type === "portfolio") {
+      } else if (hash.startsWith("portfolio/")) {
         setActiveNav("realestate"); setRealEstateTab("portfolios");
         setShowProfile(false);
-        setPendingPortfolioId(route.id);
-      } else if (route.type === "profile") {
+        setPendingPortfolioId(decodeURIComponent(hash.replace("portfolio/", "")));
+      } else if (hash === "profile") {
         setShowProfile(true);
-        setShowLegalPage(null);
-      } else if (route.type === "legal") {
-        setShowLegalPage(route.page);
+      } else if (["command","realestate","contacts","research","mls"].includes(hash)) {
+        setActiveNav(hash);
         setShowProfile(false);
-      } else if (route.type === "nav") {
-        setActiveNav(route.nav);
-        setShowProfile(false);
-        setShowLegalPage(null);
         setSelectedDeal(null);
         if (isMobile) setDealTransition(false);
-        if (route.nav === "realestate" && route.sub) setRealEstateTab(route.sub);
-        if (route.nav === "contacts" && route.sub) setContactsTab(route.sub);
-        if (route.nav === "mls" && route.sub) setMlsTab(route.sub);
       }
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-  }, [deals, isMobile, parseHashRoute]);
+  }, [deals, isMobile]);
 
   // Check for payment success redirect
   useEffect(() => {
@@ -6895,23 +6420,16 @@ export default function ReapApp() {
     return () => window.removeEventListener("resize", handle);
   }, []);
 
-  // Sync hash when nav, subtabs, profile, or deal detail tab changes
+  // Sync hash when nav or profile changes (skip initial render, skip when deal selected)
   const hashInitRef = useRef(false);
   useEffect(() => {
     if (!hashInitRef.current) { hashInitRef.current = true; return; }
     if (showProfile) {
       updateHash("profile");
-    } else if (selectedDeal) {
-      const base = "deal/" + encodeURIComponent(selectedDeal.address);
-      updateHash(dealDetailTab && dealDetailTab !== "overview" ? base + "/" + encodeURIComponent(dealDetailTab) : base);
-    } else {
-      // Include subtab for sections that have them
-      if (activeNav === "realestate") updateHash("realestate/" + realEstateTab);
-      else if (activeNav === "contacts") updateHash("contacts/" + contactsTab);
-      else if (activeNav === "mls") updateHash("mls/" + mlsTab);
-      else updateHash(activeNav);
+    } else if (!selectedDeal) {
+      updateHash(activeNav);
     }
-  }, [activeNav, showProfile, selectedDeal, dealDetailTab, realEstateTab, contactsTab, mlsTab, updateHash]);
+  }, [activeNav, showProfile, selectedDeal, updateHash]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -7154,201 +6672,98 @@ export default function ReapApp() {
   };
 
   /* ═══════════════════════════════════════════════════════
-     FETCH DEALS — expanded range for all financial columns
+     FETCH DEALS — from Supabase
      ═══════════════════════════════════════════════════════ */
   const fetchDeals = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch ALL columns (267 columns = roughly A:JK)
-      const range = `${SHEET_NAME}!A1:KZ`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
-      const rows = data.values || [];
-      if (rows.length < 2) { setDeals([]); setLoading(false); return; }
+      const { data: rows, error: fetchErr } = await supabase.from("deals").select("*").order("date_added", { ascending: false });
+      if (fetchErr) throw new Error(fetchErr.message);
 
-      const headers = rows[0];
-      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
+      const emailsToShow = teamEmails.length > 0 ? teamEmails : [session?.user?.email?.toLowerCase() || ""];
+      const v = (val) => val != null ? String(val) : "";
 
-      // Core fields
-      const colUser = idx("User");
-      const colDate = idx("Date / Added");
-      const colStatus = idx("Deal / Status");
-      const colAddress = idx("Property / Address");
-      const colType = idx("Type");
-      const colOffer = idx("Investment / Our Offer");
-      const colNetSqft = idx("Investment / Our Offer $ per SFT");
-      const colSqft = idx("SQFT / Net");
-      const colUnits = idx("Units");
-      const colPurchase = idx("Purchase Price");
-      const colImprovement = idx("Improvement / Budget");
-      const colARV = idx("ARV / Value");
-      const colProfit = idx("Profit");
-      const colROI = idx("Investment / ROI");
-      const colCTV = idx("Cost to Value / Percent (CTV)");
-      const colAAR = idx("AAR");
-      const colProfitability = idx("Profitability");
-      const colSource = idx("Source");
-      const colCity = idx("City");
-      const colState = idx("State");
-
-      // Financial fields (Step 27)
-      const colCapRate = idx("Asking / Cap Rate");
-      const colDSCR = idx("DSCR");
-      const colNOIAnnual = idx("Proforma / Net Operating Income - Annual(NOI)");
-      const colNOIMonthly = idx("Proforma / Net Operating Income - Monthly");
-      const colNOIPerSF = idx("Proforma / Net Operating Income  $ per SQFT (NOI)");
-      const colCashFlowMonthly = idx("Cash Flow Pre Tax (Monthly)");
-      const colProformaRevenueAnnual = idx("Proforma / Revenue - Annual");
-      const colProformaRevenueMonthly = idx("Proforma / Revenue - Monthly");
-      const colProformaRentPerSF = idx("Proforma / Rent per SF");
-      const colProformaExpensesPct = idx("Proforma / Expenses (%)");
-      const colProformaExpensesAnnual = idx("Proforma / Expenses - Annual ($)");
-      const colProformaExpensesMonthly = idx("Proforma / Expenses - Monthly ($)");
-      const colProformaExpensesPerSF = idx("Proforma / Expenses $ per SFT");
-      const colProformaVacancy = idx("Proforma / Vacancy (%)");
-      const colBridgeLoanTotal = idx("Bridge / Loan Total");
-      const colBridgeInterestRate = idx("Bridge / Interest Rate (%)");
-      const colBridgeInterestMonthly = idx("Bridge / Interest Cost (Monthly)");
-      const colBridgePoints = idx("Bridge / Points (%)");
-      const colBridgeTotalCost = idx("Bridge / Total Cost");
-      const colBridgeLTC = idx("Bridge / Loan to Cost (LTC)");
-      const colBridgeLTV = idx("Bridge / Loan to Value (LTV)");
-      const colEquityRequired = idx("Equity / Required");
-      const colRefiLoanAmount = idx("Refinance / Loan Amount");
-      const colRefiPctARV = idx("Refinance / % of Appraisal (ARV)");
-      const colRefiInterestRate = idx("Refinance / Interest Rate (%)");
-      const colRefiCashFlow = idx("Refinance / Cash Flow (Annual)");
-      const colCashOutRefi = idx("Cash Out at Refi");
-      const colProfitAtRefi = idx("Profit at Refi");
-      const colEquityAfterRefi = idx("Equity / Left in the Deal after Refi ");
-      const colRefiValuation = idx("Refinance Valuation");
-      const colReapScore = idx("REAP / Score");
-      // Existing Financials
-      const colExistingRevenueAnnual = idx("Existing Financials / Revenue - Annual");
-      const colExistingRevenueMonthly = idx("Existing Financials / Revenue - Monthly");
-      const colExistingRevenuePerSF = idx("Existing Financials / Revenue Per SQFT");
-      const colExistingNOI = idx("Existing Financials / Net Income (NOI)");
-      const colExistingExpensePct = idx("Existing Financials / Expense Percentage");
-      const colExistingExpenses = idx("Existing Expenses ($)");
-      const colExistingCapRate = idx("Investment / Existing Financials / Our Offer Cap Rate");
-      const colAnnualTaxes = idx("Annual Taxes (New)");
-      const colInsuranceCost = idx("Insurance / Cost (Annual)");
-      const colEquityMultiple = idx("Equity Multiple");
-      // Edit-related fields
-      const colAskingPrice = idx("Asking / Price");
-      const colAcqCostToClose = idx("Acquisition / Cost to Close %");
-      const colMonths = idx("Months");
-      const colDispCostOfSale = idx("Disposition / Cost of Sale (% of ARV)");
-      const colBridgeAcqPct = idx("Bridge / Acquisition Financed (%)");
-      const colBridgeImprovPct = idx("Bridge / Improvement Financing (%)");
-      const colRefiPoints = idx("Refinance / Points (%)");
-      const colRefiTerm = idx("Refinance / Term (years)");
-      const colLotAcres = idx("Lot / Size Acres");
-      const colYearBuilt = idx("Year Built");
-      const colDealName = idx("Deal / Name");
-      const colZip = idx("Zip Code");
-      const colClass = idx("Class");
-
-      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
-
-      const parsed = rows.slice(1).map(row => ({
-        // Core
-        user: g(row, colUser),
-        date: g(row, colDate),
-        status: g(row, colStatus),
-        address: g(row, colAddress),
-        type: g(row, colType),
-        offer: g(row, colOffer),
-        netSqft: g(row, colNetSqft),
-        sqft: g(row, colSqft),
-        units: g(row, colUnits),
-        purchasePrice: g(row, colPurchase),
-        improvementBudget: g(row, colImprovement),
-        arv: g(row, colARV),
-        profit: g(row, colProfit),
-        roi: g(row, colROI),
-        ctv: g(row, colCTV),
-        aar: g(row, colAAR),
-        profitability: g(row, colProfitability),
-        source: g(row, colSource),
-        city: g(row, colCity),
-        state: g(row, colState),
-        // Financials
-        capRate: g(row, colCapRate),
-        dscr: g(row, colDSCR),
-        noiAnnual: g(row, colNOIAnnual),
-        noiMonthly: g(row, colNOIMonthly),
-        noiPerSF: g(row, colNOIPerSF),
-        cashFlowMonthly: g(row, colCashFlowMonthly),
-        proformaRevenueAnnual: g(row, colProformaRevenueAnnual),
-        proformaRevenueMonthly: g(row, colProformaRevenueMonthly),
-        proformaRentPerSF: g(row, colProformaRentPerSF),
-        proformaExpensesPct: g(row, colProformaExpensesPct),
-        proformaExpensesAnnual: g(row, colProformaExpensesAnnual),
-        proformaExpensesMonthly: g(row, colProformaExpensesMonthly),
-        proformaExpensesPerSF: g(row, colProformaExpensesPerSF),
-        proformaVacancy: g(row, colProformaVacancy),
-        bridgeLoanTotal: g(row, colBridgeLoanTotal),
-        bridgeInterestRate: g(row, colBridgeInterestRate),
-        bridgeInterestMonthly: g(row, colBridgeInterestMonthly),
-        bridgePoints: g(row, colBridgePoints),
-        bridgeTotalCost: g(row, colBridgeTotalCost),
-        bridgeLTC: g(row, colBridgeLTC),
-        bridgeLTV: g(row, colBridgeLTV),
-        equityRequired: g(row, colEquityRequired),
-        refiLoanAmount: g(row, colRefiLoanAmount),
-        refiPctARV: g(row, colRefiPctARV),
-        refiInterestRate: g(row, colRefiInterestRate),
-        refiCashFlow: g(row, colRefiCashFlow),
-        cashOutRefi: g(row, colCashOutRefi),
-        profitAtRefi: g(row, colProfitAtRefi),
-        equityAfterRefi: g(row, colEquityAfterRefi),
-        refiValuation: g(row, colRefiValuation),
-        reapScore: g(row, colReapScore),
-        equityMultiple: g(row, colEquityMultiple),
-        // Edit-related fields
-        askingPrice: g(row, colAskingPrice),
-        acqCostToClose: g(row, colAcqCostToClose),
-        months: g(row, colMonths),
-        dispCostOfSale: g(row, colDispCostOfSale),
-        bridgeAcqPct: g(row, colBridgeAcqPct),
-        bridgeImprovPct: g(row, colBridgeImprovPct),
-        refiPoints: g(row, colRefiPoints),
-        refiTerm: g(row, colRefiTerm),
-        lotAcres: g(row, colLotAcres),
-        yearBuilt: g(row, colYearBuilt),
-        dealName: g(row, colDealName),
-        zip: g(row, colZip),
-        dealClass: g(row, colClass),
-        // Existing Financials
-        existingRevenueAnnual: g(row, colExistingRevenueAnnual),
-        existingRevenueMonthly: g(row, colExistingRevenueMonthly),
-        existingRevenuePerSF: g(row, colExistingRevenuePerSF),
-        existingNOI: g(row, colExistingNOI),
-        existingExpensePct: g(row, colExistingExpensePct),
-        existingExpenses: g(row, colExistingExpenses),
-        existingCapRate: g(row, colExistingCapRate),
-        annualTaxes: g(row, colAnnualTaxes),
-        insuranceCost: g(row, colInsuranceCost),
+      const parsed = (rows || []).map(r => ({
+        _id: r.id,
+        user: r.user_email || "",
+        date: r.date_added || "",
+        status: r.deal_status || "",
+        address: r.property_address || "",
+        type: r.type || "",
+        offer: v(r.our_offer),
+        netSqft: v(r.net_sqft_price),
+        sqft: v(r.sqft_net),
+        units: v(r.units),
+        purchasePrice: v(r.purchase_price),
+        improvementBudget: v(r.improvement_budget),
+        arv: v(r.arv_value),
+        profit: v(r.profit),
+        roi: v(r.roi),
+        ctv: v(r.ctv),
+        aar: v(r.aar),
+        profitability: v(r.profitability),
+        source: r.source || "",
+        city: r.city || "",
+        state: r.state || "",
+        capRate: v(r.cap_rate),
+        dscr: v(r.dscr),
+        noiAnnual: v(r.noi_annual),
+        noiMonthly: v(r.noi_monthly),
+        noiPerSF: v(r.noi_per_sf),
+        cashFlowMonthly: v(r.cash_flow_monthly),
+        proformaRevenueAnnual: v(r.proforma_revenue_annual),
+        proformaRevenueMonthly: v(r.proforma_revenue_monthly),
+        proformaRentPerSF: v(r.proforma_rent_per_sf),
+        proformaExpensesPct: v(r.proforma_expenses_pct),
+        proformaExpensesAnnual: v(r.proforma_expenses_annual),
+        proformaExpensesMonthly: v(r.proforma_expenses_monthly),
+        proformaExpensesPerSF: v(r.proforma_expenses_per_sf),
+        proformaVacancy: v(r.proforma_vacancy_pct),
+        bridgeLoanTotal: v(r.bridge_loan_total),
+        bridgeInterestRate: v(r.bridge_interest_rate),
+        bridgeInterestMonthly: v(r.bridge_interest_monthly),
+        bridgePoints: v(r.bridge_points_pct),
+        bridgeTotalCost: v(r.bridge_total_cost),
+        bridgeLTC: v(r.bridge_ltc),
+        bridgeLTV: v(r.bridge_ltv),
+        equityRequired: v(r.equity_required),
+        refiLoanAmount: v(r.refi_loan_amount),
+        refiPctARV: v(r.refi_pct_arv),
+        refiInterestRate: v(r.refi_interest_rate),
+        refiCashFlow: v(r.refi_cash_flow_annual),
+        cashOutRefi: v(r.cash_out_refi),
+        profitAtRefi: v(r.profit_at_refi),
+        equityAfterRefi: v(r.equity_after_refi),
+        refiValuation: v(r.refi_valuation),
+        reapScore: v(r.reap_score),
+        equityMultiple: v(r.equity_multiple),
+        askingPrice: v(r.asking_price),
+        acqCostToClose: v(r.acq_cost_to_close_pct),
+        months: v(r.months),
+        dispCostOfSale: v(r.disp_cost_of_sale_pct),
+        bridgeAcqPct: v(r.bridge_acq_financed_pct),
+        bridgeImprovPct: v(r.bridge_improv_financed_pct),
+        refiPoints: v(r.refi_points_pct),
+        refiTerm: v(r.refi_term_years),
+        lotAcres: v(r.lot_acres),
+        yearBuilt: v(r.year_built),
+        dealName: r.deal_name || "",
+        zip: r.zip_code || "",
+        dealClass: r.class || "",
+        existingRevenueAnnual: v(r.existing_revenue_annual),
+        existingRevenueMonthly: v(r.existing_revenue_monthly),
+        existingRevenuePerSF: v(r.existing_revenue_per_sf),
+        existingNOI: v(r.existing_noi),
+        existingExpensePct: v(r.existing_expense_pct),
+        existingExpenses: v(r.existing_expenses),
+        existingCapRate: v(r.existing_cap_rate),
+        annualTaxes: v(r.annual_taxes),
+        insuranceCost: v(r.insurance_cost_annual),
+        metadata: r.metadata || {},
       })).filter(d => d.address);
 
-      // Filter to team's deals (org members see all team deals, solo users see only their own)
-      const emailsToShow = teamEmails.length > 0 ? teamEmails : [session?.user?.email?.toLowerCase() || ""];
       const userDeals = parsed.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
-
-      // Sort newest first
-      userDeals.sort((a, b) => {
-        const da = new Date(a.date);
-        const db = new Date(b.date);
-        if (isNaN(da.getTime()) && isNaN(db.getTime())) return 0;
-        if (isNaN(da.getTime())) return 1;
-        if (isNaN(db.getTime())) return -1;
-        return db - da;
-      });
-
       setDeals(userDeals);
     } catch (err) {
       setError(err.message);
@@ -7370,7 +6785,7 @@ export default function ReapApp() {
   }, [deals]);
 
   /* ═══════════════════════════════════════════════════════
-     SAVE NEW DEAL — Step 24 (writes via Google Apps Script)
+     SAVE NEW DEAL — writes to Supabase
      ═══════════════════════════════════════════════════════ */
   const handleSaveDeal = async (form) => {
     setSavingDeal(true);
@@ -7396,17 +6811,25 @@ export default function ReapApp() {
         "Source": "REAP App",
       };
 
-      if (SHEETS_WRITE_URL) {
-        const res = await fetch(SHEETS_WRITE_URL, {
-          method: "POST",
-          body: JSON.stringify(dealData),
-        });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Write failed");
-      } else {
-        // Fallback: alert user to set up write URL
-        alert("Deal saved locally. To write to Google Sheets, deploy the Apps Script and add REACT_APP_SHEETS_WRITE_URL to your .env file. See google-apps-script.js for instructions.");
-      }
+      const { error: insertErr } = await supabase.from("deals").insert({
+        user_email: session?.user?.email || "",
+        deal_name: form.dealName,
+        property_address: form.address,
+        city: form.city,
+        state: form.state,
+        zip_code: form.zip,
+        type: form.type,
+        deal_status: "New",
+        sqft_net: parseFloat(form.sqft) || null,
+        units: parseInt(form.units) || null,
+        year_built: form.yearBuilt || null,
+        asking_price: parseFloat((form.askingPrice || "").replace(/[$,]/g, "")) || null,
+        our_offer: parseFloat((form.ourOffer || "").replace(/[$,]/g, "")) || null,
+        lot_acres: parseFloat(form.lotAcres) || null,
+        class: form.class || null,
+        source: "REAP App",
+      });
+      if (insertErr) throw new Error(insertErr.message);
 
       // Build a local deal object so we can open it immediately
       const newDeal = {
@@ -7453,7 +6876,7 @@ export default function ReapApp() {
   };
 
   /* ═══════════════════════════════════════════════════════
-     EDIT DEAL — Step 28 (writes via Google Apps Script)
+     EDIT DEAL — writes to Supabase
      ═══════════════════════════════════════════════════════ */
   const handleEditDeal = async (form) => {
     setEditSaving(true);
@@ -7492,33 +6915,48 @@ export default function ReapApp() {
         "Refinance / Term (years)": clean(form.refiTerm),
       };
 
-      if (SHEETS_WRITE_URL) {
-        const res = await fetch(SHEETS_WRITE_URL, {
-          method: "POST",
-          body: JSON.stringify({ action: "edit_deal", address: selectedDeal.address, updates }),
-        });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Edit failed");
+      if (selectedDeal._id) {
+        const dbUpdates = {
+          deal_status: form.status, type: form.type,
+          sqft_net: parseFloat(clean(form.sqft)) || null, units: parseInt(clean(form.units)) || null,
+          year_built: clean(form.yearBuilt) || null, lot_acres: parseFloat(clean(form.lotAcres)) || null,
+          class: form.class || null, asking_price: parseFloat(clean(form.askingPrice)) || null,
+          our_offer: parseFloat(clean(form.ourOffer)) || null, purchase_price: parseFloat(clean(form.purchasePrice)) || null,
+          acq_cost_to_close_pct: parseFloat(clean(form.acqCostToClose)) || null,
+          improvement_budget: parseFloat(clean(form.improvementBudget)) || null,
+          arv_value: parseFloat(clean(form.arvValue)) || null, months: parseInt(clean(form.months)) || null,
+          disp_cost_of_sale_pct: parseFloat(clean(form.dispCostOfSale)) || null,
+          proforma_revenue_annual: parseFloat(clean(form.proformaRevenueAnnual)) || null,
+          proforma_expenses_pct: parseFloat(clean(form.proformaExpensesPct)) || null,
+          proforma_vacancy_pct: parseFloat(clean(form.proformaVacancy)) || null,
+          existing_revenue_annual: parseFloat(clean(form.existingRevenueAnnual)) || null,
+          existing_expense_pct: parseFloat(clean(form.existingExpensePct)) || null,
+          annual_taxes: parseFloat(clean(form.annualTaxes)) || null,
+          insurance_cost_annual: parseFloat(clean(form.insuranceCost)) || null,
+          bridge_acq_financed_pct: parseFloat(clean(form.bridgeAcqPct)) || null,
+          bridge_improv_financed_pct: parseFloat(clean(form.bridgeImprovPct)) || null,
+          bridge_interest_rate: parseFloat(clean(form.bridgeInterestRate)) || null,
+          bridge_points_pct: parseFloat(clean(form.bridgePoints)) || null,
+          refi_pct_arv: parseFloat(clean(form.refiPctARV)) || null,
+          refi_interest_rate: parseFloat(clean(form.refiInterestRate)) || null,
+          refi_points_pct: parseFloat(clean(form.refiPoints)) || null,
+          refi_term_years: parseInt(clean(form.refiTerm)) || null,
+        };
+        const { error: updateErr } = await supabase.from("deals").update(dbUpdates).eq("id", selectedDeal._id);
+        if (updateErr) throw new Error(updateErr.message);
       }
 
       setShowEditDeal(false);
       // Auto-log status change activity
       if (selectedDeal && form.status && form.status !== selectedDeal.status) {
         try {
-          let logDealId = selectedDeal._id;
-          if (!logDealId && selectedDeal.address) {
-            const { data: lookupRow } = await supabase.from("deals").select("id").eq("address", selectedDeal.address).limit(1).maybeSingle();
-            logDealId = lookupRow?.id;
-          }
-          if (logDealId) {
-            await supabase.from("deal_activities").insert({
-              deal_id: logDealId,
-              user_email: userEmail,
-              activity_type: "Status Change",
-              description: `Status changed from "${selectedDeal.status || "—"}" to "${form.status}"`,
-              activity_date: new Date().toISOString(),
-            });
-          }
+          await supabase.from("deal_activities").insert({
+            deal_id: selectedDeal._id,
+            user_email: userEmail,
+            activity_type: "Status Change",
+            description: `Status changed from "${selectedDeal.status || "—"}" to "${form.status}"`,
+            activity_date: new Date().toISOString(),
+          });
         } catch (logErr) { console.error("Auto-log failed:", logErr); }
       }
       // Don't null selectedDeal — stay on the deal detail view
@@ -7532,7 +6970,6 @@ export default function ReapApp() {
   };
 
   const handleSelectDeal = (deal) => {
-    setDealDetailTab("overview");
     if (isMobile) {
       setDealTransition(true);
       setTimeout(() => setSelectedDeal(deal), 10);
@@ -7543,14 +6980,13 @@ export default function ReapApp() {
   };
 
   const handleBack = () => {
-    setDealDetailTab("overview");
     if (isMobile) {
       setDealTransition(false);
       setTimeout(() => setSelectedDeal(null), 300);
     } else {
       setSelectedDeal(null);
     }
-    updateHash("realestate/pipeline");
+    updateHash("pipeline");
   };
 
   const handleSaveBuyer = async (form) => {
@@ -7573,13 +7009,25 @@ export default function ReapApp() {
         "Date / Added": new Date().toISOString(),
       };
 
-      if (SHEETS_WRITE_URL) {
-        const payload = editingBuyer?.rowId
-          ? { action: "edit_contact", rowId: editingBuyer.rowId, updates: buyerData }
-          : { action: "add_contact", ...buyerData };
-        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
-        const result = await res.json();
-        if (!result.success) throw new Error(result.error || "Write failed");
+      if (editingBuyer?.rowId) {
+        const { error } = await supabase.from("contacts").update({
+          contact_name: form.name, first_name: form.name.split(" ")[0],
+          email: form.email, phone: form.phone, company: form.company,
+          buyer_status: form.buyerStatus || "New", asset_preference: form.assetPreference,
+          temperature: form.temperature, manager: form.manager, notes: form.notes,
+          lead_source: form.leadSource,
+        }).eq("id", editingBuyer.rowId);
+        if (error) throw new Error(error.message);
+      } else {
+        const { error } = await supabase.from("contacts").insert({
+          user_email: session?.user?.email || "",
+          contact_name: form.name, first_name: form.name.split(" ")[0],
+          email: form.email, phone: form.phone, company: form.company,
+          contact_type: "Buyer (Client)", buyer_status: form.buyerStatus || "New",
+          asset_preference: form.assetPreference, temperature: form.temperature,
+          manager: form.manager, notes: form.notes, lead_source: form.leadSource,
+        });
+        if (error) throw new Error(error.message);
       }
 
       setShowBuyerModal(false);
@@ -7630,9 +7078,6 @@ export default function ReapApp() {
       </div>
     </div>
   );
-
-  // Legal pages — accessible without authentication
-  if (showLegalPage) return <LegalPageView page={showLegalPage} onBack={() => { setShowLegalPage(null); window.history.back(); }} />;
 
   if (authLoading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
@@ -7805,7 +7250,7 @@ export default function ReapApp() {
                   transition: "transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
                   display: "flex", flexDirection: "column", background: "#f8fafc",
                 }}>
-                  {selectedDeal && <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} initialTab={dealDetailTab} onTabChange={setDealDetailTab} />}
+                  {selectedDeal && <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} />}
                 </div>
               </>
               )}
@@ -7817,7 +7262,7 @@ export default function ReapApp() {
               : activeNav === "command"
               ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
               : activeNav === "realestate" && selectedDeal
-              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} initialTab={dealDetailTab} onTabChange={setDealDetailTab} />
+              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} />
               : activeNav === "realestate"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                   <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }]} active={realEstateTab} onChange={setRealEstateTab} title="Real Estate" />
@@ -7865,7 +7310,7 @@ export default function ReapApp() {
             padding: "0 4px 6px", zIndex: 100,
             boxShadow: "0 -2px 12px rgba(0,0,0,0.06)",
           }}>
-            {navItems.filter(item => item.mobileBottom !== false).map(item => {
+            {(() => { const bottomItems = navItems.filter(item => item.mobileBottom !== false); const nonFeatured = bottomItems.filter(i => !i.featured); const featured = bottomItems.find(i => i.featured); const mid = Math.floor(nonFeatured.length / 2); const mobileOrder = [...nonFeatured.slice(0, mid), ...(featured ? [featured] : []), ...nonFeatured.slice(mid)]; return mobileOrder; })().map(item => {
               const isActive = activeNav === item.id && !showProfile;
               if (item.featured) {
                 return (
@@ -7886,7 +7331,6 @@ export default function ReapApp() {
                     }}>
                       {item.icon}
                     </div>
-                    <span style={{ fontSize: 9, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", color: isActive ? "#16a34a" : "#16a34a", letterSpacing: "0.02em" }}>{item.label}</span>
                   </button>
                 );
               }
