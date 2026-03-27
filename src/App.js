@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { loadStripe } from "@stripe/stripe-js";
-import {
-  getDeals, saveDeal, editDeal, generateAISummary,
-  getBuyers, saveBuyer, getContactsList,
-  getPortfolios, savePortfolio, editPortfolio, deletePortfolio,
-  getMarkets,
-  getListings, addListingToPipeline,
-  getUploads, uploadFile,
-  getInvestors, saveInvestor, editInvestor, deleteInvestor,
-  getInvestorActivities, logInvestorActivity,
-} from "./dataService";
+
+const SPREADSHEET_ID = process.env.REACT_APP_SPREADSHEET_ID;
+const API_KEY = process.env.REACT_APP_SHEETS_API_KEY;
+const SHEET_NAME = "Deals";
+const SHEETS_WRITE_URL = process.env.REACT_APP_SHEETS_WRITE_URL;
+const CONTACTS_SHEET_NAME = "Contacts";
+const MLS_FEED_SHEET_NAME = "MLS Feed";
+const FILE_UPLOADS_SHEET_NAME = "File Uploads";
+const INVESTORS_SHEET_NAME = "Investors";
+const INVESTOR_ACTIVITY_SHEET_NAME = "Investor Activity";
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
@@ -147,7 +147,7 @@ function LoadingSpinner() {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, background: "#f8fafc" }}>
       <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-      <p style={{ color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading deals...</p>
+      <p style={{ color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading deals from Google Sheets...</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
@@ -1361,8 +1361,8 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   );
 }
 
-function DealDetailView({ deal, onBack, onEdit, isMobile }) {
-  const [activeTab, setActiveTab] = useState("overview");
+function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab, onTabChange }) {
+  const [activeTab, setActiveTab] = useState(initialTab || "overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
   const tabs = ["overview", "financials", "ai underwriting", "ai summary", "documents", "activity"];
@@ -1371,14 +1371,230 @@ function DealDetailView({ deal, onBack, onEdit, isMobile }) {
   const [summaryError, setSummaryError] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  // ── Supabase UUID lookup (deal._id may be missing if fetched from Sheets) ──
+  const [dealId, setDealId] = useState(deal?._id || null);
+  useEffect(() => {
+    if (deal?._id) { setDealId(deal._id); return; }
+    if (!deal?.address) return;
+    supabase
+      .from("deals")
+      .select("id")
+      .eq("address", deal.address)
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data?.id) setDealId(data.id); });
+  }, [deal?.address, deal?._id]);
+
+  // Sync tab with parent for URL routing
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    if (onTabChange) onTabChange(tab);
+  };
+
+  // ── Documents tab state ──
+  const [documents, setDocuments] = useState([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // ── Activity tab state ──
+  const [activities, setActivities] = useState([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [showLogModal, setShowLogModal] = useState(false);
+  const [activitySaving, setActivitySaving] = useState(false);
+  const [activityForm, setActivityForm] = useState({ type: "Note", description: "", date: new Date().toISOString().split("T")[0] });
+
+  // ── Fetch documents ──
+  const fetchDocuments = useCallback(async () => {
+    if (!dealId) return;
+    setDocsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("deal_documents")
+        .select("*")
+        .eq("deal_id", dealId)
+        .order("uploaded_at", { ascending: false });
+      if (error) throw error;
+      setDocuments(data || []);
+    } catch (err) {
+      console.error("Error fetching documents:", err);
+    } finally {
+      setDocsLoading(false);
+    }
+  }, [dealId]);
+
+  // ── Fetch activities ──
+  const fetchActivities = useCallback(async () => {
+    if (!dealId) return;
+    setActivitiesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("deal_activities")
+        .select("*")
+        .eq("deal_id", dealId)
+        .order("activity_date", { ascending: false });
+      if (error) throw error;
+      setActivities(data || []);
+    } catch (err) {
+      console.error("Error fetching activities:", err);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  }, [dealId]);
+
+  // Load docs/activities when tab switches or dealId resolves
+  useEffect(() => {
+    if (activeTab === "documents" && dealId) fetchDocuments();
+    if (activeTab === "activity" && dealId) fetchActivities();
+  }, [activeTab, dealId]);
+
+  // ── Upload document ──
+  const handleUploadFiles = async (files) => {
+    if (!files || files.length === 0 || !dealId) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      for (const file of files) {
+        if (file.size > 50 * 1024 * 1024) {
+          setUploadError(`${file.name} exceeds 50MB limit`);
+          continue;
+        }
+        const storagePath = `${dealId}/${Date.now()}_${file.name}`;
+        const { error: storageErr } = await supabase.storage
+          .from("deal-documents")
+          .upload(storagePath, file, { upsert: false });
+        if (storageErr) throw storageErr;
+        const { error: dbErr } = await supabase
+          .from("deal_documents")
+          .insert({
+            deal_id: dealId,
+            user_email: userEmail,
+            filename: file.name,
+            file_size: file.size,
+            mime_type: file.type || "application/octet-stream",
+            storage_path: storagePath,
+          });
+        if (dbErr) throw dbErr;
+        // Auto-log activity
+        await supabase.from("deal_activities").insert({
+          deal_id: dealId,
+          user_email: userEmail,
+          activity_type: "Document Added",
+          description: `Uploaded "${file.name}"`,
+          activity_date: new Date().toISOString(),
+        });
+      }
+      fetchDocuments();
+      fetchActivities();
+    } catch (err) {
+      setUploadError(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Download document ──
+  const handleDownloadDoc = async (doc) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from("deal-documents")
+        .download(doc.storage_path);
+      if (error) throw error;
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Download failed: " + err.message);
+    }
+  };
+
+  // ── Delete document ──
+  const handleDeleteDoc = async (doc) => {
+    if (!window.confirm(`Delete "${doc.filename}"?`)) return;
+    try {
+      await supabase.storage.from("deal-documents").remove([doc.storage_path]);
+      await supabase.from("deal_documents").delete().eq("id", doc.id);
+      setDocuments(prev => prev.filter(d => d.id !== doc.id));
+    } catch (err) {
+      alert("Delete failed: " + err.message);
+    }
+  };
+
+  // ── Log activity ──
+  const handleLogActivity = async () => {
+    if (!activityForm.description.trim()) return;
+    setActivitySaving(true);
+    try {
+      const { error } = await supabase.from("deal_activities").insert({
+        deal_id: dealId,
+        user_email: userEmail,
+        activity_type: activityForm.type,
+        description: activityForm.description.trim(),
+        activity_date: activityForm.date ? new Date(activityForm.date).toISOString() : new Date().toISOString(),
+      });
+      if (error) throw error;
+      setShowLogModal(false);
+      setActivityForm({ type: "Note", description: "", date: new Date().toISOString().split("T")[0] });
+      fetchActivities();
+    } catch (err) {
+      alert("Error logging activity: " + err.message);
+    } finally {
+      setActivitySaving(false);
+    }
+  };
+
+  // ── File type helpers ──
+  const getDocIcon = (filename) => {
+    const ext = (filename || "").split(".").pop().toLowerCase();
+    if (ext === "pdf") return { label: "PDF", color: "#dc2626" };
+    if (["doc","docx"].includes(ext)) return { label: "DOC", color: "#2563eb" };
+    if (["xls","xlsx","csv"].includes(ext)) return { label: "XLS", color: "#16a34a" };
+    if (["jpg","jpeg","png","gif","webp","svg"].includes(ext)) return { label: "IMG", color: "#7c3aed" };
+    if (["ppt","pptx"].includes(ext)) return { label: "PPT", color: "#d97706" };
+    if (["zip","rar","7z","tar","gz"].includes(ext)) return { label: "ZIP", color: "#64748b" };
+    return { label: ext.toUpperCase() || "FILE", color: "#94a3b8" };
+  };
+
+  const fmtFileSize = (bytes) => {
+    if (!bytes) return "—";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  };
+
+  const ACTIVITY_TYPES = ["Note", "Call", "Email", "Meeting", "Status Change", "Offer Sent", "Document Added", "Site Visit"];
+  const ACTIVITY_ICONS = {
+    "Note":            { icon: "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7", color: "#3b82f6" },
+    "Call":            { icon: "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z", color: "#16a34a" },
+    "Email":           { icon: "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6", color: "#7c3aed" },
+    "Meeting":         { icon: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75", color: "#d97706" },
+    "Status Change":   { icon: "M23 4v6h-6 M1 20v-6h6 M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15", color: "#0891b2" },
+    "Offer Sent":      { icon: "M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z", color: "#dc2626" },
+    "Document Added":  { icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M12 18v-6 M9 15h6", color: "#64748b" },
+    "Site Visit":      { icon: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10", color: "#f59e0b" },
+  };
+
   const generateSummary = async () => {
     setSummaryLoading(true);
     setSummaryError(null);
     try {
-      const result = await generateAISummary(deal);
-      setSummary(result);
+      const res = await fetch(SHEETS_WRITE_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "generate_summary", deal }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setSummary(result.summary);
+      } else {
+        setSummaryError(result.error || "Failed to generate summary");
+      }
     } catch (err) {
-      setSummaryError(err.message || "Failed to generate summary");
+      setSummaryError("Network error: " + err.message);
     } finally {
       setSummaryLoading(false);
     }
@@ -1478,7 +1694,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile }) {
         {/* Tabs */}
         <div style={{ display: "flex", gap: 0, marginBottom: isMobile ? 20 : 28, borderBottom: "1px solid #e2e8f0", overflowX: isMobile ? "auto" : "visible", WebkitOverflowScrolling: "touch" }}>
           {tabs.map(t => (
-            <button key={t} onClick={() => setActiveTab(t)} style={{ background: "transparent", border: "none", borderBottom: activeTab === t ? "2px solid #16a34a" : "2px solid transparent", padding: isMobile ? "10px 14px" : "10px 20px", color: activeTab === t ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize", transition: "all 0.15s", marginBottom: -1, whiteSpace: "nowrap", flexShrink: 0 }}>{t}</button>
+            <button key={t} onClick={() => handleTabChange(t)} style={{ background: "transparent", border: "none", borderBottom: activeTab === t ? "2px solid #16a34a" : "2px solid transparent", padding: isMobile ? "10px 14px" : "10px 20px", color: activeTab === t ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize", transition: "all 0.15s", marginBottom: -1, whiteSpace: "nowrap", flexShrink: 0 }}>{t}</button>
           ))}
         </div>
 
@@ -1631,13 +1847,226 @@ function DealDetailView({ deal, onBack, onEdit, isMobile }) {
           </div>
         )}
         {activeTab === "documents" && (
-          <div style={{ color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: 40, textAlign: "center", background: "#fff", borderRadius: 12, border: "1px dashed #e2e8f0" }}>
-            Due diligence docs, PSA, and inspection reports will appear here.
+          <div>
+            {/* Upload zone */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUploadFiles(e.dataTransfer.files); }}
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                background: dragOver ? "rgba(22,163,74,0.06)" : "#fff",
+                border: `2px dashed ${dragOver ? "#16a34a" : "#e2e8f0"}`,
+                borderRadius: 14, padding: isMobile ? "28px 20px" : "36px 40px",
+                textAlign: "center", cursor: "pointer",
+                transition: "all 0.2s", marginBottom: 20,
+              }}
+            >
+              <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={(e) => handleUploadFiles(e.target.files)} />
+              {uploading ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 32, height: 32, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Uploading...</p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ width: 48, height: 48, borderRadius: 12, background: "rgba(22,163,74,0.08)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                    <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  </div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>
+                    {dragOver ? "Drop files here" : "Upload Documents"}
+                  </p>
+                  <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Drag & drop files or click to browse. PSA, inspections, appraisals, etc.</p>
+                </>
+              )}
+            </div>
+
+            {/* Upload error */}
+            {uploadError && (
+              <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth={2}><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                <span style={{ fontSize: 13, color: "#dc2626", fontFamily: "'DM Sans', sans-serif", flex: 1 }}>{uploadError}</span>
+                <button onClick={() => setUploadError(null)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 16, fontWeight: 700, padding: 0 }}>×</button>
+              </div>
+            )}
+
+            {/* Document list */}
+            {docsLoading ? (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+              </div>
+            ) : documents.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 20px", background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0" }}>
+                <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(22,163,74,0.06)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>
+                </div>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>No documents yet</p>
+                <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Upload your first file to get started.</p>
+              </div>
+            ) : (
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+                {documents.map((doc, i) => {
+                  const icon = getDocIcon(doc.filename);
+                  return (
+                    <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "12px 14px" : "14px 20px", borderBottom: i < documents.length - 1 ? "1px solid #f1f5f9" : "none", transition: "background 0.1s" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <div style={{ width: 38, height: 38, borderRadius: 8, background: icon.color + "12", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: icon.color, fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.04em" }}>{icon.label}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.filename}</p>
+                        <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>
+                          {fmtFileSize(doc.file_size)} · {fmtDate(doc.uploaded_at)} · {fmtUserName(doc.user_email)}
+                        </p>
+                      </div>
+                      <button onClick={() => handleDownloadDoc(doc)} title="Download" style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      </button>
+                      <button onClick={() => handleDeleteDoc(doc)} title="Delete" style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #fee2e2", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
         {activeTab === "activity" && (
-          <div style={{ color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: 40, textAlign: "center", background: "#fff", borderRadius: 12, border: "1px dashed #e2e8f0" }}>
-            Deal history, notes, and team activity feed will appear here.
+          <div>
+            {/* Log Activity button */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+              <button onClick={() => { setActivityForm({ type: "Note", description: "", date: new Date().toISOString().split("T")[0] }); setShowLogModal(true); }} style={{
+                background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 10,
+                padding: "10px 20px", color: "#fff", fontSize: 13, fontWeight: 600,
+                cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                boxShadow: "0 2px 10px rgba(22,163,74,0.3)",
+                display: "flex", alignItems: "center", gap: 7,
+              }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
+                Log Activity
+              </button>
+            </div>
+
+            {/* Activity timeline */}
+            {activitiesLoading ? (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+              </div>
+            ) : activities.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 20px", background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0" }}>
+                <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(22,163,74,0.06)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>No activity yet</p>
+                <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Log your first note or activity to start the timeline.</p>
+              </div>
+            ) : (
+              <div style={{ position: "relative", paddingLeft: 28 }}>
+                {/* Timeline line */}
+                <div style={{ position: "absolute", left: 11, top: 6, bottom: 6, width: 2, background: "#e2e8f0", borderRadius: 1 }} />
+                {activities.map((act, i) => {
+                  const cfg = ACTIVITY_ICONS[act.activity_type] || ACTIVITY_ICONS["Note"];
+                  return (
+                    <div key={act.id} style={{ position: "relative", marginBottom: i < activities.length - 1 ? 4 : 0 }}>
+                      {/* Dot */}
+                      <div style={{ position: "absolute", left: -22, top: 16, width: 12, height: 12, borderRadius: "50%", background: "#fff", border: `2.5px solid ${cfg.color}`, zIndex: 1 }} />
+                      {/* Card */}
+                      <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: isMobile ? "14px 14px" : "16px 20px", transition: "all 0.15s" }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+                      >
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                          <div style={{ width: 30, height: 30, borderRadius: 8, background: cfg.color + "12", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={cfg.color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d={cfg.icon}/></svg>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color, fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "0.05em" }}>{act.activity_type}</span>
+                              <span style={{ fontSize: 11, color: "#cbd5e1" }}>·</span>
+                              <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{fmtDate(act.activity_date)}</span>
+                              <span style={{ fontSize: 11, color: "#cbd5e1" }}>·</span>
+                              <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{fmtUserName(act.user_email)}</span>
+                            </div>
+                            <p style={{ fontSize: 13, color: "#334155", fontFamily: "'DM Sans', sans-serif", margin: 0, lineHeight: 1.6 }}>{act.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Log Activity Modal */}
+            {showLogModal && (
+              <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", animation: "fadeIn 0.2s ease" }}>
+                <div onClick={() => setShowLogModal(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }} />
+                <div style={{
+                  position: "relative", background: "#fff", width: isMobile ? "100%" : 480,
+                  borderRadius: isMobile ? "20px 20px 0 0" : 20,
+                  boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+                  animation: isMobile ? "slideUp 0.3s cubic-bezier(0.25, 1, 0.5, 1)" : "fadeIn 0.25s ease",
+                }}>
+                  {/* Modal header */}
+                  <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Log Activity</h2>
+                      <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>Record a note, call, or meeting</p>
+                    </div>
+                    <button onClick={() => setShowLogModal(false)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                  {/* Modal body */}
+                  <div style={{ padding: "20px 24px 24px" }}>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Activity Type</label>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {ACTIVITY_TYPES.filter(t => t !== "Status Change" && t !== "Document Added").map(t => {
+                          const ac = activityForm.type === t;
+                          const cfg = ACTIVITY_ICONS[t] || {};
+                          return (
+                            <button key={t} onClick={() => setActivityForm(prev => ({ ...prev, type: t }))} style={{
+                              padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                              border: "1.5px solid " + (ac ? cfg.color : "#e2e8f0"),
+                              background: ac ? cfg.color + "10" : "#fff",
+                              color: ac ? cfg.color : "#64748b",
+                              cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                              transition: "all 0.15s",
+                            }}>{t}</button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Date</label>
+                      <input type="date" value={activityForm.date} onChange={e => setActivityForm(prev => ({ ...prev, date: e.target.value }))} style={{ width: "100%", padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" }} />
+                    </div>
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Description *</label>
+                      <textarea value={activityForm.description} onChange={e => setActivityForm(prev => ({ ...prev, description: e.target.value }))} placeholder="What happened?" rows={4} style={{ width: "100%", padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", resize: "vertical", lineHeight: 1.6 }} onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button onClick={() => setShowLogModal(false)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                      <button onClick={handleLogActivity} disabled={activitySaving || !activityForm.description.trim()} style={{
+                        flex: 1, padding: "12px 0", borderRadius: 10, border: "none",
+                        background: activityForm.description.trim() ? "linear-gradient(135deg, #16a34a, #15803d)" : "#e2e8f0",
+                        color: activityForm.description.trim() ? "#fff" : "#94a3b8",
+                        fontSize: 14, fontWeight: 600, cursor: activityForm.description.trim() ? "pointer" : "default",
+                        fontFamily: "'DM Sans', sans-serif",
+                        boxShadow: activityForm.description.trim() ? "0 2px 10px rgba(22,163,74,0.3)" : "none",
+                        opacity: activitySaving ? 0.7 : 1,
+                      }}>
+                        {activitySaving ? "Saving..." : "Log Activity"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2658,9 +3087,43 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
   const fetchBuyers = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp : [];
-      const result = await getBuyers(teamList);
-      setBuyers(result);
+      const range = `${CONTACTS_SHEET_NAME}!A1:BQ`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+      const rows = data.values || [];
+      if (rows.length < 2) { setBuyers([]); setLoading(false); return; }
+      const headers = rows[0];
+      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
+      const colRowId = idx("🔒 Row ID"); const colName = idx("Contact / Name"); const colFirstName = idx("Contact / First Name");
+      const colEmail = idx("Contact / Email"); const colPhone = idx("Contact / Phone"); const colType = idx("Contact / Type");
+      const colBuyerStatus = idx("Buyer / Status"); const colAssetPref = idx("Contact / Asset Preference");
+      const colTemperature = idx("Contact / Temperature"); const colManager = idx("Contact / Manager");
+      const colNotes = idx("Contact / Notes"); const colLeadSource = idx("Contact / Lead Source");
+      const colCompany = idx("Contact / Company"); const colDateAdded = idx("Date / Added");
+      const colLastContact = idx("Date / Last Contact"); const colFollowUpNotes = idx("Contact / Follow Up Notes");
+      const colUser = idx("User");
+      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
+      const parsed = rows.slice(1).map(row => ({
+        rowId: g(row, colRowId), name: g(row, colName), firstName: g(row, colFirstName),
+        email: g(row, colEmail), phone: g(row, colPhone), contactType: g(row, colType),
+        buyerStatus: g(row, colBuyerStatus), assetPreference: g(row, colAssetPref),
+        temperature: g(row, colTemperature), manager: g(row, colManager), notes: g(row, colNotes),
+        leadSource: g(row, colLeadSource), company: g(row, colCompany), dateAdded: g(row, colDateAdded),
+        lastContact: g(row, colLastContact), followUpNotes: g(row, colFollowUpNotes),
+        user: g(row, colUser),
+      }));
+      const allContacts = parsed.filter(c => c.name && c.name.trim() !== "");
+      // Strict filter by team emails — contacts must have a User value matching the team
+      const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
+      const filtered = teamList.length > 0
+        ? allContacts.filter(c => {
+            const contactUser = (c.user || "").toLowerCase().trim();
+            return contactUser && teamList.includes(contactUser);
+          })
+        : allContacts;
+      setBuyers(filtered);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [teamEmailsProp]);
 
@@ -3140,7 +3603,24 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfoli
 
   var fetchPortfolios = function() {
     setPortfoliosLoading(true);
-    getPortfolios(emailsToShow).then(function(parsed) {
+    var range = "Portfolios!A1:F";
+    var url = "https://sheets.googleapis.com/v4/spreadsheets/" + SPREADSHEET_ID + "/values/" + range + "?key=" + API_KEY;
+    fetch(url).then(function(res) { return res.json(); }).then(function(data) {
+      var rows = data.values || [];
+      if (rows.length < 2) { setPortfolios([]); setPortfoliosLoading(false); return; }
+      var parsed = [];
+      for (var i = 1; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row[1] || !emailsToShow.includes(row[1].toLowerCase())) continue;
+        parsed.push({
+          id: row[0] || "",
+          user: row[1] || "",
+          name: row[2] || "",
+          type: row[3] || "Owned",
+          dealAddresses: row[4] ? row[4].split("|||").filter(function(a) { return a; }) : [],
+          createdAt: row[5] || "",
+        });
+      }
       setPortfolios(parsed);
       setPortfoliosLoading(false);
     }).catch(function(err) {
@@ -3174,29 +3654,69 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfoli
 
   var handleCreateSave = function(data) {
     if (editingPortfolio) {
-      // Edit existing portfolio
-      editPortfolio(editingPortfolio.id, data).then(function() {
-        var updatedP = Object.assign({}, editingPortfolio, data);
-        setPortfolios(portfolios.map(function(p) { return p.id === editingPortfolio.id ? updatedP : p; }));
-        if (selectedPortfolio && selectedPortfolio.id === editingPortfolio.id) {
-          setSelectedPortfolio(updatedP);
+      // Edit existing portfolio via Apps Script
+      fetch(SHEETS_WRITE_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "edit_portfolio",
+          id: editingPortfolio.id,
+          name: data.name,
+          type: data.type,
+          dealAddresses: data.dealAddresses,
+        }),
+      }).then(function(res) { return res.json(); }).then(function(result) {
+        if (result.success) {
+          var updatedP = Object.assign({}, editingPortfolio, data);
+          setPortfolios(portfolios.map(function(p) { return p.id === editingPortfolio.id ? updatedP : p; }));
+          if (selectedPortfolio && selectedPortfolio.id === editingPortfolio.id) {
+            setSelectedPortfolio(updatedP);
+          }
+        } else {
+          console.error("Edit portfolio error:", result.error);
         }
-      }).catch(function(err) { console.error("Edit portfolio error:", err); });
+      }).catch(function(err) { console.error("Edit portfolio network error:", err); });
     } else {
-      // Create new portfolio
-      savePortfolio(data, userEmail).then(function(newPortfolio) {
-        setPortfolios(portfolios.concat([newPortfolio]));
-      }).catch(function(err) { console.error("Add portfolio error:", err); });
+      // Create new portfolio via Apps Script
+      var newId = "p_" + Date.now();
+      var payload = {
+        action: "add_portfolio",
+        id: newId,
+        user: userEmail,
+        name: data.name,
+        type: data.type,
+        dealAddresses: data.dealAddresses,
+        createdAt: new Date().toISOString(),
+      };
+      fetch(SHEETS_WRITE_URL, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }).then(function(res) { return res.json(); }).then(function(result) {
+        if (result.success) {
+          setPortfolios(portfolios.concat([result.portfolio || {
+            id: newId, user: userEmail, name: data.name, type: data.type,
+            dealAddresses: data.dealAddresses, createdAt: payload.createdAt,
+          }]));
+        } else {
+          console.error("Add portfolio error:", result.error);
+        }
+      }).catch(function(err) { console.error("Add portfolio network error:", err); });
     }
     setShowCreateModal(false);
     setEditingPortfolio(null);
   };
 
   var handleDelete = function(id) {
-    deletePortfolio(id).then(function() {
-      setPortfolios(portfolios.filter(function(p) { return p.id !== id; }));
-      if (selectedPortfolio && selectedPortfolio.id === id) backToPortfolios();
-    }).catch(function(err) { console.error("Delete portfolio error:", err); });
+    fetch(SHEETS_WRITE_URL, {
+      method: "POST",
+      body: JSON.stringify({ action: "delete_portfolio", id: id }),
+    }).then(function(res) { return res.json(); }).then(function(result) {
+      if (result.success) {
+        setPortfolios(portfolios.filter(function(p) { return p.id !== id; }));
+        if (selectedPortfolio && selectedPortfolio.id === id) backToPortfolios();
+      } else {
+        console.error("Delete portfolio error:", result.error);
+      }
+    }).catch(function(err) { console.error("Delete portfolio network error:", err); });
   };
 
   var getPortfolioStats = function(p) {
@@ -3550,18 +4070,51 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
     return isNaN(n) ? NaN : n;
   };
 
-  // Fetch markets from Supabase
+  // Fetch Markets tab from Google Sheets
   useEffect(() => {
     async function fetchMarkets() {
       setMarketsLoading(true);
       try {
-        const result = await getMarkets();
-        if (result === null) {
+        const range = "Markets!A1:J100";
+        const url = "https://sheets.googleapis.com/v4/spreadsheets/" + SPREADSHEET_ID + "/values/" + range + "?key=" + API_KEY;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Markets tab not found");
+        const data = await res.json();
+        const rows = data.values || [];
+        if (rows.length < 2) {
           // Fall back to computing from deals
           computeFromDeals();
           return;
         }
-        setMarkets(result);
+        const headers = rows[0];
+        const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
+        
+        const colMarket = idx("Market");
+        const colMedianPPU = idx("Median Price Per Unit");
+        const colCapRate = idx("Cap Rate Avg");
+        const colRentGrowth = idx("Rent Growth YoY");
+        const colPopGrowth = idx("Population Growth");
+        const colAiSignal = idx("AI Signal");
+        const colRegion = idx("Region");
+        const colDealCount = idx("Deal Count");
+        const colAvgReapScore = idx("Avg REAP Score");
+        const colTotalVolume = idx("Total Volume");
+
+        const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
+
+        const parsed = rows.slice(1).filter(row => g(row, colMarket)).map(row => ({
+          market: g(row, colMarket),
+          medianPPU: g(row, colMedianPPU),
+          capRateAvg: g(row, colCapRate),
+          rentGrowth: g(row, colRentGrowth),
+          popGrowth: g(row, colPopGrowth),
+          aiSignal: g(row, colAiSignal) || "Neutral",
+          region: g(row, colRegion) || "Other",
+          dealCount: g(row, colDealCount),
+          avgReapScore: g(row, colAvgReapScore),
+          totalVolume: g(row, colTotalVolume),
+        }));
+        setMarkets(parsed);
       } catch (err) {
         console.warn("Markets tab not found, computing from deals:", err);
         computeFromDeals();
@@ -3789,7 +4342,7 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
             {sorted.length === 0 ? (
               <div style={{ textAlign: "center", padding: "32px 16px" }}>
                 <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: 0 }}>No markets found</p>
-                <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0" }}>Add markets in your Market Intelligence settings</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0" }}>Add markets in your Google Sheets "Markets" tab</p>
               </div>
             ) : sorted.map((m, i) => (
               <div key={i} style={{
@@ -3850,7 +4403,7 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
               <tbody>
                 {sorted.length === 0 ? (
                   <tr><td colSpan={8} style={{ textAlign: "center", padding: "40px 16px", color: "#94a3b8", fontSize: 14 }}>
-                    No markets found. Add markets through the app, or add deals with city data.
+                    No markets found. Add data to your "Markets" tab in Google Sheets, or add deals with city data.
                   </td></tr>
                 ) : sorted.map((m, i) => (
                   <tr key={i} style={{
@@ -3900,14 +4453,14 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
 
       {/* Footer note */}
       <div style={{ textAlign: "center", padding: "16px 0 8px", fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
-        Data sourced from your deal pipeline + market intelligence · AI signals update when data changes
+        Data sourced from your deal pipeline + Markets tab · AI signals update when data changes
       </div>
       </div>
     </div>
   );
 }
 
-function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckout, onSignOut, onClose, orgData, orgMembers, inviteEmail, setInviteEmail, inviteSaving, inviteSuccess, onInviteMember, onRemoveMember, features, featureFlags, onToggleFeature }) {
+function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckout, onSignOut, onClose, orgData, orgMembers, inviteEmail, setInviteEmail, inviteSaving, inviteSuccess, onInviteMember, onRemoveMember, features, featureFlags, onToggleFeature, isAdmin }) {
   const [activeTab, setActiveTab] = useState("profile");
   const user = session?.user || {};
   const email = user.email || "—";
@@ -3923,6 +4476,7 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
     { id: "team", label: "Team" },
     { id: "permissions", label: "Permissions" },
     { id: "pricing", label: "Pricing" },
+    ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
   ];
 
   const TIER_LABELS = { free: "Free", starter: "Starter", team: "Team", pro: "Pro", enterprise: "Enterprise" };
@@ -4145,13 +4699,18 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
           </>
         )}
 
+        {/* ═══ ADMIN TAB ═══ */}
+        {activeTab === "admin" && isAdmin && (
+          <AdminView session={session} isMobile={isMobile} />
+        )}
+
       </div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════
-   ADMIN VIEW — Platform owner only
+   ADMIN VIEW — Platform owner only (rendered inside Settings)
    ═══════════════════════════════════════════════════════════ */
 
 function AdminView({ session, isMobile }) {
@@ -4513,8 +5072,69 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
   const fetchListings = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const result = await getListings();
-      setListings(result);
+      const range = `${MLS_FEED_SHEET_NAME}!A1:W`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+      const rows = data.values || [];
+      if (rows.length < 2) { setListings([]); setLoading(false); return; }
+      const headers = rows[0];
+      const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
+      // Map all 23 columns
+      const col = {
+        mlsNumber: idx("ml number") >= 0 ? idx("ml number") : idx("mls number") >= 0 ? idx("mls number") : idx("mls #"),
+        status: idx("status"),
+        adom: idx("adom"),
+        cdom: idx("cdom"),
+        price: idx("current price") >= 0 ? idx("current price") : idx("price"),
+        address: idx("address"),
+        city: idx("city"),
+        county: idx("county"),
+        ownership: idx("ownership"),
+        propType: idx("prop type") >= 0 ? idx("prop type") : idx("property type"),
+        style: idx("property style"),
+        units: idx("total units"),
+        heatedArea: idx("heated area"),
+        lotAcres: idx("lot size acres"),
+        beds: idx("beds"),
+        baths: idx("bathrooms total") >= 0 ? idx("bathrooms total") : idx("baths"),
+        yearBuilt: idx("year built"),
+        ppsf: idx("$/sqft"),
+        agent: idx("list agent"),
+        publicRemarks: idx("public remarks"),
+        realtorRemarks: idx("realtor only remarks"),
+        zip: idx("zip"),
+        sqftTotal: idx("sqft total"),
+      };
+      const g = (row, c) => c >= 0 && c < row.length ? (row[c] || "").trim() : "";
+      const parsed = rows.slice(1).map((row, i) => ({
+        rowIndex: i + 2,
+        mlsNumber: g(row, col.mlsNumber),
+        status: g(row, col.status),
+        adom: g(row, col.adom),
+        cdom: g(row, col.cdom),
+        price: g(row, col.price),
+        address: g(row, col.address),
+        city: g(row, col.city),
+        county: g(row, col.county),
+        ownership: g(row, col.ownership),
+        propType: g(row, col.propType),
+        style: g(row, col.style),
+        units: g(row, col.units),
+        heatedArea: g(row, col.heatedArea),
+        lotAcres: g(row, col.lotAcres),
+        beds: g(row, col.beds),
+        baths: g(row, col.baths),
+        yearBuilt: g(row, col.yearBuilt),
+        ppsf: g(row, col.ppsf),
+        agent: g(row, col.agent),
+        publicRemarks: g(row, col.publicRemarks),
+        realtorRemarks: g(row, col.realtorRemarks),
+        zip: g(row, col.zip),
+        sqftTotal: g(row, col.sqftTotal),
+      })).filter(l => l.address || l.mlsNumber);
+      setListings(parsed);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -4527,7 +5147,30 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
   const handleAddToPipeline = async (listing) => {
     setAddingId(listing.rowIndex);
     try {
-      await addListingToPipeline(listing, session?.user?.email || "");
+      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
+      const dealData = {
+        "Deal / Name": listing.address || "MLS " + listing.mlsNumber,
+        "Property / Address": listing.address,
+        "City": listing.city,
+        "State": "",
+        "Zip Code": listing.zip,
+        "Type": listing.propType || "",
+        "Asking / Price": clean(listing.price),
+        "SQFT / Net": clean(listing.heatedArea || listing.sqftTotal),
+        "Units": clean(listing.units),
+        "Lot / Size Acres": clean(listing.lotAcres),
+        "Year Built": listing.yearBuilt,
+        "Deal / Status": "New",
+        "User": session?.user?.email || "",
+        "Date / Added": new Date().toLocaleDateString("en-US"),
+        "Source": "MLS Feed",
+        "MLS Number": listing.mlsNumber,
+      };
+      if (SHEETS_WRITE_URL) {
+        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(dealData) });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || "Failed to add deal");
+      }
       if (onAddToPipeline) onAddToPipeline();
     } catch (err) {
       alert("Error adding to pipeline: " + err.message);
@@ -4855,8 +5498,30 @@ function FileUploaderView({ session, isMobile }) {
   const fetchUploads = useCallback(async () => {
     setUploadsLoading(true);
     try {
-      const result = await getUploads();
-      setUploads(result);
+      const range = `${FILE_UPLOADS_SHEET_NAME}!A1:E`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) { setUploads([]); return; }
+      const data = await res.json();
+      const rows = data.values || [];
+      if (rows.length < 2) { setUploads([]); return; }
+      const headers = rows[0];
+      const idx = (name) => headers.findIndex(h => h && h.trim().toLowerCase() === name.toLowerCase());
+      const colFilename = idx("filename") >= 0 ? idx("filename") : 0;
+      const colLink = idx("file link") >= 0 ? idx("file link") : idx("link") >= 0 ? idx("link") : 1;
+      const colDate = idx("uploaded at") >= 0 ? idx("uploaded at") : idx("date") >= 0 ? idx("date") : 2;
+      const colUser = idx("user") >= 0 ? idx("user") : 3;
+      const colStatus = idx("status") >= 0 ? idx("status") : 4;
+      const g = (row, col) => col >= 0 && col < row.length ? (row[col] || "").trim() : "";
+      const parsed = rows.slice(1).map((row, i) => ({
+        rowIndex: i + 2,
+        filename: g(row, colFilename),
+        link: g(row, colLink),
+        date: g(row, colDate),
+        user: g(row, colUser),
+        status: g(row, colStatus) || "Uploaded",
+      })).filter(u => u.filename || u.link);
+      setUploads(parsed.reverse());
     } catch (err) {
       console.error("Error fetching uploads:", err);
       setUploads([]);
@@ -4871,7 +5536,29 @@ function FileUploaderView({ session, isMobile }) {
     if (!file) return;
     setUploading(true);
     try {
-      await uploadFile(file, session?.user?.email || "");
+      // Read file as base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Send to Apps Script which uploads to Drive and writes row to File Uploads tab
+      if (SHEETS_WRITE_URL) {
+        const payload = {
+          action: "upload_file",
+          filename: file.name,
+          mimeType: file.type || "text/csv",
+          base64: base64,
+          user: session?.user?.email || "",
+          uploadedAt: new Date().toISOString(),
+        };
+        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || "Upload failed");
+      }
+
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       fetchUploads();
@@ -5409,23 +6096,83 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
   const fetchInvestors = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp : [];
-      const result = await getInvestors(teamList);
-      setInvestors(result);
+      const range = `${INVESTORS_SHEET_NAME}!A1:Z`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) { if (res.status === 400) { setInvestors([]); setLoading(false); return; } throw new Error(`API error: ${res.status}`); }
+      const data = await res.json();
+      const rows = data.values || [];
+      if (rows.length < 2) { setInvestors([]); setLoading(false); return; }
+      const headers = rows[0];
+      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
+      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
+      const parsed = rows.slice(1).map(row => ({
+        id: g(row, idx("Investor ID")), user: g(row, idx("User")),
+        investorName: g(row, idx("Investor Name")), investorType: g(row, idx("Investor Type")),
+        pipelineStage: g(row, idx("Pipeline Stage")), temperature: g(row, idx("Temperature")),
+        capitalRangeMin: g(row, idx("Capital Range Min")), capitalRangeMax: g(row, idx("Capital Range Max")),
+        capitalCommitted: g(row, idx("Capital Committed")), capitalFunded: g(row, idx("Capital Funded")),
+        investmentThesis: g(row, idx("Investment Thesis")), preferredReturn: g(row, idx("Preferred Return")),
+        irrTarget: g(row, idx("IRR Target")), holdPeriod: g(row, idx("Hold Period")),
+        assetPreference: g(row, idx("Asset Preference")), geographyPreference: g(row, idx("Geography Preference")),
+        minDealSize: g(row, idx("Min Deal Size")), equityStructure: g(row, idx("Equity Structure")),
+        leadSource: g(row, idx("Lead Source")),
+        contactIds: g(row, idx("Contact IDs")) ? g(row, idx("Contact IDs")).split("|||").filter(Boolean) : [],
+        linkedDealAddresses: g(row, idx("Linked Deal Addresses")) ? g(row, idx("Linked Deal Addresses")).split("|||").filter(Boolean) : [],
+        notes: g(row, idx("Notes")), dateAdded: g(row, idx("Date Added")),
+        dateLastContact: g(row, idx("Date Last Contact")), nextFollowUp: g(row, idx("Next Follow-Up")),
+        company: g(row, idx("Company / Entity")),
+      })).filter(inv => inv.investorName && inv.investorName.trim() !== "");
+      // Strict filter by team emails — investors must have a User value matching the team
+      const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
+      const filtered = teamList.length > 0
+        ? parsed.filter(inv => {
+            const invUser = (inv.user || "").toLowerCase().trim();
+            return invUser && teamList.includes(invUser);
+          })
+        : parsed;
+      setInvestors(filtered);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [teamEmailsProp]);
 
   const fetchActivities = useCallback(async () => {
     try {
-      const result = await getInvestorActivities();
-      setActivities(result);
+      const range = `${INVESTOR_ACTIVITY_SHEET_NAME}!A1:G`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) { setActivities([]); return; }
+      const data = await res.json();
+      const rows = data.values || [];
+      if (rows.length < 2) { setActivities([]); return; }
+      const headers = rows[0];
+      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
+      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
+      setActivities(rows.slice(1).map(row => ({
+        activityId: g(row, idx("Activity ID")), investorId: g(row, idx("Investor ID")),
+        user: g(row, idx("User")), activityType: g(row, idx("Activity Type")),
+        description: g(row, idx("Description")), date: g(row, idx("Date")),
+        createdAt: g(row, idx("Created At")),
+      })));
     } catch { setActivities([]); }
   }, []);
 
   const fetchContacts = useCallback(async () => {
     try {
-      const result = await getContactsList();
-      setContacts(result);
+      const range = `${CONTACTS_SHEET_NAME}!A1:BQ`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) { setContacts([]); return; }
+      const data = await res.json();
+      const rows = data.values || [];
+      if (rows.length < 2) { setContacts([]); return; }
+      const headers = rows[0];
+      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
+      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
+      setContacts(rows.slice(1).map(row => ({
+        rowId: g(row, idx("🔒 Row ID")), name: g(row, idx("Contact / Name")),
+        email: g(row, idx("Contact / Email")), phone: g(row, idx("Contact / Phone")),
+        company: g(row, idx("Contact / Company")),
+      })).filter(c => c.name));
     } catch { setContacts([]); }
   }, []);
 
@@ -5435,12 +6182,18 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
     setSaving(true);
     try {
       if (editingInvestor) {
-        await editInvestor(editingInvestor.id, form);
+        const payload = { action: "edit_investor", id: editingInvestor.id, updates: form };
+        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || "Edit failed");
         setInvestors(prev => prev.map(inv => inv.id === editingInvestor.id ? { ...inv, ...form } : inv));
         if (selectedInvestor && selectedInvestor.id === editingInvestor.id) setSelectedInvestor(prev => ({ ...prev, ...form }));
       } else {
-        const newInvestor = await saveInvestor(form, userEmail);
-        if (newInvestor) setInvestors(prev => [...prev, newInvestor]);
+        const payload = { action: "add_investor", ...form, user: userEmail };
+        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || "Add failed");
+        if (result.investor) setInvestors(prev => [...prev, result.investor]);
         else await fetchInvestors();
       }
       setShowModal(false);
@@ -5452,8 +6205,11 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
     if (!selectedInvestor) return;
     setSaving(true);
     try {
-      const newActivity = await logInvestorActivity(selectedInvestor.id, userEmail, form);
-      if (newActivity) setActivities(prev => [...prev, newActivity]);
+      const payload = { action: "add_investor_activity", investorId: selectedInvestor.id, user: userEmail, ...form };
+      const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || "Failed");
+      if (result.activity) setActivities(prev => [...prev, result.activity]);
       else await fetchActivities();
       setSelectedInvestor(prev => ({ ...prev, dateLastContact: new Date().toISOString() }));
       setInvestors(prev => prev.map(inv => inv.id === selectedInvestor.id ? { ...inv, dateLastContact: new Date().toISOString() } : inv));
@@ -5465,7 +6221,10 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
     if (!selectedInvestor) return;
     const newAddresses = [...(selectedInvestor.linkedDealAddresses || []), address];
     try {
-      await editInvestor(selectedInvestor.id, { linkedDealAddresses: newAddresses });
+      const payload = { action: "edit_investor", id: selectedInvestor.id, updates: { linkedDealAddresses: newAddresses } };
+      const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || "Failed");
       setSelectedInvestor(prev => ({ ...prev, linkedDealAddresses: newAddresses }));
       setInvestors(prev => prev.map(inv => inv.id === selectedInvestor.id ? { ...inv, linkedDealAddresses: newAddresses } : inv));
       setShowLinkDealModal(false);
@@ -5475,9 +6234,12 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
   const handleDeleteInvestor = async (id) => {
     if (!window.confirm("Delete this investor? This cannot be undone.")) return;
     try {
-      await deleteInvestor(id);
-      setInvestors(prev => prev.filter(inv => inv.id !== id));
-      if (selectedInvestor && selectedInvestor.id === id) setSelectedInvestor(null);
+      const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify({ action: "delete_investor", id }) });
+      const result = await res.json();
+      if (result.success) {
+        setInvestors(prev => prev.filter(inv => inv.id !== id));
+        if (selectedInvestor && selectedInvestor.id === id) setSelectedInvestor(null);
+      }
     } catch (err) { alert("Error: " + err.message); }
   };
 
@@ -5687,8 +6449,11 @@ export default function ReapApp() {
   const [error, setError] = useState(null);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [dealTransition, setDealTransition] = useState(false);
-  const [activeNav, setActiveNav] = useState("pipeline");
+  const [activeNav, setActiveNav] = useState("command");
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [realEstateTab, setRealEstateTab] = useState("pipeline");
+  const [contactsTab, setContactsTab] = useState("contacts");
+  const [mlsTab, setMlsTab] = useState("feed");
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState(TRIAL_DAYS);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -5704,7 +6469,9 @@ export default function ReapApp() {
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [pendingDealAddress, setPendingDealAddress] = useState(null);
+  const [pendingDealTab, setPendingDealTab] = useState(null);
   const [pendingPortfolioId, setPendingPortfolioId] = useState(null);
+  const [dealDetailTab, setDealDetailTab] = useState("overview");
 
   // ── Organization / Team state ──
   const [orgData, setOrgData] = useState(null);           // { id, name, owner_email, plan_tier }
@@ -5719,30 +6486,68 @@ export default function ReapApp() {
   const [featureFlags, setFeatureFlags] = useState([]);    // raw feature_flags rows
 
   // --- Hash-based routing ---
+  // Format: command | realestate/pipeline | realestate/dashboard | realestate/portfolios
+  //         deal/{address} | deal/{address}/documents | deal/{address}/activity | deal/{address}/financials ...
+  //         contacts/contacts | contacts/investors | research | mls/feed | mls/upload
+  //         profile | portfolio/{id}
   const updateHash = useCallback((hash) => {
     if (window.location.hash !== "#" + hash) {
       window.location.hash = hash;
     }
   }, []);
 
+  const parseHashRoute = useCallback((hash) => {
+    if (!hash) return null;
+    // Deal detail: deal/{address} or deal/{address}/{tab}
+    if (hash.startsWith("deal/")) {
+      const rest = hash.slice(5); // after "deal/"
+      const dealTabs = ["overview","financials","ai%20underwriting","ai%20summary","documents","activity"];
+      // Check if last segment is a known tab
+      const lastSlash = rest.lastIndexOf("/");
+      if (lastSlash > 0) {
+        const possibleTab = rest.slice(lastSlash + 1);
+        if (dealTabs.includes(possibleTab.toLowerCase())) {
+          const addr = decodeURIComponent(rest.slice(0, lastSlash));
+          const tab = decodeURIComponent(possibleTab);
+          return { type: "deal", address: addr, tab };
+        }
+      }
+      return { type: "deal", address: decodeURIComponent(rest), tab: "overview" };
+    }
+    if (hash.startsWith("portfolio/")) return { type: "portfolio", id: decodeURIComponent(hash.slice(10)) };
+    if (hash === "profile") return { type: "profile" };
+    // Nav with subtab: realestate/pipeline, contacts/investors, mls/upload
+    const slashIdx = hash.indexOf("/");
+    if (slashIdx > 0) {
+      const nav = hash.slice(0, slashIdx);
+      const sub = hash.slice(slashIdx + 1);
+      if (["realestate","contacts","mls"].includes(nav)) return { type: "nav", nav, sub };
+    }
+    if (["command","realestate","contacts","research","mls"].includes(hash)) return { type: "nav", nav: hash };
+    return null;
+  }, []);
+
   // Parse hash on initial load
   useEffect(() => {
     const hash = window.location.hash.replace("#", "");
-    if (!hash) return;
-    if (hash.startsWith("deal/")) {
-      const addr = decodeURIComponent(hash.replace("deal/", ""));
-      setActiveNav("pipeline");
-      setPendingDealAddress(addr);
-    } else if (hash.startsWith("portfolio/")) {
-      const id = decodeURIComponent(hash.replace("portfolio/", ""));
-      setActiveNav("portfolios");
-      setPendingPortfolioId(id);
-    } else if (hash === "profile") {
+    const route = parseHashRoute(hash);
+    if (!route) return;
+    if (route.type === "deal") {
+      setActiveNav("realestate"); setRealEstateTab("pipeline");
+      setPendingDealAddress(route.address);
+      setPendingDealTab(route.tab);
+    } else if (route.type === "portfolio") {
+      setActiveNav("realestate"); setRealEstateTab("portfolios");
+      setPendingPortfolioId(route.id);
+    } else if (route.type === "profile") {
       setShowProfile(true);
-    } else if (["pipeline", "portfolios", "analytics", "contacts", "markets", "mls", "uploader", "admin"].includes(hash)) {
-      setActiveNav(hash);
+    } else if (route.type === "nav") {
+      setActiveNav(route.nav);
+      if (route.nav === "realestate" && route.sub) setRealEstateTab(route.sub);
+      if (route.nav === "contacts" && route.sub) setContactsTab(route.sub);
+      if (route.nav === "mls" && route.sub) setMlsTab(route.sub);
     }
-  }, []);
+  }, [parseHashRoute]);
 
   // Resolve pending deal once deals are loaded
   useEffect(() => {
@@ -5750,41 +6555,48 @@ export default function ReapApp() {
       const deal = deals.find(d => d.address === pendingDealAddress);
       if (deal) {
         setSelectedDeal(deal);
+        if (pendingDealTab) setDealDetailTab(pendingDealTab);
         if (isMobile) setDealTransition(true);
       }
       setPendingDealAddress(null);
+      setPendingDealTab(null);
     }
-  }, [pendingDealAddress, deals, isMobile]);
+  }, [pendingDealAddress, deals, isMobile, pendingDealTab]);
 
   // Listen for browser back/forward
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash.replace("#", "");
-      if (hash.startsWith("deal/")) {
-        const addr = decodeURIComponent(hash.replace("deal/", ""));
-        const deal = deals.find(d => d.address === addr);
+      const route = parseHashRoute(hash);
+      if (!route) return;
+      if (route.type === "deal") {
+        const deal = deals.find(d => d.address === route.address);
         if (deal) {
-          setActiveNav("pipeline");
+          setActiveNav("realestate"); setRealEstateTab("pipeline");
           setShowProfile(false);
           setSelectedDeal(deal);
+          setDealDetailTab(route.tab);
           if (isMobile) setDealTransition(true);
         }
-      } else if (hash.startsWith("portfolio/")) {
-        setActiveNav("portfolios");
+      } else if (route.type === "portfolio") {
+        setActiveNav("realestate"); setRealEstateTab("portfolios");
         setShowProfile(false);
-        setPendingPortfolioId(decodeURIComponent(hash.replace("portfolio/", "")));
-      } else if (hash === "profile") {
+        setPendingPortfolioId(route.id);
+      } else if (route.type === "profile") {
         setShowProfile(true);
-      } else if (["pipeline", "portfolios", "analytics", "contacts", "markets", "mls", "uploader", "admin"].includes(hash)) {
-        setActiveNav(hash);
+      } else if (route.type === "nav") {
+        setActiveNav(route.nav);
         setShowProfile(false);
         setSelectedDeal(null);
         if (isMobile) setDealTransition(false);
+        if (route.nav === "realestate" && route.sub) setRealEstateTab(route.sub);
+        if (route.nav === "contacts" && route.sub) setContactsTab(route.sub);
+        if (route.nav === "mls" && route.sub) setMlsTab(route.sub);
       }
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-  }, [deals, isMobile]);
+  }, [deals, isMobile, parseHashRoute]);
 
   // Check for payment success redirect
   useEffect(() => {
@@ -5813,7 +6625,10 @@ export default function ReapApp() {
         const daysLeft = Math.max(0, TRIAL_DAYS - daysSinceSignup);
         setTrialDaysLeft(daysLeft);
         if (daysLeft <= 0 && !subscribed) {
-          setShowPaywall(true);
+          supabase.from("org_members").select("id").eq("user_email", email.toLowerCase()).eq("status", "active").then(({ data: memberRows }) => {
+            if (memberRows && memberRows.length > 0) { setShowPaywall(false); }
+            else { setShowPaywall(true); }
+          });
         } else {
           setShowPaywall(false);
         }
@@ -5837,16 +6652,23 @@ export default function ReapApp() {
     return () => window.removeEventListener("resize", handle);
   }, []);
 
-  // Sync hash when nav or profile changes (skip initial render, skip when deal selected)
+  // Sync hash when nav, subtabs, profile, or deal detail tab changes
   const hashInitRef = useRef(false);
   useEffect(() => {
     if (!hashInitRef.current) { hashInitRef.current = true; return; }
     if (showProfile) {
       updateHash("profile");
-    } else if (!selectedDeal) {
-      updateHash(activeNav);
+    } else if (selectedDeal) {
+      const base = "deal/" + encodeURIComponent(selectedDeal.address);
+      updateHash(dealDetailTab && dealDetailTab !== "overview" ? base + "/" + encodeURIComponent(dealDetailTab) : base);
+    } else {
+      // Include subtab for sections that have them
+      if (activeNav === "realestate") updateHash("realestate/" + realEstateTab);
+      else if (activeNav === "contacts") updateHash("contacts/" + contactsTab);
+      else if (activeNav === "mls") updateHash("mls/" + mlsTab);
+      else updateHash(activeNav);
     }
-  }, [activeNav, showProfile, selectedDeal, updateHash]);
+  }, [activeNav, showProfile, selectedDeal, dealDetailTab, realEstateTab, contactsTab, mlsTab, updateHash]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -6095,8 +6917,195 @@ export default function ReapApp() {
     setLoading(true);
     setError(null);
     try {
+      // Fetch ALL columns (267 columns = roughly A:JK)
+      const range = `${SHEET_NAME}!A1:KZ`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+      const rows = data.values || [];
+      if (rows.length < 2) { setDeals([]); setLoading(false); return; }
+
+      const headers = rows[0];
+      const idx = (name) => headers.findIndex(h => h && h.trim() === name.trim());
+
+      // Core fields
+      const colUser = idx("User");
+      const colDate = idx("Date / Added");
+      const colStatus = idx("Deal / Status");
+      const colAddress = idx("Property / Address");
+      const colType = idx("Type");
+      const colOffer = idx("Investment / Our Offer");
+      const colNetSqft = idx("Investment / Our Offer $ per SFT");
+      const colSqft = idx("SQFT / Net");
+      const colUnits = idx("Units");
+      const colPurchase = idx("Purchase Price");
+      const colImprovement = idx("Improvement / Budget");
+      const colARV = idx("ARV / Value");
+      const colProfit = idx("Profit");
+      const colROI = idx("Investment / ROI");
+      const colCTV = idx("Cost to Value / Percent (CTV)");
+      const colAAR = idx("AAR");
+      const colProfitability = idx("Profitability");
+      const colSource = idx("Source");
+      const colCity = idx("City");
+      const colState = idx("State");
+
+      // Financial fields (Step 27)
+      const colCapRate = idx("Asking / Cap Rate");
+      const colDSCR = idx("DSCR");
+      const colNOIAnnual = idx("Proforma / Net Operating Income - Annual(NOI)");
+      const colNOIMonthly = idx("Proforma / Net Operating Income - Monthly");
+      const colNOIPerSF = idx("Proforma / Net Operating Income  $ per SQFT (NOI)");
+      const colCashFlowMonthly = idx("Cash Flow Pre Tax (Monthly)");
+      const colProformaRevenueAnnual = idx("Proforma / Revenue - Annual");
+      const colProformaRevenueMonthly = idx("Proforma / Revenue - Monthly");
+      const colProformaRentPerSF = idx("Proforma / Rent per SF");
+      const colProformaExpensesPct = idx("Proforma / Expenses (%)");
+      const colProformaExpensesAnnual = idx("Proforma / Expenses - Annual ($)");
+      const colProformaExpensesMonthly = idx("Proforma / Expenses - Monthly ($)");
+      const colProformaExpensesPerSF = idx("Proforma / Expenses $ per SFT");
+      const colProformaVacancy = idx("Proforma / Vacancy (%)");
+      const colBridgeLoanTotal = idx("Bridge / Loan Total");
+      const colBridgeInterestRate = idx("Bridge / Interest Rate (%)");
+      const colBridgeInterestMonthly = idx("Bridge / Interest Cost (Monthly)");
+      const colBridgePoints = idx("Bridge / Points (%)");
+      const colBridgeTotalCost = idx("Bridge / Total Cost");
+      const colBridgeLTC = idx("Bridge / Loan to Cost (LTC)");
+      const colBridgeLTV = idx("Bridge / Loan to Value (LTV)");
+      const colEquityRequired = idx("Equity / Required");
+      const colRefiLoanAmount = idx("Refinance / Loan Amount");
+      const colRefiPctARV = idx("Refinance / % of Appraisal (ARV)");
+      const colRefiInterestRate = idx("Refinance / Interest Rate (%)");
+      const colRefiCashFlow = idx("Refinance / Cash Flow (Annual)");
+      const colCashOutRefi = idx("Cash Out at Refi");
+      const colProfitAtRefi = idx("Profit at Refi");
+      const colEquityAfterRefi = idx("Equity / Left in the Deal after Refi ");
+      const colRefiValuation = idx("Refinance Valuation");
+      const colReapScore = idx("REAP / Score");
+      // Existing Financials
+      const colExistingRevenueAnnual = idx("Existing Financials / Revenue - Annual");
+      const colExistingRevenueMonthly = idx("Existing Financials / Revenue - Monthly");
+      const colExistingRevenuePerSF = idx("Existing Financials / Revenue Per SQFT");
+      const colExistingNOI = idx("Existing Financials / Net Income (NOI)");
+      const colExistingExpensePct = idx("Existing Financials / Expense Percentage");
+      const colExistingExpenses = idx("Existing Expenses ($)");
+      const colExistingCapRate = idx("Investment / Existing Financials / Our Offer Cap Rate");
+      const colAnnualTaxes = idx("Annual Taxes (New)");
+      const colInsuranceCost = idx("Insurance / Cost (Annual)");
+      const colEquityMultiple = idx("Equity Multiple");
+      // Edit-related fields
+      const colAskingPrice = idx("Asking / Price");
+      const colAcqCostToClose = idx("Acquisition / Cost to Close %");
+      const colMonths = idx("Months");
+      const colDispCostOfSale = idx("Disposition / Cost of Sale (% of ARV)");
+      const colBridgeAcqPct = idx("Bridge / Acquisition Financed (%)");
+      const colBridgeImprovPct = idx("Bridge / Improvement Financing (%)");
+      const colRefiPoints = idx("Refinance / Points (%)");
+      const colRefiTerm = idx("Refinance / Term (years)");
+      const colLotAcres = idx("Lot / Size Acres");
+      const colYearBuilt = idx("Year Built");
+      const colDealName = idx("Deal / Name");
+      const colZip = idx("Zip Code");
+      const colClass = idx("Class");
+
+      const g = (row, col) => col >= 0 && col < row.length ? row[col] : "";
+
+      const parsed = rows.slice(1).map(row => ({
+        // Core
+        user: g(row, colUser),
+        date: g(row, colDate),
+        status: g(row, colStatus),
+        address: g(row, colAddress),
+        type: g(row, colType),
+        offer: g(row, colOffer),
+        netSqft: g(row, colNetSqft),
+        sqft: g(row, colSqft),
+        units: g(row, colUnits),
+        purchasePrice: g(row, colPurchase),
+        improvementBudget: g(row, colImprovement),
+        arv: g(row, colARV),
+        profit: g(row, colProfit),
+        roi: g(row, colROI),
+        ctv: g(row, colCTV),
+        aar: g(row, colAAR),
+        profitability: g(row, colProfitability),
+        source: g(row, colSource),
+        city: g(row, colCity),
+        state: g(row, colState),
+        // Financials
+        capRate: g(row, colCapRate),
+        dscr: g(row, colDSCR),
+        noiAnnual: g(row, colNOIAnnual),
+        noiMonthly: g(row, colNOIMonthly),
+        noiPerSF: g(row, colNOIPerSF),
+        cashFlowMonthly: g(row, colCashFlowMonthly),
+        proformaRevenueAnnual: g(row, colProformaRevenueAnnual),
+        proformaRevenueMonthly: g(row, colProformaRevenueMonthly),
+        proformaRentPerSF: g(row, colProformaRentPerSF),
+        proformaExpensesPct: g(row, colProformaExpensesPct),
+        proformaExpensesAnnual: g(row, colProformaExpensesAnnual),
+        proformaExpensesMonthly: g(row, colProformaExpensesMonthly),
+        proformaExpensesPerSF: g(row, colProformaExpensesPerSF),
+        proformaVacancy: g(row, colProformaVacancy),
+        bridgeLoanTotal: g(row, colBridgeLoanTotal),
+        bridgeInterestRate: g(row, colBridgeInterestRate),
+        bridgeInterestMonthly: g(row, colBridgeInterestMonthly),
+        bridgePoints: g(row, colBridgePoints),
+        bridgeTotalCost: g(row, colBridgeTotalCost),
+        bridgeLTC: g(row, colBridgeLTC),
+        bridgeLTV: g(row, colBridgeLTV),
+        equityRequired: g(row, colEquityRequired),
+        refiLoanAmount: g(row, colRefiLoanAmount),
+        refiPctARV: g(row, colRefiPctARV),
+        refiInterestRate: g(row, colRefiInterestRate),
+        refiCashFlow: g(row, colRefiCashFlow),
+        cashOutRefi: g(row, colCashOutRefi),
+        profitAtRefi: g(row, colProfitAtRefi),
+        equityAfterRefi: g(row, colEquityAfterRefi),
+        refiValuation: g(row, colRefiValuation),
+        reapScore: g(row, colReapScore),
+        equityMultiple: g(row, colEquityMultiple),
+        // Edit-related fields
+        askingPrice: g(row, colAskingPrice),
+        acqCostToClose: g(row, colAcqCostToClose),
+        months: g(row, colMonths),
+        dispCostOfSale: g(row, colDispCostOfSale),
+        bridgeAcqPct: g(row, colBridgeAcqPct),
+        bridgeImprovPct: g(row, colBridgeImprovPct),
+        refiPoints: g(row, colRefiPoints),
+        refiTerm: g(row, colRefiTerm),
+        lotAcres: g(row, colLotAcres),
+        yearBuilt: g(row, colYearBuilt),
+        dealName: g(row, colDealName),
+        zip: g(row, colZip),
+        dealClass: g(row, colClass),
+        // Existing Financials
+        existingRevenueAnnual: g(row, colExistingRevenueAnnual),
+        existingRevenueMonthly: g(row, colExistingRevenueMonthly),
+        existingRevenuePerSF: g(row, colExistingRevenuePerSF),
+        existingNOI: g(row, colExistingNOI),
+        existingExpensePct: g(row, colExistingExpensePct),
+        existingExpenses: g(row, colExistingExpenses),
+        existingCapRate: g(row, colExistingCapRate),
+        annualTaxes: g(row, colAnnualTaxes),
+        insuranceCost: g(row, colInsuranceCost),
+      })).filter(d => d.address);
+
+      // Filter to team's deals (org members see all team deals, solo users see only their own)
       const emailsToShow = teamEmails.length > 0 ? teamEmails : [session?.user?.email?.toLowerCase() || ""];
-      const userDeals = await getDeals(emailsToShow);
+      const userDeals = parsed.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
+
+      // Sort newest first
+      userDeals.sort((a, b) => {
+        const da = new Date(a.date);
+        const db = new Date(b.date);
+        if (isNaN(da.getTime()) && isNaN(db.getTime())) return 0;
+        if (isNaN(da.getTime())) return 1;
+        if (isNaN(db.getTime())) return -1;
+        return db - da;
+      });
+
       setDeals(userDeals);
     } catch (err) {
       setError(err.message);
@@ -6123,7 +7132,63 @@ export default function ReapApp() {
   const handleSaveDeal = async (form) => {
     setSavingDeal(true);
     try {
-      const newDeal = await saveDeal(form, session?.user?.email || "");
+      const today = new Date().toLocaleDateString("en-US");
+      const dealData = {
+        "Deal / Name": form.dealName,
+        "Property / Address": form.address,
+        "City": form.city,
+        "State": form.state,
+        "Zip Code": form.zip,
+        "Type": form.type,
+        "Class": form.class,
+        "SQFT / Net": form.sqft,
+        "Units": form.units,
+        "Year Built": form.yearBuilt,
+        "Asking / Price": form.askingPrice.replace(/[$,]/g, ""),
+        "Investment / Our Offer": form.ourOffer.replace(/[$,]/g, ""),
+        "Lot / Size Acres": form.lotAcres,
+        "Date / Added": today,
+        "Deal / Status": "New",
+        "User": session?.user?.email || "",
+        "Source": "REAP App",
+      };
+
+      if (SHEETS_WRITE_URL) {
+        const res = await fetch(SHEETS_WRITE_URL, {
+          method: "POST",
+          body: JSON.stringify(dealData),
+        });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || "Write failed");
+      } else {
+        // Fallback: alert user to set up write URL
+        alert("Deal saved locally. To write to Google Sheets, deploy the Apps Script and add REACT_APP_SHEETS_WRITE_URL to your .env file. See google-apps-script.js for instructions.");
+      }
+
+      // Build a local deal object so we can open it immediately
+      const newDeal = {
+        user: session?.user?.email || "",
+        date: today,
+        status: "New",
+        address: form.address,
+        type: form.type,
+        offer: form.ourOffer,
+        netSqft: "",
+        sqft: form.sqft,
+        units: form.units,
+        purchasePrice: "",
+        improvementBudget: "",
+        arv: "",
+        profit: "",
+        roi: "",
+        ctv: "",
+        aar: "",
+        profitability: "",
+        source: "REAP App",
+        city: form.city,
+        state: form.state,
+        askingPrice: form.askingPrice,
+      };
 
       setShowNewDeal(false);
 
@@ -6150,8 +7215,69 @@ export default function ReapApp() {
   const handleEditDeal = async (form) => {
     setEditSaving(true);
     try {
-      await editDeal(selectedDeal.address, form);
+      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
+      const updates = {
+        "Deal / Status": form.status,
+        "Type": form.type,
+        "SQFT / Net": clean(form.sqft),
+        "Units": clean(form.units),
+        "Year Built": clean(form.yearBuilt),
+        "Lot / Size Acres": clean(form.lotAcres),
+        "Class": form.class,
+        "Asking / Price": clean(form.askingPrice),
+        "Investment / Our Offer": clean(form.ourOffer),
+        "Purchase Price": clean(form.purchasePrice),
+        "Acquisition / Cost to Close %": clean(form.acqCostToClose),
+        "Improvement / Budget": clean(form.improvementBudget),
+        "ARV / Value": clean(form.arvValue),
+        "Months": clean(form.months),
+        "Disposition / Cost of Sale (% of ARV)": clean(form.dispCostOfSale),
+        "Proforma / Revenue - Annual": clean(form.proformaRevenueAnnual),
+        "Proforma / Expenses (%)": clean(form.proformaExpensesPct),
+        "Proforma / Vacancy (%)": clean(form.proformaVacancy),
+        "Existing Financials / Revenue - Annual": clean(form.existingRevenueAnnual),
+        "Existing Financials / Expense Percentage": clean(form.existingExpensePct),
+        "Annual Taxes (New)": clean(form.annualTaxes),
+        "Insurance / Cost (Annual)": clean(form.insuranceCost),
+        "Bridge / Acquisition Financed (%)": clean(form.bridgeAcqPct),
+        "Bridge / Improvement Financing (%)": clean(form.bridgeImprovPct),
+        "Bridge / Interest Rate (%)": clean(form.bridgeInterestRate),
+        "Bridge / Points (%)": clean(form.bridgePoints),
+        "Refinance / % of Appraisal (ARV)": clean(form.refiPctARV),
+        "Refinance / Interest Rate (%)": clean(form.refiInterestRate),
+        "Refinance / Points (%)": clean(form.refiPoints),
+        "Refinance / Term (years)": clean(form.refiTerm),
+      };
+
+      if (SHEETS_WRITE_URL) {
+        const res = await fetch(SHEETS_WRITE_URL, {
+          method: "POST",
+          body: JSON.stringify({ action: "edit_deal", address: selectedDeal.address, updates }),
+        });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || "Edit failed");
+      }
+
       setShowEditDeal(false);
+      // Auto-log status change activity
+      if (selectedDeal && form.status && form.status !== selectedDeal.status) {
+        try {
+          let logDealId = selectedDeal._id;
+          if (!logDealId && selectedDeal.address) {
+            const { data: lookupRow } = await supabase.from("deals").select("id").eq("address", selectedDeal.address).limit(1).maybeSingle();
+            logDealId = lookupRow?.id;
+          }
+          if (logDealId) {
+            await supabase.from("deal_activities").insert({
+              deal_id: logDealId,
+              user_email: userEmail,
+              activity_type: "Status Change",
+              description: `Status changed from "${selectedDeal.status || "—"}" to "${form.status}"`,
+              activity_date: new Date().toISOString(),
+            });
+          }
+        } catch (logErr) { console.error("Auto-log failed:", logErr); }
+      }
       // Don't null selectedDeal — stay on the deal detail view
       // fetchDeals will refresh the data, and the sync effect below updates selectedDeal
       fetchDeals();
@@ -6163,6 +7289,7 @@ export default function ReapApp() {
   };
 
   const handleSelectDeal = (deal) => {
+    setDealDetailTab("overview");
     if (isMobile) {
       setDealTransition(true);
       setTimeout(() => setSelectedDeal(deal), 10);
@@ -6173,24 +7300,49 @@ export default function ReapApp() {
   };
 
   const handleBack = () => {
+    setDealDetailTab("overview");
     if (isMobile) {
       setDealTransition(false);
       setTimeout(() => setSelectedDeal(null), 300);
     } else {
       setSelectedDeal(null);
     }
-    updateHash("pipeline");
+    updateHash("realestate/pipeline");
   };
 
   const handleSaveBuyer = async (form) => {
     setSavingBuyer(true);
     try {
-      await saveBuyer(form, session?.user?.email || "", editingBuyer?.rowId || null);
+      const buyerData = {
+        "Contact / Name": form.name,
+        "Contact / First Name": form.name.split(" ")[0],
+        "Contact / Email": form.email,
+        "Contact / Phone": form.phone,
+        "Contact / Company": form.company,
+        "Contact / Type": "Buyer (Client)",
+        "Buyer / Status": form.buyerStatus || "New",
+        "Contact / Asset Preference": form.assetPreference,
+        "Contact / Temperature": form.temperature,
+        "Contact / Manager": form.manager,
+        "Contact / Notes": form.notes,
+        "Contact / Lead Source": form.leadSource,
+        "User": session?.user?.email || "",
+        "Date / Added": new Date().toISOString(),
+      };
+
+      if (SHEETS_WRITE_URL) {
+        const payload = editingBuyer?.rowId
+          ? { action: "edit_contact", rowId: editingBuyer.rowId, updates: buyerData }
+          : { action: "add_contact", ...buyerData };
+        const res = await fetch(SHEETS_WRITE_URL, { method: "POST", body: JSON.stringify(payload) });
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || "Write failed");
+      }
 
       setShowBuyerModal(false);
       setEditingBuyer(null);
       // Force a re-render of BuyerPipelineView by briefly switching nav
-      setActiveNav("pipeline");
+      setActiveNav("command");
       setTimeout(() => setActiveNav("contacts"), 50);
     } catch (err) {
       alert("Error saving buyer: " + err.message);
@@ -6204,19 +7356,14 @@ export default function ReapApp() {
   const userName = session?.user?.user_metadata?.full_name || userEmail;
   const initials = userName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   const FEATURE_NAV_MAP = {
-    pipeline: "pipeline", portfolios: "portfolio", analytics: "dashboard",
-    contacts: "contacts", investors: "investor_pipeline", markets: "market_intel", mls: "mls_feed", uploader: "file_uploader"
+    command: "dashboard", realestate: "pipeline", contacts: "contacts", research: "market_intel", mls: "mls_feed"
   };
   const allNavItems = [
-    { id: "pipeline", label: "Deals", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
-    { id: "portfolios", label: "Portfolios", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/><polyline points="2 15.5 12 8.5 22 15.5"/></svg> },
-    { id: "analytics", label: "Dashboard", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+    { id: "command", label: "Command Center", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+    { id: "realestate", label: "Real Estate", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
     { id: "contacts", label: "Contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
-    { id: "investors", label: "Investors", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
-    { id: "markets", label: "Markets", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
-    { id: "mls", label: "MLS Feed", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-    { id: "uploader", label: "File Uploader", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> },
-    ...(userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL ? [{ id: "admin", label: "Admin", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> }] : []),
+    { id: "research", label: "Research", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
+    { id: "mls", label: "MLS Feed", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
   ];
   // Filter nav items by feature flags (fallback: show all if features haven't loaded yet)
   const navItems = Object.keys(features).length === 0
@@ -6225,6 +7372,21 @@ export default function ReapApp() {
         const featureKey = FEATURE_NAV_MAP[item.id];
         return !featureKey || features[featureKey] !== false;
       });
+
+  const SubTabBar = ({ tabs, active, onChange, title }) => (
+    <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "0 20px", flexShrink: 0 }}>
+      {title && <h1 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, padding: "16px 0 8px", letterSpacing: "-0.02em" }}>{title}</h1>}
+      <div style={{ display: "flex", gap: 0 }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => onChange(t.id)} style={{
+            background: "transparent", border: "none", borderBottom: active === t.id ? "2px solid #16a34a" : "2px solid transparent",
+            padding: "10px 18px", color: active === t.id ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600,
+            cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", marginBottom: -1
+          }}>{t.label}</button>
+        ))}
+      </div>
+    </div>
+  );
 
   if (authLoading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
@@ -6346,67 +7508,105 @@ export default function ReapApp() {
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 70 : 0, paddingTop: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : (!isSubscribed && trialDaysLeft > 0 ? 42 : 0), position: "relative" }}>
           {isMobile ? (
             showProfile ? (
-              <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} />
-            ) : activeNav === "portfolios" ? (
-              <PortfolioView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
+              <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
+            ) : activeNav === "command" ? (
+              <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
             ) : activeNav === "contacts" ? (
-              <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
-            ) : activeNav === "investors" ? (
-              <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} />
-            ) : activeNav === "analytics" ? (
-              <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
-            ) : activeNav === "markets" ? (
+              <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={setContactsTab} />
+                <div style={{ flex: 1, overflow: "auto" }}>
+                  {contactsTab === "investors"
+                    ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} />
+                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
+                  }
+                </div>
+              </div>
+            ) : activeNav === "research" ? (
               <MarketIntelligenceView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} />
             ) : activeNav === "mls" ? (
-              <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} />
-            ) : activeNav === "uploader" ? (
-              <FileUploaderView session={session} isMobile={true} />
-            ) : activeNav === "admin" && userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL ? (
-              <AdminView session={session} isMobile={true} />
-            ) : (
+              <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                <SubTabBar tabs={[{ id: "feed", label: "Feed" }, { id: "upload", label: "Upload" }]} active={mlsTab} onChange={setMlsTab} />
+                <div style={{ flex: 1, overflow: "auto" }}>
+                  {mlsTab === "upload"
+                    ? <FileUploaderView session={session} isMobile={true} />
+                    : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} />
+                  }
+                </div>
+              </div>
+            ) : activeNav === "realestate" ? (
             <>
-              <div style={{
-                position: "absolute", inset: 0, paddingBottom: 70,
-                transform: selectedDeal ? "translateX(-30%)" : "translateX(0)",
-                opacity: selectedDeal ? 0 : 1,
-                transition: "all 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
-                pointerEvents: selectedDeal ? "none" : "auto",
-                display: "flex", flexDirection: "column",
-              }}>
-                <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} />
-              </div>
-              <div style={{
-                position: "absolute", inset: 0, paddingBottom: 70,
-                transform: dealTransition && selectedDeal ? "translateX(0)" : "translateX(100%)",
-                transition: "transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
-                display: "flex", flexDirection: "column", background: "#f8fafc",
-              }}>
-                {selectedDeal && <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} />}
-              </div>
+              {!selectedDeal && <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }]} active={realEstateTab} onChange={setRealEstateTab} title="Real Estate" />}
+              {realEstateTab === "dashboard" && !selectedDeal ? (
+                <div style={{ flex: 1, overflow: "auto" }}><DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} /></div>
+              ) : realEstateTab === "portfolios" && !selectedDeal ? (
+                <div style={{ flex: 1, overflow: "auto" }}><PortfolioView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setRealEstateTab("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} /></div>
+              ) : (
+              <>
+                <div style={{
+                  position: "absolute", inset: 0, paddingBottom: 70,
+                  top: selectedDeal ? 0 : 90,
+                  transform: selectedDeal ? "translateX(-30%)" : "translateX(0)",
+                  opacity: selectedDeal ? 0 : 1,
+                  transition: "all 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
+                  pointerEvents: selectedDeal ? "none" : "auto",
+                  display: "flex", flexDirection: "column",
+                }}>
+                  <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} />
+                </div>
+                <div style={{
+                  position: "absolute", inset: 0, paddingBottom: 70,
+                  transform: dealTransition && selectedDeal ? "translateX(0)" : "translateX(100%)",
+                  transition: "transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
+                  display: "flex", flexDirection: "column", background: "#f8fafc",
+                }}>
+                  {selectedDeal && <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} initialTab={dealDetailTab} onTabChange={setDealDetailTab} />}
+                </div>
+              </>
+              )}
             </>
-            )
+            ) : null
           ) : (
             showProfile
-              ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} />
-              : activeNav === "portfolios"
-              ? <PortfolioView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setActiveNav("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
+              ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
+              : activeNav === "command"
+              ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
+              : activeNav === "realestate" && selectedDeal
+              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} initialTab={dealDetailTab} onTabChange={setDealDetailTab} />
+              : activeNav === "realestate"
+              ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }]} active={realEstateTab} onChange={setRealEstateTab} title="Real Estate" />
+                  <div style={{ flex: 1, overflow: "auto" }}>
+                    {realEstateTab === "dashboard"
+                      ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
+                      : realEstateTab === "portfolios"
+                      ? <PortfolioView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setRealEstateTab("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
+                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
+                    }
+                  </div>
+                </div>
               : activeNav === "contacts"
-              ? <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
-              : activeNav === "investors"
-              ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} />
-              : activeNav === "analytics"
-                ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
-                : activeNav === "markets"
-                ? <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} />
-                : activeNav === "mls"
-                ? <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} />
-                : activeNav === "uploader"
-                ? <FileUploaderView session={session} isMobile={false} />
-                : activeNav === "admin" && userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL
-                ? <AdminView session={session} isMobile={false} />
-                : selectedDeal
-                ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} />
-                : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
+              ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                  <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={setContactsTab} />
+                  <div style={{ flex: 1, overflow: "auto" }}>
+                    {contactsTab === "investors"
+                      ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} />
+                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
+                    }
+                  </div>
+                </div>
+              : activeNav === "research"
+              ? <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} />
+              : activeNav === "mls"
+              ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                  <SubTabBar tabs={[{ id: "feed", label: "Feed" }, { id: "upload", label: "Upload" }]} active={mlsTab} onChange={setMlsTab} />
+                  <div style={{ flex: 1, overflow: "auto" }}>
+                    {mlsTab === "upload"
+                      ? <FileUploaderView session={session} isMobile={false} />
+                      : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} />
+                    }
+                  </div>
+                </div>
+              : <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
           )}
         </div>
 
