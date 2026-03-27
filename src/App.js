@@ -2074,6 +2074,240 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, initialTab,
   );
 }
 
+// ═══════════════════════════════════════════════════════
+// Privacy Policy & Terms of Service
+// ═══════════════════════════════════════════════════════
+
+function LegalPageView({ page, onBack }) {
+  const isPrivacy = page === "privacy";
+  const title = isPrivacy ? "Privacy Policy" : "Terms of Service";
+  const lastUpdated = "March 26, 2026";
+
+  const sectionStyle = { marginBottom: 32 };
+  const headingStyle = { fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", letterSpacing: "-0.01em" };
+  const textStyle = { fontSize: 14, color: "#475569", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.8, margin: "0 0 12px" };
+  const listStyle = { fontSize: 14, color: "#475569", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.8, margin: "0 0 12px", paddingLeft: 24 };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap');`}</style>
+      {/* Header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "16px 24px", display: "flex", alignItems: "center", gap: 16, position: "sticky", top: 0, zIndex: 10 }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: "#64748b", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", padding: 0 }}>
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          Back
+        </button>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.04em" }}>REAP</span>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ maxWidth: 720, margin: "0 auto", padding: "40px 24px 80px" }}>
+        <div style={{ marginBottom: 40 }}>
+          <p style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 8px" }}>Legal</p>
+          <h1 style={{ fontSize: 32, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 8px", letterSpacing: "-0.02em" }}>{title}</h1>
+          <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Last updated: {lastUpdated}</p>
+        </div>
+
+        {/* Toggle between privacy and terms */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 36 }}>
+          <a href="#privacy" style={{ padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", textDecoration: "none", border: "1.5px solid", borderColor: isPrivacy ? "#16a34a" : "#e2e8f0", background: isPrivacy ? "rgba(22,163,74,0.06)" : "#fff", color: isPrivacy ? "#16a34a" : "#64748b", transition: "all 0.15s" }}>Privacy Policy</a>
+          <a href="#terms" style={{ padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", textDecoration: "none", border: "1.5px solid", borderColor: !isPrivacy ? "#16a34a" : "#e2e8f0", background: !isPrivacy ? "rgba(22,163,74,0.06)" : "#fff", color: !isPrivacy ? "#16a34a" : "#64748b", transition: "all 0.15s" }}>Terms of Service</a>
+        </div>
+
+        {isPrivacy ? (
+          <>
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>1. Introduction</h2>
+              <p style={textStyle}>REAP Technologies LLC ("REAP," "we," "us," or "our") operates the REAP Real Estate Analytics Platform available at app.getreap.ai and getreap.ai (the "Service"). This Privacy Policy describes how we collect, use, store, and protect your information when you use our Service.</p>
+              <p style={textStyle}>By using REAP, you agree to the collection and use of information in accordance with this policy. If you do not agree, please do not use the Service.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>2. Information We Collect</h2>
+              <p style={textStyle}><strong>Account Information:</strong> When you create an account, we collect your name, email address, and authentication credentials. If you sign in via Google OAuth, we receive your name, email, and profile picture from Google.</p>
+              <p style={textStyle}><strong>Deal and Business Data:</strong> Information you enter into the platform including real estate deal details, financial metrics, contact information, investor records, documents, and activity logs. This is your proprietary data.</p>
+              <p style={textStyle}><strong>Payment Information:</strong> When you subscribe, payment is processed by Stripe. We do not store your credit card number. Stripe provides us with your subscription status, plan type, and billing email.</p>
+              <p style={textStyle}><strong>Usage Data:</strong> We may collect information about how you access and use the Service, including your IP address, browser type, device information, pages visited, and timestamps.</p>
+              <p style={textStyle}><strong>Uploaded Files:</strong> Documents you upload to deal records (e.g., PSAs, inspection reports, appraisals) are stored securely in our cloud infrastructure.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>3. How We Use Your Information</h2>
+              <p style={textStyle}>We use the information we collect to:</p>
+              <ul style={listStyle}>
+                <li>Provide, maintain, and improve the Service</li>
+                <li>Process your transactions and manage your subscription</li>
+                <li>Generate AI-powered deal analysis and executive summaries using your deal data</li>
+                <li>Send you service-related communications (account verification, billing, updates)</li>
+                <li>Respond to your requests and provide customer support</li>
+                <li>Detect, prevent, and address technical issues and security threats</li>
+              </ul>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>4. AI Processing</h2>
+              <p style={textStyle}>REAP uses AI (powered by Anthropic's Claude) to generate deal summaries, underwriting analysis, and other insights. Your deal data is sent to the AI provider solely to generate your requested output. We do not use your data to train AI models. AI-generated outputs are provided for informational purposes only and do not constitute financial, legal, or investment advice.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>5. Data Storage and Security</h2>
+              <p style={textStyle}>Your data is stored on Supabase (hosted on AWS infrastructure) with row-level security policies that ensure users can only access their own data. Uploaded documents are stored in private, authenticated storage buckets. All data is transmitted over HTTPS/TLS encryption.</p>
+              <p style={textStyle}>While we implement industry-standard security measures, no method of electronic storage or transmission is 100% secure. We cannot guarantee absolute security.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>6. Data Sharing</h2>
+              <p style={textStyle}>We do not sell, rent, or trade your personal information or deal data. We may share information with:</p>
+              <ul style={listStyle}>
+                <li><strong>Service Providers:</strong> Supabase (database/storage), Stripe (payments), Anthropic (AI processing), Google (authentication) — only as necessary to operate the Service</li>
+                <li><strong>Team Members:</strong> If you are part of an organization on REAP, other members of your organization may see shared deal and contact data</li>
+                <li><strong>Legal Requirements:</strong> If required by law, subpoena, or government request</li>
+              </ul>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>7. Your Rights</h2>
+              <p style={textStyle}>You may:</p>
+              <ul style={listStyle}>
+                <li>Access, update, or delete your account information at any time through the Settings page</li>
+                <li>Export or delete your deal data by contacting us</li>
+                <li>Close your account by contacting support@getreap.ai</li>
+              </ul>
+              <p style={textStyle}>If you are a California resident, you may have additional rights under the CCPA. If you are located in the EU/EEA, you may have additional rights under GDPR. Contact us to exercise these rights.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>8. Cookies</h2>
+              <p style={textStyle}>We use essential cookies and local storage to maintain your authentication session and app preferences. We do not use advertising or third-party tracking cookies.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>9. Children's Privacy</h2>
+              <p style={textStyle}>REAP is not intended for users under the age of 18. We do not knowingly collect information from children.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>10. Changes to This Policy</h2>
+              <p style={textStyle}>We may update this Privacy Policy from time to time. We will notify you of material changes by posting the new policy on this page and updating the "Last updated" date. Continued use of the Service after changes constitutes acceptance.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>11. Contact Us</h2>
+              <p style={textStyle}>If you have questions about this Privacy Policy, contact us at:</p>
+              <p style={textStyle}><strong>REAP Technologies LLC</strong><br />Email: support@getreap.ai</p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>1. Acceptance of Terms</h2>
+              <p style={textStyle}>These Terms of Service ("Terms") govern your access to and use of the REAP Real Estate Analytics Platform ("Service") operated by REAP Technologies LLC ("REAP," "we," "us," or "our"). By creating an account or using the Service, you agree to be bound by these Terms. If you do not agree, do not use the Service.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>2. Description of Service</h2>
+              <p style={textStyle}>REAP is a real estate analytics platform that allows users to track deals, manage contacts and investors, perform financial analysis, generate AI-powered insights, upload documents, and collaborate with team members. The Service is available at app.getreap.ai.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>3. Account Registration</h2>
+              <p style={textStyle}>You must create an account to use the Service. You agree to provide accurate and complete information, maintain the security of your password, and promptly update your information if it changes. You are responsible for all activity that occurs under your account. You must be at least 18 years old to use the Service.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>4. Subscription and Billing</h2>
+              <p style={textStyle}>REAP offers a 14-day free trial. After the trial period, a paid subscription is required to continue using the Service. Subscription plans include Starter ($99/month) and Team ($499/month). All payments are processed through Stripe.</p>
+              <p style={textStyle}>Subscriptions renew automatically on a monthly basis. You may cancel at any time, and your access will continue through the end of the current billing period. Refunds are not provided for partial months.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>5. Your Data</h2>
+              <p style={textStyle}>You retain all ownership rights to the data you enter into REAP, including deal information, contacts, investors, uploaded documents, and financial data ("Your Data"). We do not claim ownership of Your Data.</p>
+              <p style={textStyle}>You grant REAP a limited license to use Your Data solely to provide the Service to you, including processing it through AI features you initiate. We will not use Your Data for any other purpose without your consent.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>6. Acceptable Use</h2>
+              <p style={textStyle}>You agree not to:</p>
+              <ul style={listStyle}>
+                <li>Use the Service for any unlawful purpose or in violation of any applicable laws</li>
+                <li>Attempt to gain unauthorized access to other users' accounts or data</li>
+                <li>Interfere with or disrupt the Service or its infrastructure</li>
+                <li>Reverse engineer, decompile, or attempt to extract the source code of the Service</li>
+                <li>Use the Service to store or transmit malicious code</li>
+                <li>Resell, sublicense, or redistribute the Service without written permission</li>
+                <li>Use automated tools to scrape or collect data from the Service</li>
+              </ul>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>7. AI-Generated Content</h2>
+              <p style={textStyle}>The Service includes AI-powered features such as deal summaries, underwriting analysis, and REAP Scores. AI-generated content is provided for informational purposes only and does not constitute financial, investment, legal, or professional advice. You should independently verify all AI-generated outputs before making business decisions. REAP is not liable for any decisions made based on AI-generated content.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>8. Team and Organization Features</h2>
+              <p style={textStyle}>If you create or join an organization on REAP, you acknowledge that other members of your organization may have access to shared deal data, contacts, and other information within the organization workspace. Organization owners are responsible for managing member access and permissions.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>9. Intellectual Property</h2>
+              <p style={textStyle}>The Service, including its design, code, features, branding, and documentation, is the intellectual property of REAP Technologies LLC and is protected by applicable intellectual property laws. Your subscription grants you a limited, non-exclusive, non-transferable license to use the Service for its intended purpose.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>10. Disclaimers</h2>
+              <p style={textStyle}>THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT. WE DO NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, OR SECURE.</p>
+              <p style={textStyle}>REAP does not provide financial, investment, legal, or tax advice. All deal metrics, scores, and analyses are estimates based on user-provided data and should not be solely relied upon for investment decisions.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>11. Limitation of Liability</h2>
+              <p style={textStyle}>TO THE MAXIMUM EXTENT PERMITTED BY LAW, REAP TECHNOLOGIES LLC SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, DATA, OR BUSINESS OPPORTUNITIES ARISING FROM YOUR USE OF THE SERVICE. OUR TOTAL LIABILITY SHALL NOT EXCEED THE AMOUNT YOU PAID US IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>12. Termination</h2>
+              <p style={textStyle}>We may suspend or terminate your access to the Service at any time for violation of these Terms or for any other reason with reasonable notice. You may close your account at any time by contacting support@getreap.ai. Upon termination, your right to use the Service ceases, though we may retain Your Data for a reasonable period to allow you to export it.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>13. Governing Law</h2>
+              <p style={textStyle}>These Terms shall be governed by and construed in accordance with the laws of the State of Florida, without regard to its conflict of law provisions. Any disputes arising under these Terms shall be resolved in the state or federal courts located in Hillsborough County, Florida.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>14. Changes to Terms</h2>
+              <p style={textStyle}>We may update these Terms from time to time. We will provide notice of material changes by updating the "Last updated" date and, where appropriate, notifying you via email. Continued use of the Service after changes constitutes acceptance of the updated Terms.</p>
+            </div>
+
+            <div style={sectionStyle}>
+              <h2 style={headingStyle}>15. Contact Us</h2>
+              <p style={textStyle}>If you have questions about these Terms, contact us at:</p>
+              <p style={textStyle}><strong>REAP Technologies LLC</strong><br />Email: support@getreap.ai</p>
+            </div>
+          </>
+        )}
+
+        {/* Footer */}
+        <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 24, marginTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>© 2026 REAP Technologies LLC. All rights reserved.</span>
+          <div style={{ display: "flex", gap: 16 }}>
+            <a href="#privacy" style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", textDecoration: "none", fontWeight: 600 }}>Privacy Policy</a>
+            <a href="#terms" style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", textDecoration: "none", fontWeight: 600 }}>Terms of Service</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AuthScreen({ onAuth }) {
   const [mode, setMode] = useState(() => {
     const params = window.location.search;
@@ -2419,10 +2653,10 @@ function AuthScreen({ onAuth }) {
             </div>
 
             <div style={{ position: "absolute", bottom: 24, left: 56, right: 56, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#B0BAB4", fontFamily: "'DM Sans', sans-serif" }}>
-              <span>© 2026 REAP Analytics, Inc.</span>
+              <span>© 2026 REAP Technologies LLC</span>
               <div style={{ display: "flex", gap: 20 }}>
-                <a href="https://getreap.ai" className="reap-link" style={{ color: "#B0BAB4", textDecoration: "none", transition: "opacity 0.15s" }}>Privacy</a>
-                <a href="https://getreap.ai" className="reap-link" style={{ color: "#B0BAB4", textDecoration: "none", transition: "opacity 0.15s" }}>Terms</a>
+                <a href="#privacy" className="reap-link" style={{ color: "#B0BAB4", textDecoration: "none", transition: "opacity 0.15s" }}>Privacy</a>
+                <a href="#terms" className="reap-link" style={{ color: "#B0BAB4", textDecoration: "none", transition: "opacity 0.15s" }}>Terms</a>
               </div>
             </div>
           </div>
@@ -6468,6 +6702,7 @@ export default function ReapApp() {
   const [editingBuyer, setEditingBuyer] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showLegalPage, setShowLegalPage] = useState(null);
   const [pendingDealAddress, setPendingDealAddress] = useState(null);
   const [pendingDealTab, setPendingDealTab] = useState(null);
   const [pendingPortfolioId, setPendingPortfolioId] = useState(null);
@@ -6516,6 +6751,7 @@ export default function ReapApp() {
     }
     if (hash.startsWith("portfolio/")) return { type: "portfolio", id: decodeURIComponent(hash.slice(10)) };
     if (hash === "profile") return { type: "profile" };
+    if (hash === "privacy" || hash === "terms") return { type: "legal", page: hash };
     // Nav with subtab: realestate/pipeline, contacts/investors, mls/upload
     const slashIdx = hash.indexOf("/");
     if (slashIdx > 0) {
@@ -6541,6 +6777,8 @@ export default function ReapApp() {
       setPendingPortfolioId(route.id);
     } else if (route.type === "profile") {
       setShowProfile(true);
+    } else if (route.type === "legal") {
+      setShowLegalPage(route.page);
     } else if (route.type === "nav") {
       setActiveNav(route.nav);
       if (route.nav === "realestate" && route.sub) setRealEstateTab(route.sub);
@@ -6584,9 +6822,14 @@ export default function ReapApp() {
         setPendingPortfolioId(route.id);
       } else if (route.type === "profile") {
         setShowProfile(true);
+        setShowLegalPage(null);
+      } else if (route.type === "legal") {
+        setShowLegalPage(route.page);
+        setShowProfile(false);
       } else if (route.type === "nav") {
         setActiveNav(route.nav);
         setShowProfile(false);
+        setShowLegalPage(null);
         setSelectedDeal(null);
         if (isMobile) setDealTransition(false);
         if (route.nav === "realestate" && route.sub) setRealEstateTab(route.sub);
@@ -7387,6 +7630,9 @@ export default function ReapApp() {
       </div>
     </div>
   );
+
+  // Legal pages — accessible without authentication
+  if (showLegalPage) return <LegalPageView page={showLegalPage} onBack={() => { setShowLegalPage(null); window.history.back(); }} />;
 
   if (authLoading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
