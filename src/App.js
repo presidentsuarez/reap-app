@@ -1232,14 +1232,18 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
           ) : (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
-                <h1 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Deal Pipeline</h1>
-                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>
-                  {statusFilter !== null ? filtered.length + " " + statusFilters[statusFilter].label.toLowerCase() : deals.length + " deals"} · {fmt(totalVolume)} total volume
+                <p style={{ fontSize: 11, color: "#94a3b8", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>
+                  {statusFilter !== null ? filtered.length + " " + statusFilters[statusFilter].label.toLowerCase() : deals.length + " deals"} · {fmt(totalVolume)} volume
                 </p>
               </div>
-              <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
+                </button>
+                <button onClick={onNewDeal} style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 10px rgba(22,163,74,0.35)", WebkitTapHighlightColor: "transparent" }}>
+                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1343,12 +1347,6 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
         )}
       </div>
 
-      {/* Mobile FAB */}
-      {isMobile && (
-        <button onClick={onNewDeal} style={{ position: "fixed", bottom: 80, right: 16, zIndex: 99, width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px rgba(22,163,74,0.45)", WebkitTapHighlightColor: "transparent" }}>
-          <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-      )}
     </div>
   );
 }
@@ -2745,7 +2743,7 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
       {/* Uniform Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px" : "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Command Center</h1>
+          <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Pipeline Dashboard</h1>
           <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{deals.length} deals · as of today</p>
         </div>
       </div>
@@ -2947,6 +2945,318 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
           </div>
         )}
       </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COMMAND CENTER — Cross-platform cockpit
+   ═══════════════════════════════════════════════════════════ */
+
+function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, teamEmails }) {
+  const [contactsCount, setContactsCount] = useState(0);
+  const [hotContactsCount, setHotContactsCount] = useState(0);
+  const [investorsData, setInvestorsData] = useState([]);
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [goals, setGoals] = useState(() => {
+    try { const saved = localStorage.getItem("reap_goals"); return saved ? JSON.parse(saved) : [
+      { label: "Close 15 deals", current: 0, target: 15, color: "#16a34a" },
+      { label: "Submit 50 offers", current: 0, target: 50, color: "#378ADD" },
+      { label: "Deploy $5M capital", current: 0, target: 5000000, color: "#7F77DD", isCurrency: true },
+    ]; } catch { return []; }
+  });
+  const [editingGoals, setEditingGoals] = useState(false);
+
+  const userEmail = session?.user?.email || "";
+  const emailsToShow = teamEmails && teamEmails.length > 0 ? teamEmails : [userEmail.toLowerCase()];
+
+  useEffect(() => {
+    async function fetchExtras() {
+      try {
+        const { data: contacts } = await supabase.from("contacts").select("id, temperature, user_email");
+        if (contacts) {
+          const mine = contacts.filter(c => emailsToShow.includes((c.user_email || "").toLowerCase()));
+          setContactsCount(mine.length);
+          setHotContactsCount(mine.filter(c => (c.temperature || "").toLowerCase().includes("hot")).length);
+        }
+        const { data: investors } = await supabase.from("investors").select("id, investor_name, capital_committed, pipeline_stage, next_follow_up, user_email, date_last_contact");
+        if (investors) setInvestorsData(investors.filter(inv => emailsToShow.includes((inv.user_email || "").toLowerCase())));
+        const { data: activities } = await supabase.from("deal_activities").select("*").order("created_at", { ascending: false }).limit(10);
+        if (activities) setRecentActivities(activities);
+      } catch (err) { console.error("Command center data fetch:", err); }
+    }
+    if (session) fetchExtras();
+  }, [session]);
+
+  useEffect(() => {
+    try { localStorage.setItem("reap_goals", JSON.stringify(goals)); } catch {}
+  }, [goals]);
+
+  const num = (v) => { if (!v && v !== 0) return 0; const n = parseFloat(String(v).replace(/[$,%x]/g, "").trim()); return isNaN(n) ? 0 : n; };
+  const fmtK = (v) => { const n = num(v); if (Math.abs(n) >= 1000000) return "$" + (n / 1000000).toFixed(1) + "M"; if (Math.abs(n) >= 1000) return "$" + (n / 1000).toFixed(0) + "K"; return "$" + n.toFixed(0); };
+
+  // Quarter calculation
+  const now = new Date();
+  const qStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+  const qEnd = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 + 3, 0);
+  const daysLeft = Math.max(0, Math.ceil((qEnd - now) / 86400000));
+  const qLabel = "Q" + (Math.floor(now.getMonth() / 3) + 1) + " " + now.getFullYear();
+  const isThisQ = (d) => { const dt = new Date(d.date); return dt >= qStart && dt <= now; };
+
+  const qDeals = deals.filter(isThisQ);
+  const STATUS_ORDER = ["New", "Review", "Underwriting", "Offer", "Under Contract", "Closed"];
+  const statusIdx = (s) => { const i = STATUS_ORDER.indexOf(s); return i >= 0 ? i : -1; };
+
+  // Funnel counts
+  const added = qDeals.length;
+  const underwritten = qDeals.filter(d => statusIdx(d.status) >= 2).length;
+  const offersMade = qDeals.filter(d => statusIdx(d.status) >= 3).length;
+  const accepted = qDeals.filter(d => statusIdx(d.status) >= 4).length;
+  const inEscrow = qDeals.filter(d => d.status === "Under Contract").length;
+  const closings = qDeals.filter(d => d.status === "Closed").length;
+  const closeRate = added > 0 ? ((closings / added) * 100).toFixed(1) : "0";
+
+  // Update goal actuals
+  useEffect(() => {
+    setGoals(prev => prev.map(g => {
+      if (g.label.toLowerCase().includes("close")) return { ...g, current: closings };
+      if (g.label.toLowerCase().includes("offer")) return { ...g, current: offersMade };
+      return g;
+    }));
+  }, [closings, offersMade]);
+
+  // Top deals by REAP score
+  const scoredDeals = deals.filter(d => num(d.reapScore) > 0).sort((a, b) => num(b.reapScore) - num(a.reapScore)).slice(0, 5);
+
+  // Needs attention
+  const attentionItems = [];
+  const daysSince = (dateStr) => { if (!dateStr) return 999; return Math.floor((now - new Date(dateStr)) / 86400000); };
+  deals.filter(d => !["Dead", "Closed"].includes(d.status)).forEach(d => {
+    const days = daysSince(d.date);
+    if (days > 14 && ["Underwriting", "Review"].includes(d.status)) {
+      attentionItems.push({ text: (d.address || "Deal") + " — stuck " + days + "d in " + d.status, type: "deal", severity: days > 21 ? "high" : "med", deal: d });
+    }
+  });
+  investorsData.forEach(inv => {
+    if (inv.next_follow_up && new Date(inv.next_follow_up) < now) {
+      const overdue = daysSince(inv.next_follow_up);
+      attentionItems.push({ text: (inv.investor_name || "Investor") + " — follow-up overdue " + overdue + "d", type: "investor", severity: overdue > 7 ? "high" : "med" });
+    }
+  });
+  const unscored = deals.filter(d => d.status === "New" && !num(d.reapScore)).length;
+  if (unscored > 0) attentionItems.push({ text: unscored + " new deal" + (unscored > 1 ? "s" : "") + " unscored — need underwriting", type: "action", severity: "med" });
+  attentionItems.sort((a, b) => (a.severity === "high" ? 0 : 1) - (b.severity === "high" ? 0 : 1));
+
+  // Pipeline velocity (avg days in status)
+  const velocityData = STATUS_ORDER.map(s => {
+    const inStatus = deals.filter(d => d.status === s);
+    if (inStatus.length === 0) return { status: s, days: 0 };
+    const avgDays = Math.round(inStatus.reduce((sum, d) => sum + daysSince(d.date), 0) / inStatus.length);
+    return { status: s, days: avgDays };
+  });
+  const maxVelocity = Math.max(...velocityData.map(v => v.days), 1);
+  const velocityColors = ["#85B7EB", "#7F77DD", "#D85A30", "#EF9F27", "#378ADD", "#1D9E75"];
+
+  // Format activity time
+  const timeAgo = (dateStr) => {
+    if (!dateStr) return "";
+    const mins = Math.floor((now - new Date(dateStr)) / 60000);
+    if (mins < 60) return mins + "m ago";
+    if (mins < 1440) return Math.floor(mins / 60) + "h ago";
+    const d = Math.floor(mins / 1440);
+    return d === 1 ? "yesterday" : d + "d ago";
+  };
+
+  const scoreColor = (s) => {
+    const n = num(s);
+    if (n >= 70) return { bg: "#E1F5EE", color: "#0F6E56" };
+    if (n >= 40) return { bg: "#FAEEDA", color: "#854F0B" };
+    return { bg: "#FCEBEB", color: "#A32D2D" };
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  const funnelData = [
+    { n: added, label: "Added", color: "#85B7EB" },
+    { n: underwritten, label: "Underwritten", color: "#7F77DD" },
+    { n: offersMade, label: "Offers made", color: "#EF9F27" },
+    { n: accepted, label: "Accepted", color: "#D85A30" },
+    { n: inEscrow, label: "In escrow", color: "#378ADD" },
+    { n: closings, label: "Closings", color: "#16a34a" },
+  ];
+
+  const gridCols = isMobile ? "repeat(3, minmax(0, 1fr))" : "repeat(6, minmax(0, 1fr))";
+  const midGrid = isMobile ? "1fr" : "1fr 1fr";
+  const velGrid = isMobile ? "repeat(3, minmax(0, 1fr))" : "repeat(6, minmax(0, 1fr))";
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ padding: isMobile ? "16px 12px 100px" : "24px 32px 40px", maxWidth: 1100, margin: "0 auto" }}>
+
+      {/* Header */}
+      <div style={{ marginBottom: isMobile ? 16 : 20 }}>
+        <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Command Center</h1>
+        <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", margin: "3px 0 0" }}>{qLabel} · {daysLeft} days remaining</p>
+      </div>
+
+      {/* Funnel Numbers */}
+      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: isMobile ? 8 : 12, marginBottom: isMobile ? 4 : 8 }}>
+        {funnelData.map((f, i) => (
+          <div key={f.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? "12px 8px" : "16px", textAlign: "center" }}>
+            <p style={{ fontSize: isMobile ? 24 : 32, fontWeight: 700, margin: 0, color: i === funnelData.length - 1 ? "#16a34a" : "#0f172a", fontFamily: "'DM Mono', monospace" }}>{f.n}</p>
+            <p style={{ fontSize: isMobile ? 9 : 11, color: "#94a3b8", margin: "4px 0 0", textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 600 }}>{f.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Funnel Bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: isMobile ? 16 : 20, padding: "0 4px" }}>
+        <div style={{ flex: 1, display: "flex", height: 4, borderRadius: 2, overflow: "hidden" }}>
+          {funnelData.map((f, i) => (
+            <div key={f.label} style={{ flex: Math.max(f.n, 1), height: "100%", background: f.color }} />
+          ))}
+        </div>
+        <span style={{ fontSize: 11, color: "#94a3b8", flexShrink: 0 }}>{closeRate}% close rate</span>
+      </div>
+
+      {/* Goals + Top Deals */}
+      <div style={{ display: "grid", gridTemplateColumns: midGrid, gap: isMobile ? 12 : 16, marginBottom: isMobile ? 12 : 20 }}>
+
+        {/* Quarterly Goals */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px 14px" : "18px 22px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, margin: 0, color: "#0f172a" }}>Quarterly goals</p>
+            <button onClick={() => setEditingGoals(!editingGoals)} style={{ fontSize: 11, color: "#16a34a", background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{editingGoals ? "Done" : "Edit"}</button>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {goals.map((g, i) => {
+              const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
+              const weeksLeft = Math.max(1, Math.ceil(daysLeft / 7));
+              const remaining = Math.max(0, g.target - g.current);
+              const perWeek = (remaining / weeksLeft).toFixed(1);
+              return (
+                <div key={i}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    {editingGoals ? (
+                      <input value={g.label} onChange={e => { const updated = [...goals]; updated[i].label = e.target.value; setGoals(updated); }} style={{ fontSize: 13, color: "#0f172a", border: "1px solid #e2e8f0", borderRadius: 6, padding: "2px 8px", fontFamily: "'DM Sans', sans-serif", outline: "none", flex: 1, marginRight: 8 }} />
+                    ) : (
+                      <span style={{ fontSize: 13, color: "#0f172a" }}>{g.label}</span>
+                    )}
+                    <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "'DM Mono', monospace", color: "#0f172a", flexShrink: 0 }}>
+                      {g.isCurrency ? fmtK(g.current) : g.current} / {g.isCurrency ? fmtK(g.target) : g.target}
+                    </span>
+                  </div>
+                  {editingGoals && (
+                    <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                      <input type="number" value={g.current} onChange={e => { const updated = [...goals]; updated[i].current = parseFloat(e.target.value) || 0; setGoals(updated); }} style={{ width: 70, fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 6, padding: "3px 6px", fontFamily: "'DM Mono', monospace" }} placeholder="Current" />
+                      <input type="number" value={g.target} onChange={e => { const updated = [...goals]; updated[i].target = parseFloat(e.target.value) || 0; setGoals(updated); }} style={{ width: 70, fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 6, padding: "3px 6px", fontFamily: "'DM Mono', monospace" }} placeholder="Target" />
+                    </div>
+                  )}
+                  <div style={{ height: 8, background: "#f1f5f9", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ width: pct + "%", height: "100%", background: g.color || "#16a34a", borderRadius: 4, transition: "width 0.5s" }} />
+                  </div>
+                  <p style={{ fontSize: 11, color: pct >= 80 ? "#16a34a" : "#94a3b8", margin: "4px 0 0" }}>
+                    {pct >= 100 ? "Goal reached!" : pct >= 80 ? "Almost there — " + remaining + " to go" : "Need " + perWeek + "/wk to hit target"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Top Deals by REAP Score */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px 14px" : "18px 22px" }}>
+          <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 14px", color: "#0f172a" }}>Top deals by REAP score</p>
+          {scoredDeals.length === 0 ? (
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No scored deals yet</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {scoredDeals.map((d, i) => {
+                const sc = scoreColor(d.reapScore);
+                return (
+                  <div key={i} onClick={() => onSelectDeal(d)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < scoredDeals.length - 1 ? "1px solid #f1f5f9" : "none", cursor: "pointer" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: i < 3 ? "#854F0B" : "#94a3b8", width: 20, textAlign: "center" }}>{i + 1}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.address}</p>
+                      <p style={{ fontSize: 11, color: "#94a3b8", margin: "1px 0 0" }}>{d.type || "—"} · {d.status}</p>
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "'DM Mono', monospace", background: sc.bg, color: sc.color, padding: "3px 10px", borderRadius: 8 }}>{Math.round(num(d.reapScore))}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Needs Attention + Recent Activity */}
+      <div style={{ display: "grid", gridTemplateColumns: midGrid, gap: isMobile ? 12 : 16, marginBottom: isMobile ? 12 : 20 }}>
+
+        {/* Needs Attention */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px 14px" : "18px 22px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, margin: 0, color: "#0f172a" }}>Needs attention</p>
+            {attentionItems.length > 0 && <span style={{ fontSize: 11, background: "#FEF2F2", color: "#991B1B", padding: "3px 10px", borderRadius: 8, fontWeight: 600 }}>{attentionItems.length}</span>}
+          </div>
+          {attentionItems.length === 0 ? (
+            <p style={{ fontSize: 13, color: "#16a34a", margin: 0 }}>All clear — nothing needs your attention</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {attentionItems.slice(0, 5).map((item, i) => (
+                <div key={i} onClick={() => item.deal ? onSelectDeal(item.deal) : null} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < Math.min(attentionItems.length, 5) - 1 ? "1px solid #f1f5f9" : "none", cursor: item.deal ? "pointer" : "default" }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: item.severity === "high" ? "#dc2626" : "#f59e0b", flexShrink: 0 }} />
+                  <p style={{ fontSize: 13, margin: 0, color: "#0f172a", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent Activity */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px 14px" : "18px 22px" }}>
+          <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 14px", color: "#0f172a" }}>Recent activity</p>
+          {recentActivities.length === 0 ? (
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No recent activity</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {recentActivities.slice(0, 5).map((a, i) => {
+                const typeColors = { "Status Change": "#0891b2", "Note": "#3b82f6", "Call": "#16a34a", "Email": "#7c3aed", "Meeting": "#d97706", "Offer Sent": "#dc2626", "Document Added": "#64748b", "Site Visit": "#f59e0b" };
+                return (
+                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: i < Math.min(recentActivities.length, 5) - 1 ? "1px solid #f1f5f9" : "none" }}>
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: typeColors[a.activity_type] || "#94a3b8", flexShrink: 0, marginTop: 5 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.description || a.activity_type}</p>
+                      <p style={{ fontSize: 11, color: "#94a3b8", margin: "1px 0 0" }}>{a.user_email ? a.user_email.split("@")[0] : ""} · {timeAgo(a.created_at)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Pipeline Velocity */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px 14px" : "18px 22px" }}>
+        <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 14px", color: "#0f172a" }}>Pipeline velocity</p>
+        <div style={{ display: "grid", gridTemplateColumns: velGrid, gap: isMobile ? 8 : 12 }}>
+          {velocityData.map((v, i) => {
+            const pct = maxVelocity > 0 ? Math.max((v.days / maxVelocity) * 100, 5) : 5;
+            const isBottleneck = v.days > 12;
+            return (
+              <div key={v.status} style={{ textAlign: "center" }}>
+                <div style={{ height: 60, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 6 }}>
+                  <div style={{ width: "60%", maxWidth: 40, height: pct + "%", background: isBottleneck ? "#D85A30" : velocityColors[i], borderRadius: "3px 3px 0 0", transition: "height 0.5s" }} />
+                </div>
+                <p style={{ fontSize: 14, fontWeight: 600, fontFamily: "'DM Mono', monospace", margin: 0, color: isBottleneck ? "#D85A30" : "#0f172a" }}>{v.days}d</p>
+                <p style={{ fontSize: isMobile ? 9 : 11, color: isBottleneck ? "#993C1D" : "#94a3b8", margin: "2px 0 0", fontWeight: 600 }}>{v.status === "Under Contract" ? "Escrow" : v.status}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       </div>
     </div>
   );
@@ -7201,7 +7511,7 @@ export default function ReapApp() {
             showProfile ? (
               <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
             ) : activeNav === "command" ? (
-              <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
+              <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                 <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={setContactsTab} />
@@ -7226,33 +7536,22 @@ export default function ReapApp() {
               </div>
             ) : activeNav === "realestate" ? (
             <>
-              {!selectedDeal && <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }]} active={realEstateTab} onChange={setRealEstateTab} title="Real Estate" />}
-              {realEstateTab === "dashboard" && !selectedDeal ? (
-                <div style={{ flex: 1, overflow: "auto" }}><DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} /></div>
-              ) : realEstateTab === "portfolios" && !selectedDeal ? (
-                <div style={{ flex: 1, overflow: "auto" }}><PortfolioView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setRealEstateTab("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} /></div>
+              {selectedDeal ? (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                  <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} />
+                </div>
               ) : (
-              <>
-                <div style={{
-                  position: "absolute", inset: 0, paddingBottom: 70,
-                  top: selectedDeal ? 0 : 90,
-                  transform: selectedDeal ? "translateX(-30%)" : "translateX(0)",
-                  opacity: selectedDeal ? 0 : 1,
-                  transition: "all 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
-                  pointerEvents: selectedDeal ? "none" : "auto",
-                  display: "flex", flexDirection: "column",
-                }}>
-                  <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} />
+                <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }]} active={realEstateTab} onChange={setRealEstateTab} title="Real Estate" />
+                  <div style={{ flex: 1, overflow: "auto" }}>
+                    {realEstateTab === "dashboard"
+                      ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
+                      : realEstateTab === "portfolios"
+                      ? <PortfolioView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setRealEstateTab("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
+                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} />
+                    }
+                  </div>
                 </div>
-                <div style={{
-                  position: "absolute", inset: 0, paddingBottom: 70,
-                  transform: dealTransition && selectedDeal ? "translateX(0)" : "translateX(100%)",
-                  transition: "transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)",
-                  display: "flex", flexDirection: "column", background: "#f8fafc",
-                }}>
-                  {selectedDeal && <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} />}
-                </div>
-              </>
               )}
             </>
             ) : null
@@ -7260,7 +7559,7 @@ export default function ReapApp() {
             showProfile
               ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
               : activeNav === "command"
-              ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
+              ? <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} teamEmails={teamEmails} />
               : activeNav === "realestate" && selectedDeal
               ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} />
               : activeNav === "realestate"
