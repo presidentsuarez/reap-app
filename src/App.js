@@ -475,8 +475,8 @@ function EditDealModal({ isOpen, onClose, onSave, saving, isMobile, deal }) {
 
   const selectStyle = { ...inputStyle, appearance: "none", backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2394a3b8' fill='none' stroke-width='1.5'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" };
 
-  const Field = ({ label, k, type, placeholder, options }) => (
-    <div style={{ marginBottom: 12 }}>
+  const field = (label, k, type, placeholder, options) => (
+    <div style={{ marginBottom: 12 }} key={k}>
       <label style={labelStyle}>{label}</label>
       {options ? (
         <select style={selectStyle} value={form[k] || ""} onChange={e => set(k, e.target.value)}>
@@ -513,70 +513,36 @@ function EditDealModal({ isOpen, onClose, onSave, saving, isMobile, deal }) {
         <div style={{ padding: "16px 24px 24px" }}>
           <p style={sectionStyle}>Status & Property <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Deal Status" k="status" options={["New", "Review", "Underwriting", "Offer", "Under Contract", "Closed", "Dead", "On Hold"]} />
-            <Field label="Property Type" k="type" options={["Multifamily", "Single Family", "Mixed Use", "Office", "Retail", "Commercial", "Industrial", "Land"]} />
+            {field("Deal Status", "status", null, null, ["New", "Review", "Underwriting", "Offer", "Under Contract", "Closed", "Dead", "On Hold"])}
+            {field("Property Type", "type", null, null, ["Multifamily", "Single Family", "Mixed Use", "Office", "Retail", "Commercial", "Industrial", "Land"])}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <Field label="Sq Ft" k="sqft" type="number" />
-            <Field label="Units" k="units" type="number" />
-            <Field label="Year Built" k="yearBuilt" type="number" />
+            {field("Sq Ft", "sqft", "number")}
+            {field("Units", "units", "number")}
+            {field("Year Built", "yearBuilt", "number")}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Lot Size (Acres)" k="lotAcres" />
-            <Field label="Class" k="class" options={["", "A", "B", "C", "D"]} />
+            {field("Lot Size (Acres)", "lotAcres")}
+            {field("Class", "class", null, null, ["", "A", "B", "C", "D"])}
           </div>
 
           <p style={sectionStyle}>Acquisition <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Asking Price" k="askingPrice" placeholder="$1,200,000" />
-            <Field label="Our Offer" k="ourOffer" placeholder="$950,000" />
+            {field("Asking Price", "askingPrice", null, "$1,200,000")}
+            {field("Our Offer", "ourOffer", null, "$950,000")}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Purchase Price" k="purchasePrice" placeholder="$950,000" />
-            <Field label="Cost to Close %" k="acqCostToClose" placeholder="3" />
+            {field("Purchase Price", "purchasePrice", null, "$950,000")}
+            {field("Cost to Close %", "acqCostToClose", null, "3")}
           </div>
 
           <p style={sectionStyle}>Improvements & Exit <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <Field label="Improvement Budget" k="improvementBudget" placeholder="$100,000" />
-            <Field label="ARV (As Completed)" k="arvValue" placeholder="$2,500,000" />
-            <Field label="Hold Period (Months)" k="months" placeholder="12" />
+            {field("Improvement Budget", "improvementBudget", null, "$100,000")}
+            {field("ARV (As Completed)", "arvValue", null, "$2,500,000")}
+            {field("Hold Period (Months)", "months", null, "12")}
           </div>
-          <Field label="Disposition Cost of Sale (% of ARV)" k="dispCostOfSale" placeholder="5" />
-
-          <p style={sectionStyle}>Current Financials <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <Field label="Revenue (Annual)" k="existingRevenueAnnual" placeholder="$237,600" />
-            <Field label="Expense Ratio %" k="existingExpensePct" placeholder="40" />
-            <Field label="Vacancy %" k="existingVacancyPct" placeholder="5" />
-          </div>
-
-          <p style={sectionStyle}>Proforma Income <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <Field label="Revenue (Annual)" k="proformaRevenueAnnual" placeholder="$240,000" />
-            <Field label="Expense Ratio %" k="proformaExpensesPct" placeholder="30" />
-            <Field label="Vacancy %" k="proformaVacancy" placeholder="5" />
-          </div>
-
-          <p style={sectionStyle}>Bridge Loan <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Acquisition Financed %" k="bridgeAcqPct" placeholder="75" />
-            <Field label="Improvement Financed %" k="bridgeImprovPct" placeholder="100" />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Interest Rate %" k="bridgeInterestRate" placeholder="10" />
-            <Field label="Points %" k="bridgePoints" placeholder="2" />
-          </div>
-
-          <p style={sectionStyle}>Refinance <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="% of ARV" k="refiPctARV" placeholder="75" />
-            <Field label="Interest Rate %" k="refiInterestRate" placeholder="7" />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Points %" k="refiPoints" placeholder="2" />
-            <Field label="Term (Years)" k="refiTerm" placeholder="25" />
-          </div>
+          {field("Disposition Cost of Sale (% of ARV)", "dispCostOfSale", null, "5")}
 
           {/* Save Button */}
           <button onClick={handleSave} disabled={saving} style={{
@@ -1351,11 +1317,11 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   );
 }
 
-function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail }) {
+function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDeal }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
-  const tabs = ["overview", "financials", "ai underwriting", "ai summary", "documents", "activity"];
+  const tabs = ["overview", "financials", "refinance", "bridge loan", "income", "financing", "ai underwriting", "ai summary", "notes", "documents", "shared deal", "activity"];
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
@@ -1375,6 +1341,54 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail }) {
   const [showLogModal, setShowLogModal] = useState(false);
   const [activitySaving, setActivitySaving] = useState(false);
   const [activityForm, setActivityForm] = useState({ type: "Note", description: "", date: new Date().toISOString().split("T")[0] });
+
+  // ── Notes tab state ──
+  const [noteText, setNoteText] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  // ── Refinance tab state ──
+  const [refiForm, setRefiForm] = useState({});
+  const [refiEditing, setRefiEditing] = useState(false);
+  const [refiSaving, setRefiSaving] = useState(false);
+  useEffect(() => {
+    if (deal) setRefiForm({ refiPctARV: deal.refiPctARV || "", refiInterestRate: deal.refiInterestRate || "", refiPoints: deal.refiPoints || "", refiTerm: deal.refiTerm || "" });
+  }, [deal?.refiPctARV, deal?.refiInterestRate, deal?.refiPoints, deal?.refiTerm]);
+
+  // ── Bridge Loan tab state ──
+  const [bridgeForm, setBridgeForm] = useState({});
+  const [bridgeEditing, setBridgeEditing] = useState(false);
+  const [bridgeSaving, setBridgeSaving] = useState(false);
+  const [bridgeEnabled, setBridgeEnabled] = useState(false);
+  useEffect(() => {
+    if (deal) {
+      setBridgeForm({ bridgeAcqPct: deal.bridgeAcqPct || "", bridgeImprovPct: deal.bridgeImprovPct || "", bridgeInterestRate: deal.bridgeInterestRate || "", bridgePoints: deal.bridgePoints || "" });
+      setBridgeEnabled(!!(deal.bridgeAcqPct || deal.bridgeImprovPct || deal.bridgeInterestRate || deal.bridgePoints || deal.bridgeLoanTotal));
+    }
+  }, [deal?.bridgeAcqPct, deal?.bridgeImprovPct, deal?.bridgeInterestRate, deal?.bridgePoints]);
+
+  // ── Income tab state ──
+  const [incomeForm, setIncomeForm] = useState({});
+  const [incomeEditing, setIncomeEditing] = useState(false);
+  const [incomeSaving, setIncomeSaving] = useState(false);
+  useEffect(() => {
+    if (deal) setIncomeForm({
+      existingRevenueAnnual: deal.existingRevenueAnnual || "", existingExpensePct: deal.existingExpensePct || "", existingVacancyPct: deal.existingVacancyPct || "",
+      proformaRevenueAnnual: deal.proformaRevenueAnnual || "", proformaExpensesPct: deal.proformaExpensesPct || "", proformaVacancy: deal.proformaVacancy || "",
+      annualTaxes: deal.annualTaxes || "", insuranceCost: deal.insuranceCost || "",
+    });
+  }, [deal?.existingRevenueAnnual, deal?.proformaRevenueAnnual]);
+
+  // ── Shared Deal tab state ──
+  const [sharedUsers, setSharedUsers] = useState([]);
+  const [sharedLoading, setSharedLoading] = useState(false);
+  const [shareEmail, setShareEmail] = useState("");
+  const [shareRole, setShareRole] = useState("viewer");
+  const [shareSaving, setShareSaving] = useState(false);
+
+  // ── Document link state ──
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [linkForm, setLinkForm] = useState({ url: "", title: "", type: "website" });
+  const [linkSaving, setLinkSaving] = useState(false);
 
   // ── Fetch documents ──
   const fetchDocuments = useCallback(async () => {
@@ -1417,7 +1431,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail }) {
   // Load docs/activities when tab switches
   useEffect(() => {
     if (activeTab === "documents" && documents.length === 0 && !docsLoading) fetchDocuments();
-    if (activeTab === "activity" && activities.length === 0 && !activitiesLoading) fetchActivities();
+    if ((activeTab === "activity" || activeTab === "notes") && activities.length === 0 && !activitiesLoading) fetchActivities();
   }, [activeTab, deal?._id]);
 
   // ── Upload document ──
@@ -1518,7 +1532,27 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail }) {
     }
   };
 
-  // ── File type helpers ──
+  // ── Save note (writes to deal_activities as type "Note") ──
+  const handleSaveNote = async () => {
+    if (!noteText.trim() || !deal?._id) return;
+    setNoteSaving(true);
+    try {
+      const { error } = await supabase.from("deal_activities").insert({
+        deal_id: deal._id,
+        user_email: userEmail,
+        activity_type: "Note",
+        description: noteText.trim(),
+        activity_date: new Date().toISOString(),
+      });
+      if (error) throw error;
+      setNoteText("");
+      fetchActivities();
+    } catch (err) {
+      alert("Error saving note: " + err.message);
+    } finally {
+      setNoteSaving(false);
+    }
+  };
   const getDocIcon = (filename) => {
     const ext = (filename || "").split(".").pop().toLowerCase();
     if (ext === "pdf") return { label: "PDF", color: "#dc2626" };
@@ -1578,6 +1612,134 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail }) {
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  // ── Save refinance fields inline ──
+  const handleSaveRefi = async () => {
+    if (!deal?._id) return;
+    setRefiSaving(true);
+    try {
+      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
+      const { error } = await supabase.from("deals").update({
+        refi_pct_arv: parseFloat(clean(refiForm.refiPctARV)) || null,
+        refi_interest_rate: parseFloat(clean(refiForm.refiInterestRate)) || null,
+        refi_points_pct: parseFloat(clean(refiForm.refiPoints)) || null,
+        refi_term_years: parseInt(clean(refiForm.refiTerm)) || null,
+      }).eq("id", deal._id);
+      if (error) throw error;
+      setRefiEditing(false);
+      if (onUpdateDeal) onUpdateDeal();
+    } catch (err) { alert("Error saving refinance: " + err.message); }
+    finally { setRefiSaving(false); }
+  };
+
+  // ── Save bridge loan fields inline ──
+  const handleSaveBridge = async () => {
+    if (!deal?._id) return;
+    setBridgeSaving(true);
+    try {
+      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
+      const { error } = await supabase.from("deals").update({
+        bridge_acq_financed_pct: bridgeEnabled ? (parseFloat(clean(bridgeForm.bridgeAcqPct)) || null) : null,
+        bridge_improv_financed_pct: bridgeEnabled ? (parseFloat(clean(bridgeForm.bridgeImprovPct)) || null) : null,
+        bridge_interest_rate: bridgeEnabled ? (parseFloat(clean(bridgeForm.bridgeInterestRate)) || null) : null,
+        bridge_points_pct: bridgeEnabled ? (parseFloat(clean(bridgeForm.bridgePoints)) || null) : null,
+      }).eq("id", deal._id);
+      if (error) throw error;
+      setBridgeEditing(false);
+      if (onUpdateDeal) onUpdateDeal();
+    } catch (err) { alert("Error saving bridge loan: " + err.message); }
+    finally { setBridgeSaving(false); }
+  };
+
+  // ── Save income fields inline ──
+  const handleSaveIncome = async () => {
+    if (!deal?._id) return;
+    setIncomeSaving(true);
+    try {
+      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
+      const { error } = await supabase.from("deals").update({
+        existing_revenue_annual: parseFloat(clean(incomeForm.existingRevenueAnnual)) || null,
+        existing_expense_pct: parseFloat(clean(incomeForm.existingExpensePct)) || null,
+        proforma_revenue_annual: parseFloat(clean(incomeForm.proformaRevenueAnnual)) || null,
+        proforma_expenses_pct: parseFloat(clean(incomeForm.proformaExpensesPct)) || null,
+        proforma_vacancy_pct: parseFloat(clean(incomeForm.proformaVacancy)) || null,
+        annual_taxes: parseFloat(clean(incomeForm.annualTaxes)) || null,
+        insurance_cost_annual: parseFloat(clean(incomeForm.insuranceCost)) || null,
+      }).eq("id", deal._id);
+      if (error) throw error;
+      setIncomeEditing(false);
+      if (onUpdateDeal) onUpdateDeal();
+    } catch (err) { alert("Error saving income: " + err.message); }
+    finally { setIncomeSaving(false); }
+  };
+
+  // ── Fetch shared users ──
+  const fetchSharedUsers = useCallback(async () => {
+    if (!deal?._id) return;
+    setSharedLoading(true);
+    try {
+      const { data, error } = await supabase.from("deal_shares").select("*").eq("deal_id", deal._id).order("created_at", { ascending: false });
+      if (error) throw error;
+      setSharedUsers(data || []);
+    } catch (err) { console.error("Error fetching shared users:", err); }
+    finally { setSharedLoading(false); }
+  }, [deal?._id]);
+
+  // ── Add shared user ──
+  const handleShareDeal = async () => {
+    if (!shareEmail.trim() || !deal?._id) return;
+    setShareSaving(true);
+    try {
+      const { error } = await supabase.from("deal_shares").upsert({
+        deal_id: deal._id, shared_with_email: shareEmail.trim().toLowerCase(), role: shareRole, shared_by_email: userEmail,
+      }, { onConflict: "deal_id,shared_with_email" });
+      if (error) throw error;
+      setShareEmail(""); setShareRole("viewer");
+      fetchSharedUsers();
+    } catch (err) { alert("Error sharing deal: " + err.message); }
+    finally { setShareSaving(false); }
+  };
+
+  // ── Remove shared user ──
+  const handleRemoveShare = async (id) => {
+    if (!window.confirm("Remove this user's access?")) return;
+    try {
+      await supabase.from("deal_shares").delete().eq("id", id);
+      setSharedUsers(prev => prev.filter(s => s.id !== id));
+    } catch (err) { alert("Remove failed: " + err.message); }
+  };
+
+  // ── Update shared user role ──
+  const handleUpdateShareRole = async (id, newRole) => {
+    try {
+      await supabase.from("deal_shares").update({ role: newRole }).eq("id", id);
+      setSharedUsers(prev => prev.map(s => s.id === id ? { ...s, role: newRole } : s));
+    } catch (err) { alert("Update failed: " + err.message); }
+  };
+
+  // ── Add document link ──
+  const handleAddLink = async () => {
+    if (!linkForm.url.trim() || !deal?._id) return;
+    setLinkSaving(true);
+    try {
+      const { error } = await supabase.from("deal_documents").insert({
+        deal_id: deal._id, user_email: userEmail,
+        filename: linkForm.title.trim() || linkForm.url.trim(),
+        file_size: null, mime_type: "link/" + linkForm.type,
+        storage_path: linkForm.url.trim(), is_link: true,
+      });
+      if (error) throw error;
+      await supabase.from("deal_activities").insert({ deal_id: deal._id, user_email: userEmail, activity_type: "Document Added", description: `Added link "${linkForm.title || linkForm.url}"`, activity_date: new Date().toISOString() });
+      setLinkForm({ url: "", title: "", type: "website" }); setShowLinkForm(false);
+      fetchDocuments();
+    } catch (err) { alert("Error adding link: " + err.message); }
+    finally { setLinkSaving(false); }
+  };
+
+  // Load shared users when tab is selected
+  useEffect(() => {
+    if (activeTab === "shared deal" && sharedUsers.length === 0 && !sharedLoading) fetchSharedUsers();
+  }, [activeTab, deal?._id]);
 
   const handleScroll = useCallback(() => {
     if (scrollRef.current) setScrolled(scrollRef.current.scrollTop > 60);
@@ -1706,6 +1868,259 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail }) {
         {activeTab === "financials" && (
           <FinancialsTab deal={deal} isMobile={isMobile} />
         )}
+
+        {/* ── REFINANCE TAB ── */}
+        {activeTab === "refinance" && (() => {
+          const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
+          const inpStyle = { width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" };
+          const lblStyle = { display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" };
+          // Auto-calc refinance metrics
+          const pctARV = parseFloat(String(refiForm.refiPctARV).replace(/[%,$]/g, "")) || 0;
+          const arvVal = parseFloat(String(deal.arv).replace(/[$,]/g, "")) || 0;
+          const refiRate = parseFloat(String(refiForm.refiInterestRate).replace(/[%,$]/g, "")) || 0;
+          const refiTermYrs = parseInt(String(refiForm.refiTerm).replace(/[,]/g, "")) || 0;
+          const refiLoanAmt = arvVal * (pctARV / 100);
+          const monthlyRate = refiRate / 100 / 12;
+          const totalPayments = refiTermYrs * 12;
+          const refiMonthlyPayment = monthlyRate > 0 && totalPayments > 0 ? refiLoanAmt * (monthlyRate * Math.pow(1 + monthlyRate, totalPayments)) / (Math.pow(1 + monthlyRate, totalPayments) - 1) : 0;
+          const refiAnnualDebtService = refiMonthlyPayment * 12;
+          const noiAnnual = parseFloat(String(deal.noiAnnual).replace(/[$,]/g, "")) || 0;
+          const refiCashFlow = noiAnnual - refiAnnualDebtService;
+          const refiDSCR = refiAnnualDebtService > 0 ? (noiAnnual / refiAnnualDebtService).toFixed(2) : "—";
+          return (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                  Refinance Details <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                </h2>
+                {!refiEditing ? (
+                  <button onClick={() => setRefiEditing(true)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    Edit
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setRefiEditing(false)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                    <button onClick={handleSaveRefi} disabled={refiSaving} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>{refiSaving ? "Saving..." : "Save"}</button>
+                  </div>
+                )}
+              </div>
+              {refiEditing ? (
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 14 }}>
+                    <div><label style={lblStyle}>% of ARV</label><input style={inpStyle} value={refiForm.refiPctARV} onChange={e => setRefiForm(f => ({...f, refiPctARV: e.target.value}))} placeholder="75" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                    <div><label style={lblStyle}>Interest Rate %</label><input style={inpStyle} value={refiForm.refiInterestRate} onChange={e => setRefiForm(f => ({...f, refiInterestRate: e.target.value}))} placeholder="7" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                    <div><label style={lblStyle}>Points %</label><input style={inpStyle} value={refiForm.refiPoints} onChange={e => setRefiForm(f => ({...f, refiPoints: e.target.value}))} placeholder="2" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                    <div><label style={lblStyle}>Term (Years)</label><input style={inpStyle} value={refiForm.refiTerm} onChange={e => setRefiForm(f => ({...f, refiTerm: e.target.value}))} placeholder="25" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                  </div>
+                </div>
+              ) : null}
+              <div style={{ marginTop: refiEditing ? 20 : 0 }}>
+                <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                  Calculated Metrics <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                  <MetricCard label="Refi Loan Amount" value={refiLoanAmt > 0 ? fmt(refiLoanAmt) : fmt(deal.refiLoanAmount)} />
+                  <MetricCard label="% of ARV" value={fmtPct(refiForm.refiPctARV || deal.refiPctARV)} />
+                  <MetricCard label="Monthly Payment" value={refiMonthlyPayment > 0 ? fmt(refiMonthlyPayment) : "—"} />
+                  <MetricCard label="Annual Debt Service" value={refiAnnualDebtService > 0 ? fmt(refiAnnualDebtService) : "—"} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+                  <MetricCard label="Cash Flow (Refi)" value={refiCashFlow !== 0 || refiAnnualDebtService > 0 ? fmt(refiCashFlow) : fmt(deal.refiCashFlow)} sub="annual" highlight good={refiCashFlow > 0 || num(deal.refiCashFlow) > 0} warn={(refiAnnualDebtService > 0 && refiCashFlow <= 0) || (num(deal.refiCashFlow) !== null && num(deal.refiCashFlow) <= 0)} />
+                  <MetricCard label="DSCR (Refi)" value={refiDSCR} good={num(refiDSCR) >= 1.25} warn={num(refiDSCR) !== null && num(refiDSCR) < 1.0} />
+                  <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good={num(deal.cashOutRefi) > 0} warn={num(deal.cashOutRefi) !== null && num(deal.cashOutRefi) <= 0} />
+                  <MetricCard label="Equity After Refi" value={fmt(deal.equityAfterRefi)} />
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── BRIDGE LOAN TAB ── */}
+        {activeTab === "bridge loan" && (() => {
+          const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
+          const inpStyle = { width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" };
+          const lblStyle = { display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" };
+          return (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>Bridge Loan</h2>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, color: bridgeEnabled ? "#16a34a" : "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                    <div onClick={() => { setBridgeEnabled(!bridgeEnabled); if (!bridgeEditing) setBridgeEditing(true); }} style={{ width: 40, height: 22, borderRadius: 11, background: bridgeEnabled ? "#16a34a" : "#e2e8f0", position: "relative", cursor: "pointer", transition: "background 0.2s" }}>
+                      <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: bridgeEnabled ? 20 : 2, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
+                    </div>
+                    {bridgeEnabled ? "Active" : "Not Using"}
+                  </label>
+                </div>
+                {bridgeEnabled && !bridgeEditing ? (
+                  <button onClick={() => setBridgeEditing(true)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    Edit
+                  </button>
+                ) : bridgeEnabled && bridgeEditing ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setBridgeEditing(false)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                    <button onClick={handleSaveBridge} disabled={bridgeSaving} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>{bridgeSaving ? "Saving..." : "Save"}</button>
+                  </div>
+                ) : null}
+              </div>
+              {!bridgeEnabled ? (
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "48px 20px", textAlign: "center" }}>
+                  <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(100,116,139,0.06)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>
+                  </div>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Bridge Loan Not Active</p>
+                  <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Toggle the switch above to enable bridge loan tracking for this deal.</p>
+                </div>
+              ) : (
+                <>
+                  {bridgeEditing && (
+                    <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px", marginBottom: 20 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 14 }}>
+                        <div><label style={lblStyle}>Acquisition Financed %</label><input style={inpStyle} value={bridgeForm.bridgeAcqPct} onChange={e => setBridgeForm(f => ({...f, bridgeAcqPct: e.target.value}))} placeholder="75" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                        <div><label style={lblStyle}>Improvement Financed %</label><input style={inpStyle} value={bridgeForm.bridgeImprovPct} onChange={e => setBridgeForm(f => ({...f, bridgeImprovPct: e.target.value}))} placeholder="100" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                        <div><label style={lblStyle}>Interest Rate %</label><input style={inpStyle} value={bridgeForm.bridgeInterestRate} onChange={e => setBridgeForm(f => ({...f, bridgeInterestRate: e.target.value}))} placeholder="10" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                        <div><label style={lblStyle}>Points %</label><input style={inpStyle} value={bridgeForm.bridgePoints} onChange={e => setBridgeForm(f => ({...f, bridgePoints: e.target.value}))} placeholder="2" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                    <MetricCard label="Loan Total" value={fmt(deal.bridgeLoanTotal)} />
+                    <MetricCard label="Interest Rate" value={fmtPct(deal.bridgeInterestRate)} />
+                    <MetricCard label="Interest Cost (Mo)" value={fmt(deal.bridgeInterestMonthly)} />
+                    <MetricCard label="Points" value={fmtPct(deal.bridgePoints)} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+                    <MetricCard label="LTC" value={fmtPct(deal.bridgeLTC)} warn={num(deal.bridgeLTC) > 90} />
+                    <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} good={num(deal.bridgeLTV) !== null && num(deal.bridgeLTV) <= 75} warn={num(deal.bridgeLTV) > 85} />
+                    <MetricCard label="Equity Required" value={fmt(deal.equityRequired)} />
+                    <MetricCard label="Bridge Total Cost" value={fmt(deal.bridgeTotalCost)} />
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── INCOME TAB ── */}
+        {activeTab === "income" && (() => {
+          const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
+          const inpStyle = { width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" };
+          const lblStyle = { display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" };
+          return (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                  Income & Expenses <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                </h2>
+                {!incomeEditing ? (
+                  <button onClick={() => setIncomeEditing(true)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    Edit
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setIncomeEditing(false)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                    <button onClick={handleSaveIncome} disabled={incomeSaving} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>{incomeSaving ? "Saving..." : "Save"}</button>
+                  </div>
+                )}
+              </div>
+              {incomeEditing && (
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px", marginBottom: 24 }}>
+                  <p style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>Current Financials <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 14, marginBottom: 20 }}>
+                    <div><label style={lblStyle}>Revenue (Annual)</label><input style={inpStyle} value={incomeForm.existingRevenueAnnual} onChange={e => setIncomeForm(f => ({...f, existingRevenueAnnual: e.target.value}))} placeholder="$237,600" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                    <div><label style={lblStyle}>Expense Ratio %</label><input style={inpStyle} value={incomeForm.existingExpensePct} onChange={e => setIncomeForm(f => ({...f, existingExpensePct: e.target.value}))} placeholder="40" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                    <div><label style={lblStyle}>Annual Taxes</label><input style={inpStyle} value={incomeForm.annualTaxes} onChange={e => setIncomeForm(f => ({...f, annualTaxes: e.target.value}))} placeholder="$12,000" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr", gap: 14, marginBottom: 20 }}>
+                    <div><label style={lblStyle}>Insurance (Annual)</label><input style={inpStyle} value={incomeForm.insuranceCost} onChange={e => setIncomeForm(f => ({...f, insuranceCost: e.target.value}))} placeholder="$8,000" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                  </div>
+                  <p style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>Proforma Income <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 14 }}>
+                    <div><label style={lblStyle}>Revenue (Annual)</label><input style={inpStyle} value={incomeForm.proformaRevenueAnnual} onChange={e => setIncomeForm(f => ({...f, proformaRevenueAnnual: e.target.value}))} placeholder="$240,000" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                    <div><label style={lblStyle}>Expense Ratio %</label><input style={inpStyle} value={incomeForm.proformaExpensesPct} onChange={e => setIncomeForm(f => ({...f, proformaExpensesPct: e.target.value}))} placeholder="30" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                    <div><label style={lblStyle}>Vacancy %</label><input style={inpStyle} value={incomeForm.proformaVacancy} onChange={e => setIncomeForm(f => ({...f, proformaVacancy: e.target.value}))} placeholder="5" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                  </div>
+                </div>
+              )}
+              {/* Display metrics */}
+              <section style={{ marginBottom: 24 }}>
+                <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Current Financials <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                  <MetricCard label="Revenue (Annual)" value={fmt(deal.existingRevenueAnnual)} />
+                  <MetricCard label="Revenue (Monthly)" value={fmt(deal.existingRevenueMonthly)} />
+                  <MetricCard label="Expense Ratio" value={fmtPct(deal.existingExpensePct)} warn={num(deal.existingExpensePct) > 60} good={num(deal.existingExpensePct) !== null && num(deal.existingExpensePct) <= 45} />
+                  <MetricCard label="Current NOI" value={fmt(deal.existingNOI)} highlight good={num(deal.existingNOI) > 0} warn={num(deal.existingNOI) !== null && num(deal.existingNOI) <= 0} />
+                </div>
+              </section>
+              <section>
+                <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Proforma Income <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                  <MetricCard label="Revenue (Annual)" value={fmt(deal.proformaRevenueAnnual)} highlight />
+                  <MetricCard label="Revenue (Monthly)" value={fmt(deal.proformaRevenueMonthly)} />
+                  <MetricCard label="Vacancy" value={fmtPct(deal.proformaVacancy)} warn={num(deal.proformaVacancy) > 10} />
+                  <MetricCard label="Proforma NOI" value={fmt(deal.noiAnnual)} highlight good={num(deal.noiAnnual) > 0} warn={num(deal.noiAnnual) !== null && num(deal.noiAnnual) <= 0} />
+                </div>
+              </section>
+            </div>
+          );
+        })()}
+
+        {/* ── FINANCING TAB (read-only summary) ── */}
+        {activeTab === "financing" && (() => {
+          const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
+          return (
+            <div>
+              <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 20px", display: "flex", alignItems: "center", gap: 8 }}>
+                Financing Summary <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              </h2>
+              {/* Bridge Loan Summary */}
+              <section style={{ marginBottom: 28 }}>
+                <h3 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={2}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>
+                  Bridge Loan
+                  {(deal.bridgeLoanTotal && num(deal.bridgeLoanTotal) > 0) ? <span style={{ fontSize: 10, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>Active</span> : <span style={{ fontSize: 10, background: "#f1f5f9", color: "#94a3b8", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>N/A</span>}
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                  <MetricCard label="Loan Total" value={fmt(deal.bridgeLoanTotal)} />
+                  <MetricCard label="Interest Rate" value={fmtPct(deal.bridgeInterestRate)} />
+                  <MetricCard label="Monthly Interest" value={fmt(deal.bridgeInterestMonthly)} />
+                  <MetricCard label="Total Cost" value={fmt(deal.bridgeTotalCost)} />
+                </div>
+              </section>
+              {/* Refinance Summary */}
+              <section style={{ marginBottom: 28 }}>
+                <h3 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth={2}><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  Refinance
+                  {(deal.refiLoanAmount && num(deal.refiLoanAmount) > 0) ? <span style={{ fontSize: 10, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>Active</span> : <span style={{ fontSize: 10, background: "#f1f5f9", color: "#94a3b8", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>N/A</span>}
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                  <MetricCard label="Refi Loan Amount" value={fmt(deal.refiLoanAmount)} />
+                  <MetricCard label="Interest Rate" value={fmtPct(deal.refiInterestRate)} />
+                  <MetricCard label="Cash Flow (Refi)" value={fmt(deal.refiCashFlow)} sub="annual" highlight good={num(deal.refiCashFlow) > 0} warn={num(deal.refiCashFlow) !== null && num(deal.refiCashFlow) <= 0} />
+                  <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good={num(deal.cashOutRefi) > 0} />
+                </div>
+              </section>
+              {/* Key Ratios */}
+              <section>
+                <h3 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                  Key Ratios
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                  <MetricCard label="LTC" value={fmtPct(deal.bridgeLTC)} warn={num(deal.bridgeLTC) > 90} />
+                  <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} good={num(deal.bridgeLTV) !== null && num(deal.bridgeLTV) <= 75} warn={num(deal.bridgeLTV) > 85} />
+                  <MetricCard label="DSCR" value={deal.dscr || "—"} good={num(deal.dscr) >= 1.25} warn={num(deal.dscr) !== null && num(deal.dscr) < 1.0} />
+                  <MetricCard label="Equity Required" value={fmt(deal.equityRequired)} />
+                </div>
+              </section>
+            </div>
+          );
+        })()}
+
         {activeTab === "ai underwriting" && (
           <AIUnderwritingTab deal={deal} isMobile={isMobile} />
         )}
@@ -1817,40 +2232,160 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail }) {
             )}
           </div>
         )}
-        {activeTab === "documents" && (
-          <div>
-            {/* Upload zone */}
-            <div
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUploadFiles(e.dataTransfer.files); }}
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                background: dragOver ? "rgba(22,163,74,0.06)" : "#fff",
-                border: `2px dashed ${dragOver ? "#16a34a" : "#e2e8f0"}`,
-                borderRadius: 14, padding: isMobile ? "28px 20px" : "36px 40px",
-                textAlign: "center", cursor: "pointer",
-                transition: "all 0.2s", marginBottom: 20,
-              }}
-            >
-              <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={(e) => handleUploadFiles(e.target.files)} />
-              {uploading ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 32, height: 32, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                  <p style={{ fontSize: 13, fontWeight: 600, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Uploading...</p>
+        {activeTab === "notes" && (
+          <div style={{ padding: isMobile ? "16px 12px" : "24px 28px" }}>
+            {/* Note input */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px" : "18px 20px", marginBottom: 20 }}>
+              <textarea
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                placeholder="Add a note about this deal..."
+                style={{
+                  width: "100%", minHeight: 100, border: "1px solid #e2e8f0", borderRadius: 10,
+                  padding: "12px 14px", fontSize: 14, fontFamily: "'DM Sans', sans-serif",
+                  color: "#0f172a", background: "#f8fafc", outline: "none", resize: "vertical",
+                  lineHeight: 1.6, boxSizing: "border-box",
+                }}
+                onFocus={e => { e.target.style.borderColor = "#16a34a"; e.target.style.background = "#fff"; }}
+                onBlur={e => { e.target.style.borderColor = "#e2e8f0"; e.target.style.background = "#f8fafc"; }}
+              />
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+                <button
+                  onClick={handleSaveNote}
+                  disabled={!noteText.trim() || noteSaving}
+                  style={{
+                    background: noteText.trim() ? "linear-gradient(135deg, #16a34a, #15803d)" : "#e2e8f0",
+                    color: noteText.trim() ? "#fff" : "#94a3b8",
+                    border: "none", borderRadius: 8, padding: "9px 20px", fontSize: 13, fontWeight: 600,
+                    cursor: noteText.trim() ? "pointer" : "default", fontFamily: "'DM Sans', sans-serif",
+                    display: "flex", alignItems: "center", gap: 6,
+                    boxShadow: noteText.trim() ? "0 2px 10px rgba(22,163,74,0.3)" : "none",
+                    transition: "all 0.2s", opacity: noteSaving ? 0.6 : 1,
+                  }}
+                >
+                  {noteSaving ? "Saving..." : "📝 Save Note"}
+                </button>
+              </div>
+            </div>
+
+            {/* Notes list */}
+            {activitiesLoading ? (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
+                <p style={{ fontSize: 13, color: "#94a3b8" }}>Loading notes...</p>
+              </div>
+            ) : (() => {
+              const notes = activities.filter(a => a.activity_type === "Note");
+              return notes.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                  <p style={{ fontSize: 32, margin: "0 0 8px" }}>📝</p>
+                  <p style={{ fontSize: 14, color: "#94a3b8", margin: 0 }}>No notes yet — add your first note above</p>
                 </div>
               ) : (
-                <>
-                  <div style={{ width: 48, height: 48, borderRadius: 12, background: "rgba(22,163,74,0.08)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
-                    <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {notes.map((note, i) => (
+                    <div key={note.id || i} style={{
+                      background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12,
+                      padding: isMobile ? "14px" : "16px 20px",
+                      borderLeft: "3px solid #3b82f6",
+                    }}>
+                      <p style={{ fontSize: 14, color: "#0f172a", margin: 0, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{note.description}</p>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                        <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                          {note.user_email ? note.user_email.split("@")[0] : ""}
+                        </span>
+                        <span style={{ fontSize: 11, color: "#cbd5e1" }}>·</span>
+                        <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                          {note.activity_date ? new Date(note.activity_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+        {activeTab === "documents" && (
+          <div>
+            {/* Action buttons row */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUploadFiles(e.dataTransfer.files); }}
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  flex: 1, background: dragOver ? "rgba(22,163,74,0.06)" : "#fff",
+                  border: `2px dashed ${dragOver ? "#16a34a" : "#e2e8f0"}`,
+                  borderRadius: 14, padding: isMobile ? "24px 16px" : "28px 32px",
+                  textAlign: "center", cursor: "pointer", transition: "all 0.2s",
+                }}
+              >
+                <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={(e) => handleUploadFiles(e.target.files)} />
+                {uploading ? (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Uploading...</p>
                   </div>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>
-                    {dragOver ? "Drop files here" : "Upload Documents"}
-                  </p>
-                  <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Drag & drop files or click to browse. PSA, inspections, appraisals, etc.</p>
-                </>
-              )}
+                ) : (
+                  <>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(22,163,74,0.08)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
+                      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    </div>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 3px" }}>{dragOver ? "Drop files here" : "Upload File"}</p>
+                    <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Drag & drop or click to browse</p>
+                  </>
+                )}
+              </div>
+              <div
+                onClick={() => setShowLinkForm(!showLinkForm)}
+                style={{
+                  flex: 1, background: showLinkForm ? "rgba(59,130,246,0.04)" : "#fff",
+                  border: `2px dashed ${showLinkForm ? "#3b82f6" : "#e2e8f0"}`,
+                  borderRadius: 14, padding: isMobile ? "24px 16px" : "28px 32px",
+                  textAlign: "center", cursor: "pointer", transition: "all 0.2s",
+                }}
+              >
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(59,130,246,0.08)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
+                  <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth={1.5}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                </div>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 3px" }}>Add Link</p>
+                <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Reference a URL instead</p>
+              </div>
             </div>
+
+            {/* Link form */}
+            {showLinkForm && (
+              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px" : "20px 24px", marginBottom: 16 }}>
+                <p style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 14 }}>Add a Link</p>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>URL *</label>
+                    <input value={linkForm.url} onChange={e => setLinkForm(f => ({...f, url: e.target.value}))} placeholder="https://example.com/document" style={{ width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" }} onFocus={e => e.target.style.borderColor="#3b82f6"} onBlur={e => e.target.style.borderColor="#e2e8f0"} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Title</label>
+                    <input value={linkForm.title} onChange={e => setLinkForm(f => ({...f, title: e.target.value}))} placeholder="PSA Document" style={{ width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" }} onFocus={e => e.target.style.borderColor="#3b82f6"} onBlur={e => e.target.style.borderColor="#e2e8f0"} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Type</label>
+                    <select value={linkForm.type} onChange={e => setLinkForm(f => ({...f, type: e.target.value}))} style={{ width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", appearance: "none" }}>
+                      <option value="website">Website</option>
+                      <option value="file">File</option>
+                      <option value="video">Video</option>
+                      <option value="spreadsheet">Spreadsheet</option>
+                      <option value="document">Document</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button onClick={() => { setShowLinkForm(false); setLinkForm({ url: "", title: "", type: "website" }); }} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                  <button onClick={handleAddLink} disabled={!linkForm.url.trim() || linkSaving} style={{ background: linkForm.url.trim() ? "linear-gradient(135deg, #3b82f6, #2563eb)" : "#e2e8f0", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, color: linkForm.url.trim() ? "#fff" : "#94a3b8", cursor: linkForm.url.trim() ? "pointer" : "default", fontFamily: "'DM Sans', sans-serif" }}>{linkSaving ? "Adding..." : "Add Link"}</button>
+                </div>
+              </div>
+            )}
 
             {/* Upload error */}
             {uploadError && (
@@ -1872,29 +2407,41 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail }) {
                   <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>
                 </div>
                 <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>No documents yet</p>
-                <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Upload your first file to get started.</p>
+                <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Upload a file or add a link to get started.</p>
               </div>
             ) : (
               <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden" }}>
                 {documents.map((doc, i) => {
-                  const icon = getDocIcon(doc.filename);
+                  const isLink = doc.is_link || (doc.mime_type && doc.mime_type.startsWith("link/"));
+                  const linkType = isLink ? (doc.mime_type || "").replace("link/", "") : null;
+                  const icon = isLink ? { label: (linkType || "LINK").toUpperCase().slice(0, 4), color: "#3b82f6" } : getDocIcon(doc.filename);
                   return (
                     <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "12px 14px" : "14px 20px", borderBottom: i < documents.length - 1 ? "1px solid #f1f5f9" : "none", transition: "background 0.1s" }}
                       onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                     >
                       <div style={{ width: 38, height: 38, borderRadius: 8, background: icon.color + "12", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <span style={{ fontSize: 10, fontWeight: 800, color: icon.color, fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.04em" }}>{icon.label}</span>
+                        {isLink ? (
+                          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={icon.color} strokeWidth={2}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        ) : (
+                          <span style={{ fontSize: 10, fontWeight: 800, color: icon.color, fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.04em" }}>{icon.label}</span>
+                        )}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.filename}</p>
                         <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>
-                          {fmtFileSize(doc.file_size)} · {fmtDate(doc.uploaded_at)} · {fmtUserName(doc.user_email)}
+                          {isLink ? (linkType || "link") : fmtFileSize(doc.file_size)} · {fmtDate(doc.uploaded_at)} · {fmtUserName(doc.user_email)}
                         </p>
                       </div>
-                      <button onClick={() => handleDownloadDoc(doc)} title="Download" style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                      </button>
+                      {isLink ? (
+                        <button onClick={() => window.open(doc.storage_path, "_blank")} title="Open Link" style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth={2}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        </button>
+                      ) : (
+                        <button onClick={() => handleDownloadDoc(doc)} title="Download" style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        </button>
+                      )}
                       <button onClick={() => handleDeleteDoc(doc)} title="Delete" style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #fee2e2", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                       </button>
@@ -1905,6 +2452,76 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail }) {
             )}
           </div>
         )}
+
+        {/* ── SHARED DEAL TAB ── */}
+        {activeTab === "shared deal" && (
+          <div>
+            <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 20px", display: "flex", alignItems: "center", gap: 8 }}>
+              Share This Deal <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+            </h2>
+            {/* Add person form */}
+            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "20px 24px", marginBottom: 20 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px" }}>Add a person</p>
+              <div style={{ display: "flex", gap: 10, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+                <input value={shareEmail} onChange={e => setShareEmail(e.target.value)} placeholder="Email address" style={{ flex: 2, padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", minWidth: 0 }} onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} />
+                <select value={shareRole} onChange={e => setShareRole(e.target.value)} style={{ flex: 1, padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", appearance: "none", minWidth: 120 }}>
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <button onClick={handleShareDeal} disabled={!shareEmail.trim() || shareSaving} style={{ background: shareEmail.trim() ? "linear-gradient(135deg, #16a34a, #15803d)" : "#e2e8f0", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, color: shareEmail.trim() ? "#fff" : "#94a3b8", cursor: shareEmail.trim() ? "pointer" : "default", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", boxShadow: shareEmail.trim() ? "0 2px 10px rgba(22,163,74,0.3)" : "none" }}>{shareSaving ? "Adding..." : "Share"}</button>
+              </div>
+              <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {[{v:"viewer",l:"Viewer",d:"Can only view deal details"},{v:"editor",l:"Editor",d:"Can view and edit the deal"},{v:"admin",l:"Admin",d:"Full access including sharing"}].map(r => (
+                  <span key={r.v} style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                    <strong style={{ color: "#64748b" }}>{r.l}:</strong> {r.d}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {/* Shared users list */}
+            {sharedLoading ? (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+              </div>
+            ) : sharedUsers.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 20px", background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0" }}>
+                <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(22,163,74,0.06)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </div>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Not shared with anyone</p>
+                <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Add people above to share this deal.</p>
+              </div>
+            ) : (
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+                {sharedUsers.map((su, i) => {
+                  const roleColors = { viewer: "#3b82f6", editor: "#d97706", admin: "#7c3aed" };
+                  const roleColor = roleColors[su.role] || "#94a3b8";
+                  return (
+                    <div key={su.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "12px 14px" : "14px 20px", borderBottom: i < sharedUsers.length - 1 ? "1px solid #f1f5f9" : "none" }}>
+                      <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg, #3b82f6, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>{fmtUserName(su.shared_with_email).split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>{fmtUserName(su.shared_with_email)}</p>
+                        <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{su.shared_with_email}</p>
+                      </div>
+                      <select value={su.role} onChange={e => handleUpdateShareRole(su.id, e.target.value)} style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'DM Sans', sans-serif", border: "1px solid #e2e8f0", borderRadius: 6, outline: "none", background: "#fff", color: roleColor, fontWeight: 600, appearance: "none", cursor: "pointer", minWidth: 80, textAlign: "center" }}>
+                        <option value="viewer">Viewer</option>
+                        <option value="editor">Editor</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      <button onClick={() => handleRemoveShare(su.id)} title="Remove access" style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #fee2e2", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === "activity" && (
           <div>
             {/* Log Activity button */}
@@ -2959,16 +3576,18 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
   const [hotContactsCount, setHotContactsCount] = useState(0);
   const [investorsData, setInvestorsData] = useState([]);
   const [recentActivities, setRecentActivities] = useState([]);
+  const [capitalCommitted, setCapitalCommitted] = useState(0);
   const [goals, setGoals] = useState(() => {
     try { const saved = localStorage.getItem("reap_goals"); return saved ? JSON.parse(saved) : [
-      { label: "Close 15 deals", current: 0, target: 15, color: "#16a34a" },
-      { label: "Submit 50 offers", current: 0, target: 50, color: "#378ADD" },
-      { label: "Deploy $5M capital", current: 0, target: 5000000, color: "#7F77DD", isCurrency: true },
+      { label: "Close 15 deals", current: 0, target: 15, color: "#16a34a", emoji: "🏆" },
+      { label: "Submit 50 offers", current: 0, target: 50, color: "#3b82f6", emoji: "📨" },
+      { label: "Deploy $5M capital", current: 0, target: 5000000, color: "#7c3aed", emoji: "💰", isCurrency: true },
     ]; } catch { return []; }
   });
   const [editingGoals, setEditingGoals] = useState(false);
 
   const userEmail = session?.user?.email || "";
+  const firstName = (session?.user?.user_metadata?.full_name || userEmail.split("@")[0]).split(" ")[0];
   const emailsToShow = teamEmails && teamEmails.length > 0 ? teamEmails : [userEmail.toLowerCase()];
 
   useEffect(() => {
@@ -2981,8 +3600,12 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
           setHotContactsCount(mine.filter(c => (c.temperature || "").toLowerCase().includes("hot")).length);
         }
         const { data: investors } = await supabase.from("investors").select("id, investor_name, capital_committed, pipeline_stage, next_follow_up, user_email, date_last_contact");
-        if (investors) setInvestorsData(investors.filter(inv => emailsToShow.includes((inv.user_email || "").toLowerCase())));
-        const { data: activities } = await supabase.from("deal_activities").select("*").order("created_at", { ascending: false }).limit(10);
+        if (investors) {
+          const mine = investors.filter(inv => emailsToShow.includes((inv.user_email || "").toLowerCase()));
+          setInvestorsData(mine);
+          setCapitalCommitted(mine.reduce((s, inv) => s + (parseFloat(inv.capital_committed) || 0), 0));
+        }
+        const { data: activities } = await supabase.from("deal_activities").select("*").order("created_at", { ascending: false }).limit(8);
         if (activities) setRecentActivities(activities);
       } catch (err) { console.error("Command center data fetch:", err); }
     }
@@ -2996,8 +3619,9 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
   const num = (v) => { if (!v && v !== 0) return 0; const n = parseFloat(String(v).replace(/[$,%x]/g, "").trim()); return isNaN(n) ? 0 : n; };
   const fmtK = (v) => { const n = num(v); if (Math.abs(n) >= 1000000) return "$" + (n / 1000000).toFixed(1) + "M"; if (Math.abs(n) >= 1000) return "$" + (n / 1000).toFixed(0) + "K"; return "$" + n.toFixed(0); };
 
-  // Quarter calculation
   const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const qStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
   const qEnd = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 + 3, 0);
   const daysLeft = Math.max(0, Math.ceil((qEnd - now) / 86400000));
@@ -3008,7 +3632,6 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
   const STATUS_ORDER = ["New", "Review", "Underwriting", "Offer", "Under Contract", "Closed"];
   const statusIdx = (s) => { const i = STATUS_ORDER.indexOf(s); return i >= 0 ? i : -1; };
 
-  // Funnel counts
   const added = qDeals.length;
   const underwritten = qDeals.filter(d => statusIdx(d.status) >= 2).length;
   const offersMade = qDeals.filter(d => statusIdx(d.status) >= 3).length;
@@ -3017,7 +3640,8 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
   const closings = qDeals.filter(d => d.status === "Closed").length;
   const closeRate = added > 0 ? ((closings / added) * 100).toFixed(1) : "0";
 
-  // Update goal actuals
+  const totalPipelineValue = deals.reduce((s, d) => s + num(d.offer), 0);
+
   useEffect(() => {
     setGoals(prev => prev.map(g => {
       if (g.label.toLowerCase().includes("close")) return { ...g, current: closings };
@@ -3026,39 +3650,33 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
     }));
   }, [closings, offersMade]);
 
-  // Top deals by REAP score
   const scoredDeals = deals.filter(d => num(d.reapScore) > 0).sort((a, b) => num(b.reapScore) - num(a.reapScore)).slice(0, 5);
 
-  // Needs attention
   const attentionItems = [];
   const daysSince = (dateStr) => { if (!dateStr) return 999; return Math.floor((now - new Date(dateStr)) / 86400000); };
   deals.filter(d => !["Dead", "Closed"].includes(d.status)).forEach(d => {
     const days = daysSince(d.date);
     if (days > 14 && ["Underwriting", "Review"].includes(d.status)) {
-      attentionItems.push({ text: (d.address || "Deal") + " — stuck " + days + "d in " + d.status, type: "deal", severity: days > 21 ? "high" : "med", deal: d });
+      attentionItems.push({ text: (d.address || "Deal") + " — stuck " + days + "d in " + d.status, severity: days > 21 ? "high" : "med", deal: d, emoji: "⚠️" });
     }
   });
   investorsData.forEach(inv => {
     if (inv.next_follow_up && new Date(inv.next_follow_up) < now) {
       const overdue = daysSince(inv.next_follow_up);
-      attentionItems.push({ text: (inv.investor_name || "Investor") + " — follow-up overdue " + overdue + "d", type: "investor", severity: overdue > 7 ? "high" : "med" });
+      attentionItems.push({ text: (inv.investor_name || "Investor") + " — follow-up overdue " + overdue + "d", severity: overdue > 7 ? "high" : "med", emoji: "📞" });
     }
   });
   const unscored = deals.filter(d => d.status === "New" && !num(d.reapScore)).length;
-  if (unscored > 0) attentionItems.push({ text: unscored + " new deal" + (unscored > 1 ? "s" : "") + " unscored — need underwriting", type: "action", severity: "med" });
+  if (unscored > 0) attentionItems.push({ text: unscored + " new deal" + (unscored > 1 ? "s" : "") + " need underwriting", severity: "med", emoji: "📋" });
   attentionItems.sort((a, b) => (a.severity === "high" ? 0 : 1) - (b.severity === "high" ? 0 : 1));
 
-  // Pipeline velocity (avg days in status)
   const velocityData = STATUS_ORDER.map(s => {
     const inStatus = deals.filter(d => d.status === s);
     if (inStatus.length === 0) return { status: s, days: 0 };
-    const avgDays = Math.round(inStatus.reduce((sum, d) => sum + daysSince(d.date), 0) / inStatus.length);
-    return { status: s, days: avgDays };
+    return { status: s, days: Math.round(inStatus.reduce((sum, d) => sum + daysSince(d.date), 0) / inStatus.length) };
   });
   const maxVelocity = Math.max(...velocityData.map(v => v.days), 1);
-  const velocityColors = ["#85B7EB", "#7F77DD", "#D85A30", "#EF9F27", "#378ADD", "#1D9E75"];
 
-  // Format activity time
   const timeAgo = (dateStr) => {
     if (!dateStr) return "";
     const mins = Math.floor((now - new Date(dateStr)) / 60000);
@@ -3070,66 +3688,104 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
 
   const scoreColor = (s) => {
     const n = num(s);
-    if (n >= 70) return { bg: "#E1F5EE", color: "#0F6E56" };
-    if (n >= 40) return { bg: "#FAEEDA", color: "#854F0B" };
-    return { bg: "#FCEBEB", color: "#A32D2D" };
+    if (n >= 70) return { bg: "linear-gradient(135deg, #dcfce7, #bbf7d0)", color: "#15803d", glow: "rgba(22,163,74,0.15)" };
+    if (n >= 40) return { bg: "linear-gradient(135deg, #fef9c3, #fde68a)", color: "#a16207", glow: "rgba(234,179,8,0.15)" };
+    return { bg: "linear-gradient(135deg, #fecaca, #fca5a5)", color: "#991b1b", glow: "rgba(239,68,68,0.15)" };
   };
+
+  const activityEmojis = { "Status Change": "🔄", "Note": "📝", "Call": "📞", "Email": "✉️", "Meeting": "🤝", "Offer Sent": "🚀", "Document Added": "📎", "Site Visit": "🏠" };
 
   if (loading) return <LoadingSpinner />;
 
   const funnelData = [
-    { n: added, label: "Added", color: "#85B7EB" },
-    { n: underwritten, label: "Underwritten", color: "#7F77DD" },
-    { n: offersMade, label: "Offers made", color: "#EF9F27" },
-    { n: accepted, label: "Accepted", color: "#D85A30" },
-    { n: inEscrow, label: "In escrow", color: "#378ADD" },
-    { n: closings, label: "Closings", color: "#16a34a" },
+    { n: added, label: "Added", emoji: "📥", gradient: "linear-gradient(135deg, #dbeafe, #bfdbfe)", border: "#93c5fd", text: "#1e40af" },
+    { n: underwritten, label: "Underwritten", emoji: "🔍", gradient: "linear-gradient(135deg, #ede9fe, #ddd6fe)", border: "#c4b5fd", text: "#5b21b6" },
+    { n: offersMade, label: "Offers Made", emoji: "📨", gradient: "linear-gradient(135deg, #fef3c7, #fde68a)", border: "#fcd34d", text: "#92400e" },
+    { n: accepted, label: "Accepted", emoji: "🤝", gradient: "linear-gradient(135deg, #ffedd5, #fed7aa)", border: "#fdba74", text: "#9a3412" },
+    { n: inEscrow, label: "In Escrow", emoji: "🔐", gradient: "linear-gradient(135deg, #e0f2fe, #bae6fd)", border: "#7dd3fc", text: "#075985" },
+    { n: closings, label: "Closings", emoji: "🏆", gradient: "linear-gradient(135deg, #dcfce7, #bbf7d0)", border: "#86efac", text: "#166534" },
   ];
 
   const gridCols = isMobile ? "repeat(3, minmax(0, 1fr))" : "repeat(6, minmax(0, 1fr))";
   const midGrid = isMobile ? "1fr" : "1fr 1fr";
   const velGrid = isMobile ? "repeat(3, minmax(0, 1fr))" : "repeat(6, minmax(0, 1fr))";
 
+  const CardWrap = ({ children, style = {} }) => (
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: isMobile ? "16px 14px" : "20px 24px", boxShadow: "0 1px 8px rgba(0,0,0,0.04)", ...style }}>{children}</div>
+  );
+
   return (
     <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif" }}>
-      <div style={{ padding: isMobile ? "16px 12px 100px" : "24px 32px 40px", maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ padding: isMobile ? "0 0 100px" : "0 0 40px", maxWidth: 1100, margin: "0 auto" }}>
 
-      {/* Header */}
-      <div style={{ marginBottom: isMobile ? 16 : 20 }}>
-        <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Command Center</h1>
-        <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", margin: "3px 0 0" }}>{qLabel} · {daysLeft} days remaining</p>
+      {/* Hero Header */}
+      <div style={{
+        background: "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)",
+        padding: isMobile ? "24px 16px 20px" : "32px 32px 28px",
+        position: "relative", overflow: "hidden",
+      }}>
+        <div style={{ position: "absolute", top: -60, right: -60, width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(22,163,74,0.15) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: -40, left: "30%", width: 160, height: 160, borderRadius: "50%", background: "radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%)", pointerEvents: "none" }} />
+
+        <p style={{ fontSize: isMobile ? 13 : 14, color: "#94a3b8", margin: "0 0 4px", fontWeight: 500 }}>{greeting}, {firstName} 👋</p>
+        <h1 style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: "0 0 12px", letterSpacing: "-0.02em" }}>Command Center</h1>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? 12 : 20, alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{qLabel}</span>
+            <span style={{ background: "rgba(22,163,74,0.2)", color: "#4ade80", fontSize: 11, padding: "2px 10px", borderRadius: 20, fontWeight: 600 }}>{daysLeft}d left</span>
+          </div>
+          <div style={{ display: "flex", gap: isMobile ? 12 : 20 }}>
+            <span style={{ fontSize: 12, color: "#cbd5e1" }}>📊 {deals.length} deals</span>
+            <span style={{ fontSize: 12, color: "#cbd5e1" }}>💼 {fmtK(totalPipelineValue)} pipeline</span>
+            <span style={{ fontSize: 12, color: "#cbd5e1" }}>👥 {contactsCount} contacts</span>
+            {!isMobile && <span style={{ fontSize: 12, color: "#cbd5e1" }}>💰 {fmtK(capitalCommitted)} committed</span>}
+          </div>
+        </div>
       </div>
+
+      <div style={{ padding: isMobile ? "16px 12px 0" : "24px 32px 0" }}>
 
       {/* Funnel Numbers */}
       <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: isMobile ? 8 : 12, marginBottom: isMobile ? 4 : 8 }}>
         {funnelData.map((f, i) => (
-          <div key={f.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? "12px 8px" : "16px", textAlign: "center" }}>
-            <p style={{ fontSize: isMobile ? 24 : 32, fontWeight: 700, margin: 0, color: i === funnelData.length - 1 ? "#16a34a" : "#0f172a", fontFamily: "'DM Mono', monospace" }}>{f.n}</p>
-            <p style={{ fontSize: isMobile ? 9 : 11, color: "#94a3b8", margin: "4px 0 0", textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 600 }}>{f.label}</p>
+          <div key={f.label} style={{
+            background: f.gradient, border: "1px solid " + f.border, borderRadius: 14,
+            padding: isMobile ? "14px 8px" : "18px 12px", textAlign: "center",
+            transition: "transform 0.2s, box-shadow 0.2s", cursor: "default",
+          }}
+          onMouseEnter={e => { if (!isMobile) { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.1)"; } }}
+          onMouseLeave={e => { if (!isMobile) { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; } }}
+          >
+            <span style={{ fontSize: isMobile ? 16 : 20 }}>{f.emoji}</span>
+            <p style={{ fontSize: isMobile ? 26 : 34, fontWeight: 700, margin: "4px 0 0", color: f.text, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{f.n}</p>
+            <p style={{ fontSize: isMobile ? 9 : 11, color: f.text, margin: "4px 0 0", textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 700, opacity: 0.7 }}>{f.label}</p>
           </div>
         ))}
       </div>
 
       {/* Funnel Bar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: isMobile ? 16 : 20, padding: "0 4px" }}>
-        <div style={{ flex: 1, display: "flex", height: 4, borderRadius: 2, overflow: "hidden" }}>
-          {funnelData.map((f, i) => (
-            <div key={f.label} style={{ flex: Math.max(f.n, 1), height: "100%", background: f.color }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: isMobile ? 16 : 24, padding: "0 4px" }}>
+        <div style={{ flex: 1, display: "flex", height: 6, borderRadius: 3, overflow: "hidden", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.06)" }}>
+          {funnelData.map((f) => (
+            <div key={f.label} style={{ flex: Math.max(f.n, 1), height: "100%", background: f.border, transition: "flex 0.5s" }} />
           ))}
         </div>
-        <span style={{ fontSize: 11, color: "#94a3b8", flexShrink: 0 }}>{closeRate}% close rate</span>
+        <span style={{ fontSize: 12, color: "#64748b", flexShrink: 0, fontWeight: 600 }}>
+          {closeRate}% <span style={{ color: "#94a3b8", fontWeight: 400 }}>close rate</span>
+        </span>
       </div>
 
       {/* Goals + Top Deals */}
       <div style={{ display: "grid", gridTemplateColumns: midGrid, gap: isMobile ? 12 : 16, marginBottom: isMobile ? 12 : 20 }}>
 
         {/* Quarterly Goals */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px 14px" : "18px 22px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, margin: 0, color: "#0f172a" }}>Quarterly goals</p>
-            <button onClick={() => setEditingGoals(!editingGoals)} style={{ fontSize: 11, color: "#16a34a", background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{editingGoals ? "Done" : "Edit"}</button>
+        <CardWrap>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <p style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "#0f172a" }}>🎯 Quarterly Goals</p>
+            <button onClick={() => setEditingGoals(!editingGoals)} style={{ fontSize: 11, color: "#16a34a", background: editingGoals ? "rgba(22,163,74,0.08)" : "none", border: editingGoals ? "1px solid rgba(22,163,74,0.2)" : "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans', sans-serif", padding: "4px 10px" }}>{editingGoals ? "✓ Done" : "Edit"}</button>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {goals.map((g, i) => {
               const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
               const weeksLeft = Math.max(1, Math.ceil(daysLeft / 7));
@@ -3137,126 +3793,192 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
               const perWeek = (remaining / weeksLeft).toFixed(1);
               return (
                 <div key={i}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     {editingGoals ? (
-                      <input value={g.label} onChange={e => { const updated = [...goals]; updated[i].label = e.target.value; setGoals(updated); }} style={{ fontSize: 13, color: "#0f172a", border: "1px solid #e2e8f0", borderRadius: 6, padding: "2px 8px", fontFamily: "'DM Sans', sans-serif", outline: "none", flex: 1, marginRight: 8 }} />
+                      <input value={g.label} onChange={e => { const updated = [...goals]; updated[i].label = e.target.value; setGoals(updated); }} style={{ fontSize: 13, color: "#0f172a", border: "1px solid #e2e8f0", borderRadius: 8, padding: "4px 10px", fontFamily: "'DM Sans', sans-serif", outline: "none", flex: 1, marginRight: 8 }} />
                     ) : (
-                      <span style={{ fontSize: 13, color: "#0f172a" }}>{g.label}</span>
+                      <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 500 }}>{g.emoji} {g.label}</span>
                     )}
-                    <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "'DM Mono', monospace", color: "#0f172a", flexShrink: 0 }}>
-                      {g.isCurrency ? fmtK(g.current) : g.current} / {g.isCurrency ? fmtK(g.target) : g.target}
+                    <span style={{ fontSize: 14, fontWeight: 700, fontFamily: "'DM Mono', monospace", color: pct >= 100 ? "#16a34a" : "#0f172a", flexShrink: 0 }}>
+                      {g.isCurrency ? fmtK(g.current) : g.current}<span style={{ color: "#94a3b8", fontWeight: 400 }}> / {g.isCurrency ? fmtK(g.target) : g.target}</span>
                     </span>
                   </div>
                   {editingGoals && (
                     <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                      <input type="number" value={g.current} onChange={e => { const updated = [...goals]; updated[i].current = parseFloat(e.target.value) || 0; setGoals(updated); }} style={{ width: 70, fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 6, padding: "3px 6px", fontFamily: "'DM Mono', monospace" }} placeholder="Current" />
-                      <input type="number" value={g.target} onChange={e => { const updated = [...goals]; updated[i].target = parseFloat(e.target.value) || 0; setGoals(updated); }} style={{ width: 70, fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 6, padding: "3px 6px", fontFamily: "'DM Mono', monospace" }} placeholder="Target" />
+                      <input type="number" value={g.current} onChange={e => { const updated = [...goals]; updated[i].current = parseFloat(e.target.value) || 0; setGoals(updated); }} style={{ width: 80, fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 8, padding: "4px 8px", fontFamily: "'DM Mono', monospace" }} placeholder="Current" />
+                      <input type="number" value={g.target} onChange={e => { const updated = [...goals]; updated[i].target = parseFloat(e.target.value) || 0; setGoals(updated); }} style={{ width: 80, fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 8, padding: "4px 8px", fontFamily: "'DM Mono', monospace" }} placeholder="Target" />
                     </div>
                   )}
-                  <div style={{ height: 8, background: "#f1f5f9", borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ width: pct + "%", height: "100%", background: g.color || "#16a34a", borderRadius: 4, transition: "width 0.5s" }} />
+                  <div style={{ height: 10, background: "#f1f5f9", borderRadius: 5, overflow: "hidden" }}>
+                    <div style={{
+                      width: pct + "%", height: "100%", borderRadius: 5, transition: "width 0.8s cubic-bezier(0.25, 1, 0.5, 1)",
+                      background: pct >= 100 ? "linear-gradient(90deg, #16a34a, #22c55e)" : pct >= 60 ? "linear-gradient(90deg, " + g.color + ", " + g.color + "cc)" : g.color,
+                    }} />
                   </div>
-                  <p style={{ fontSize: 11, color: pct >= 80 ? "#16a34a" : "#94a3b8", margin: "4px 0 0" }}>
-                    {pct >= 100 ? "Goal reached!" : pct >= 80 ? "Almost there — " + remaining + " to go" : "Need " + perWeek + "/wk to hit target"}
+                  <p style={{ fontSize: 11, margin: "4px 0 0", fontWeight: 500, color: pct >= 100 ? "#16a34a" : pct >= 80 ? "#16a34a" : pct >= 50 ? "#d97706" : "#94a3b8" }}>
+                    {pct >= 100 ? "🎉 Goal reached!" : pct >= 80 ? "🔥 Almost there — " + remaining + " to go" : "📈 Need " + perWeek + "/wk · " + daysLeft + "d left"}
                   </p>
                 </div>
               );
             })}
           </div>
-        </div>
+        </CardWrap>
 
         {/* Top Deals by REAP Score */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px 14px" : "18px 22px" }}>
-          <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 14px", color: "#0f172a" }}>Top deals by REAP score</p>
+        <CardWrap>
+          <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: "#0f172a" }}>🏅 Top Deals by REAP Score</p>
           {scoredDeals.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No scored deals yet</p>
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No scored deals yet — underwrite a deal to see rankings</p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column" }}>
               {scoredDeals.map((d, i) => {
                 const sc = scoreColor(d.reapScore);
+                const medals = ["🥇", "🥈", "🥉"];
                 return (
-                  <div key={i} onClick={() => onSelectDeal(d)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < scoredDeals.length - 1 ? "1px solid #f1f5f9" : "none", cursor: "pointer" }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: i < 3 ? "#854F0B" : "#94a3b8", width: 20, textAlign: "center" }}>{i + 1}</span>
+                  <div key={i} onClick={() => onSelectDeal(d)} style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "10px 8px", borderRadius: 10,
+                    borderBottom: i < scoredDeals.length - 1 ? "1px solid #f1f5f9" : "none",
+                    cursor: "pointer", transition: "background 0.15s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{ fontSize: 16, width: 24, textAlign: "center" }}>{i < 3 ? medals[i] : (i + 1)}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 13, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.address}</p>
+                      <p style={{ fontSize: 13, color: "#0f172a", margin: 0, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.address}</p>
                       <p style={{ fontSize: 11, color: "#94a3b8", margin: "1px 0 0" }}>{d.type || "—"} · {d.status}</p>
                     </div>
-                    <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "'DM Mono', monospace", background: sc.bg, color: sc.color, padding: "3px 10px", borderRadius: 8 }}>{Math.round(num(d.reapScore))}</span>
+                    <span style={{
+                      fontSize: 14, fontWeight: 700, fontFamily: "'DM Mono', monospace",
+                      background: sc.bg, color: sc.color, padding: "4px 12px", borderRadius: 10,
+                      boxShadow: "0 2px 8px " + sc.glow,
+                    }}>{Math.round(num(d.reapScore))}</span>
                   </div>
                 );
               })}
             </div>
           )}
-        </div>
+        </CardWrap>
       </div>
 
       {/* Needs Attention + Recent Activity */}
       <div style={{ display: "grid", gridTemplateColumns: midGrid, gap: isMobile ? 12 : 16, marginBottom: isMobile ? 12 : 20 }}>
 
         {/* Needs Attention */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px 14px" : "18px 22px" }}>
+        <CardWrap>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, margin: 0, color: "#0f172a" }}>Needs attention</p>
-            {attentionItems.length > 0 && <span style={{ fontSize: 11, background: "#FEF2F2", color: "#991B1B", padding: "3px 10px", borderRadius: 8, fontWeight: 600 }}>{attentionItems.length}</span>}
+            <p style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "#0f172a" }}>🚨 Needs Attention</p>
+            {attentionItems.length > 0 && <span style={{
+              fontSize: 11, fontWeight: 700, color: "#fff", background: "linear-gradient(135deg, #ef4444, #dc2626)",
+              padding: "3px 10px", borderRadius: 20, minWidth: 20, textAlign: "center",
+              boxShadow: "0 2px 8px rgba(239,68,68,0.3)",
+            }}>{attentionItems.length}</span>}
           </div>
           {attentionItems.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#16a34a", margin: 0 }}>All clear — nothing needs your attention</p>
+            <div style={{ textAlign: "center", padding: "16px 0" }}>
+              <p style={{ fontSize: 28, margin: "0 0 6px" }}>✅</p>
+              <p style={{ fontSize: 13, color: "#16a34a", fontWeight: 600, margin: 0 }}>All clear — nothing needs attention</p>
+            </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column" }}>
               {attentionItems.slice(0, 5).map((item, i) => (
-                <div key={i} onClick={() => item.deal ? onSelectDeal(item.deal) : null} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < Math.min(attentionItems.length, 5) - 1 ? "1px solid #f1f5f9" : "none", cursor: item.deal ? "pointer" : "default" }}>
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: item.severity === "high" ? "#dc2626" : "#f59e0b", flexShrink: 0 }} />
+                <div key={i} onClick={() => item.deal ? onSelectDeal(item.deal) : null} style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "10px 4px",
+                  borderBottom: i < Math.min(attentionItems.length, 5) - 1 ? "1px solid #f1f5f9" : "none",
+                  cursor: item.deal ? "pointer" : "default", borderRadius: 6, transition: "background 0.15s",
+                }}
+                onMouseEnter={e => { if (item.deal) e.currentTarget.style.background = "#fef2f2"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <span style={{ fontSize: 14, flexShrink: 0 }}>{item.emoji}</span>
                   <p style={{ fontSize: 13, margin: 0, color: "#0f172a", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.text}</p>
+                  {item.deal && <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><polyline points="9 18 15 12 9 6"/></svg>}
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </CardWrap>
 
         {/* Recent Activity */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px 14px" : "18px 22px" }}>
-          <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 14px", color: "#0f172a" }}>Recent activity</p>
+        <CardWrap>
+          <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 14px", color: "#0f172a" }}>⚡ Recent Activity</p>
           {recentActivities.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No recent activity</p>
+            <div style={{ textAlign: "center", padding: "16px 0" }}>
+              <p style={{ fontSize: 28, margin: "0 0 6px" }}>📭</p>
+              <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No activity yet — start logging calls, notes, and visits</p>
+            </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column" }}>
-              {recentActivities.slice(0, 5).map((a, i) => {
-                const typeColors = { "Status Change": "#0891b2", "Note": "#3b82f6", "Call": "#16a34a", "Email": "#7c3aed", "Meeting": "#d97706", "Offer Sent": "#dc2626", "Document Added": "#64748b", "Site Visit": "#f59e0b" };
-                return (
-                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: i < Math.min(recentActivities.length, 5) - 1 ? "1px solid #f1f5f9" : "none" }}>
-                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: typeColors[a.activity_type] || "#94a3b8", flexShrink: 0, marginTop: 5 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 13, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.description || a.activity_type}</p>
-                      <p style={{ fontSize: 11, color: "#94a3b8", margin: "1px 0 0" }}>{a.user_email ? a.user_email.split("@")[0] : ""} · {timeAgo(a.created_at)}</p>
-                    </div>
+              {recentActivities.slice(0, 5).map((a, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 4px", borderBottom: i < Math.min(recentActivities.length, 5) - 1 ? "1px solid #f1f5f9" : "none" }}>
+                  <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{activityEmojis[a.activity_type] || "📌"}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.description || a.activity_type}</p>
+                    <p style={{ fontSize: 11, color: "#94a3b8", margin: "1px 0 0" }}>{a.user_email ? a.user_email.split("@")[0] : ""} · {timeAgo(a.created_at)}</p>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
-        </div>
+        </CardWrap>
       </div>
 
       {/* Pipeline Velocity */}
-      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "14px 14px" : "18px 22px" }}>
-        <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 14px", color: "#0f172a" }}>Pipeline velocity</p>
+      <CardWrap style={{ marginBottom: isMobile ? 12 : 20 }}>
+        <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: "#0f172a" }}>⏱️ Pipeline Velocity <span style={{ fontSize: 12, fontWeight: 400, color: "#94a3b8" }}>avg days per stage</span></p>
         <div style={{ display: "grid", gridTemplateColumns: velGrid, gap: isMobile ? 8 : 12 }}>
           {velocityData.map((v, i) => {
             const pct = maxVelocity > 0 ? Math.max((v.days / maxVelocity) * 100, 5) : 5;
             const isBottleneck = v.days > 12;
+            const velGradients = [
+              "linear-gradient(180deg, #93c5fd, #3b82f6)",
+              "linear-gradient(180deg, #c4b5fd, #7c3aed)",
+              "linear-gradient(180deg, #fdba74, #ea580c)",
+              "linear-gradient(180deg, #fcd34d, #d97706)",
+              "linear-gradient(180deg, #7dd3fc, #0284c7)",
+              "linear-gradient(180deg, #86efac, #16a34a)",
+            ];
+            const velEmojis = ["📥", "🔍", "📐", "📨", "🔐", "🏆"];
             return (
               <div key={v.status} style={{ textAlign: "center" }}>
-                <div style={{ height: 60, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 6 }}>
-                  <div style={{ width: "60%", maxWidth: 40, height: pct + "%", background: isBottleneck ? "#D85A30" : velocityColors[i], borderRadius: "3px 3px 0 0", transition: "height 0.5s" }} />
+                <div style={{ height: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 8 }}>
+                  <div style={{
+                    width: "55%", maxWidth: 36, height: pct + "%", minHeight: 4,
+                    background: isBottleneck ? "linear-gradient(180deg, #fca5a5, #dc2626)" : velGradients[i],
+                    borderRadius: "6px 6px 2px 2px", transition: "height 0.8s cubic-bezier(0.25, 1, 0.5, 1)",
+                    boxShadow: isBottleneck ? "0 2px 8px rgba(220,38,38,0.25)" : "0 2px 6px rgba(0,0,0,0.08)",
+                  }} />
                 </div>
-                <p style={{ fontSize: 14, fontWeight: 600, fontFamily: "'DM Mono', monospace", margin: 0, color: isBottleneck ? "#D85A30" : "#0f172a" }}>{v.days}d</p>
-                <p style={{ fontSize: isMobile ? 9 : 11, color: isBottleneck ? "#993C1D" : "#94a3b8", margin: "2px 0 0", fontWeight: 600 }}>{v.status === "Under Contract" ? "Escrow" : v.status}</p>
+                <span style={{ fontSize: 14 }}>{velEmojis[i]}</span>
+                <p style={{ fontSize: 16, fontWeight: 700, fontFamily: "'DM Mono', monospace", margin: "2px 0 0", color: isBottleneck ? "#dc2626" : "#0f172a" }}>{v.days}d</p>
+                <p style={{ fontSize: isMobile ? 9 : 11, color: isBottleneck ? "#dc2626" : "#94a3b8", margin: "2px 0 0", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.03em" }}>{v.status === "Under Contract" ? "Escrow" : v.status}</p>
               </div>
             );
           })}
         </div>
+      </CardWrap>
+
+      {/* Quick Stats Footer */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: isMobile ? 8 : 12 }}>
+        <div style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", borderRadius: 14, padding: isMobile ? "14px 12px" : "18px 20px", textAlign: "center" }}>
+          <p style={{ fontSize: 11, color: "#64748b", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>🔥 Hot Contacts</p>
+          <p style={{ fontSize: 24, fontWeight: 700, color: "#f59e0b", margin: "4px 0 0", fontFamily: "'DM Mono', monospace" }}>{hotContactsCount}</p>
+        </div>
+        <div style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", borderRadius: 14, padding: isMobile ? "14px 12px" : "18px 20px", textAlign: "center" }}>
+          <p style={{ fontSize: 11, color: "#64748b", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>💰 Capital Committed</p>
+          <p style={{ fontSize: 24, fontWeight: 700, color: "#a78bfa", margin: "4px 0 0", fontFamily: "'DM Mono', monospace" }}>{fmtK(capitalCommitted)}</p>
+        </div>
+        <div style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", borderRadius: 14, padding: isMobile ? "14px 12px" : "18px 20px", textAlign: "center" }}>
+          <p style={{ fontSize: 11, color: "#64748b", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>📊 Avg REAP Score</p>
+          <p style={{ fontSize: 24, fontWeight: 700, color: "#4ade80", margin: "4px 0 0", fontFamily: "'DM Mono', monospace" }}>{scoredDeals.length > 0 ? Math.round(scoredDeals.reduce((s, d) => s + num(d.reapScore), 0) / scoredDeals.length) : "—"}</p>
+        </div>
+        <div style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", borderRadius: 14, padding: isMobile ? "14px 12px" : "18px 20px", textAlign: "center" }}>
+          <p style={{ fontSize: 11, color: "#64748b", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>🏢 Investors</p>
+          <p style={{ fontSize: 24, fontWeight: 700, color: "#38bdf8", margin: "4px 0 0", fontFamily: "'DM Mono', monospace" }}>{investorsData.length}</p>
+        </div>
       </div>
 
+      </div>
       </div>
     </div>
   );
@@ -6576,7 +7298,7 @@ export default function ReapApp() {
   const [dealTransition, setDealTransition] = useState(false);
   const [activeNav, setActiveNav] = useState("command");
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [realEstateTab, setRealEstateTab] = useState("pipeline");
+  const [realEstateTab, setRealEstateTab] = useState("dashboard");
   const [contactsTab, setContactsTab] = useState("contacts");
   const [mlsTab, setMlsTab] = useState("feed");
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -7361,7 +8083,7 @@ export default function ReapApp() {
   };
   const allNavItems = [
     { id: "command", label: "Command Center", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-    { id: "realestate", label: "Real Estate", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
+    { id: "realestate", label: "Real Estate", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
     { id: "contacts", label: "Contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
     { id: "research", label: "Research", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
     { id: "mls", label: "MLS Feed", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
@@ -7538,7 +8260,7 @@ export default function ReapApp() {
             <>
               {selectedDeal ? (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                  <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} />
+                  <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} onUpdateDeal={fetchDeals} />
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -7561,7 +8283,7 @@ export default function ReapApp() {
               : activeNav === "command"
               ? <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} teamEmails={teamEmails} />
               : activeNav === "realestate" && selectedDeal
-              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} />
+              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} />
               : activeNav === "realestate"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                   <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }]} active={realEstateTab} onChange={setRealEstateTab} title="Real Estate" />
