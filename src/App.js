@@ -7993,15 +7993,27 @@ export default function ReapApp() {
     const email = session.user.email.toLowerCase();
     async function checkInvestorPortal() {
       try {
-        const { data, error } = await supabase.from("investors").select("*").eq("portal_email", email).limit(1).single();
-        if (!error && data) {
+        // First check if portal_email column exists by doing a safe query
+        const { data: testRow, error: testErr } = await supabase.from("investors").select("id").limit(1);
+        if (testErr) { setIsInvestorPortal(false); setInvestorProfile(null); return; }
+
+        const { data, error } = await supabase.from("investors").select("*").eq("portal_email", email).limit(1);
+        if (error) {
+          // Column likely doesn't exist yet — fail silently
+          console.log("[REAP] portal_email column not found yet, skipping investor portal check");
+          setIsInvestorPortal(false);
+          setInvestorProfile(null);
+          return;
+        }
+        if (data && data.length > 0) {
+          const inv = data[0];
           setIsInvestorPortal(true);
           setInvestorProfile({
-            id: data.id, investorName: data.investor_name || "",
-            company: data.company || "", investorType: data.investor_type || "",
-            linkedDealAddresses: data.linked_deal_addresses ? data.linked_deal_addresses.split("|||").filter(Boolean) : [],
-            capitalCommitted: data.capital_committed || 0,
-            email: data.portal_email || email,
+            id: inv.id, investorName: inv.investor_name || "",
+            company: inv.company || "", investorType: inv.investor_type || "",
+            linkedDealAddresses: inv.linked_deal_addresses ? inv.linked_deal_addresses.split("|||").filter(Boolean) : [],
+            capitalCommitted: inv.capital_committed || 0,
+            email: inv.portal_email || email,
           });
         } else {
           setIsInvestorPortal(false);
