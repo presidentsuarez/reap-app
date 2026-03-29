@@ -88,6 +88,16 @@ const fmt = (n) => {
   return `$${num}`;
 };
 
+const fmtCompact = (n) => {
+  const num = parseFloat(String(n).replace(/[$,]/g, ""));
+  if (isNaN(num)) return n || "—";
+  if (Math.abs(num) >= 1e12) return `$${(num / 1e12).toFixed(2)}T`;
+  if (Math.abs(num) >= 1e9) return `$${(num / 1e9).toFixed(2)}B`;
+  if (Math.abs(num) >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
+  if (Math.abs(num) >= 1e3) return `$${(num / 1e3).toFixed(1)}K`;
+  return `$${num}`;
+};
+
 const fmtNum = (n) => {
   const num = parseFloat(String(n).replace(/[$,]/g, ""));
   return isNaN(num) ? "—" : num.toLocaleString();
@@ -1096,14 +1106,15 @@ function DealCard({ deal, onSelect }) {
   );
 }
 
-function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal, isMobile }) {
+function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal, isMobile, initialView, onViewChange }) {
   const [search, setSearch] = useState("");
   const [hoveredRow, setHoveredRow] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
-  const [pipelineView, setPipelineView] = useState("table"); // "table" or "map"
+  const [pipelineView, setPipelineViewState] = useState(initialView || "table"); // "table" or "map"
+  const setPipelineView = (v) => { setPipelineViewState(v); if (onViewChange) onViewChange(v); };
   const [mapReady, setMapReady] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
   const [geocodingProgress, setGeocodingProgress] = useState("");
@@ -1370,7 +1381,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
                 <p style={{ fontSize: 11, color: "#94a3b8", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>
-                  {statusFilter !== null ? filtered.length + " " + statusFilters[statusFilter].label.toLowerCase() : deals.length + " deals"} · {fmt(totalVolume)} volume
+                  {statusFilter !== null ? filtered.length + " " + statusFilters[statusFilter].label.toLowerCase() : deals.length + " deals"} · {fmtCompact(totalVolume)} volume
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -1396,7 +1407,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
         <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Deal Pipeline</h1>
-            <p style={{ fontSize: 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{deals.length} deals · {fmt(totalVolume)} total volume</p>
+            <p style={{ fontSize: 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{deals.length} deals · {fmtCompact(totalVolume)} total volume</p>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <div style={{ position: "relative" }}>
@@ -6297,8 +6308,10 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
   const fmtK = (v) => {
     const n = num(v);
     if (isNaN(n)) return "—";
-    if (Math.abs(n) >= 1000000) return "$" + (n / 1000000).toFixed(1) + "M";
-    if (Math.abs(n) >= 1000) return "$" + (n / 1000).toFixed(0) + "K";
+    if (Math.abs(n) >= 1e12) return "$" + (n / 1e12).toFixed(2) + "T";
+    if (Math.abs(n) >= 1e9) return "$" + (n / 1e9).toFixed(2) + "B";
+    if (Math.abs(n) >= 1e6) return "$" + (n / 1e6).toFixed(1) + "M";
+    if (Math.abs(n) >= 1e3) return "$" + (n / 1e3).toFixed(0) + "K";
     return "$" + n.toFixed(0);
   };
   const fmtPct = (v) => { const n = num(v); return isNaN(n) ? "—" : n.toFixed(1) + "%"; };
@@ -6408,7 +6421,7 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
         <StatCard
           label="Total Pipeline Value"
-          value={totalPipelineValue >= 1000000 ? "$" + (totalPipelineValue / 1000000).toFixed(1) + "M" : "$" + (totalPipelineValue / 1000).toFixed(0) + "K"}
+          value={fmtK(totalPipelineValue)}
           sub={`${activeDeals.length} active deals`}
           accent="#16a34a"
         />
@@ -6654,7 +6667,7 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
   }, [goals]);
 
   const num = (v) => { if (!v && v !== 0) return 0; const n = parseFloat(String(v).replace(/[$,%x]/g, "").trim()); return isNaN(n) ? 0 : n; };
-  const fmtK = (v) => { const n = num(v); if (Math.abs(n) >= 1000000) return "$" + (n / 1000000).toFixed(1) + "M"; if (Math.abs(n) >= 1000) return "$" + (n / 1000).toFixed(0) + "K"; return "$" + n.toFixed(0); };
+  const fmtK = (v) => { const n = num(v); if (Math.abs(n) >= 1e12) return "$" + (n / 1e12).toFixed(2) + "T"; if (Math.abs(n) >= 1e9) return "$" + (n / 1e9).toFixed(2) + "B"; if (Math.abs(n) >= 1e6) return "$" + (n / 1e6).toFixed(1) + "M"; if (Math.abs(n) >= 1e3) return "$" + (n / 1e3).toFixed(0) + "K"; return "$" + n.toFixed(0); };
 
   const now = new Date();
   const hour = now.getHours();
@@ -9231,9 +9244,165 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload }
   const propTypes = Object.entries(propTypeCounts).sort((a, b) => b[1] - a[1]);
   const avgDOM = (() => { const vals = listings.map(l => parseInt(l.cdom || l.adom)).filter(n => !isNaN(n)); return vals.length > 0 ? Math.round(vals.reduce((s, n) => s + n, 0) / vals.length) : 0; })();
 
+  // MLS Map state
+  const [mlsMapReady, setMlsMapReady] = useState(false);
+  const [mlsMapLoading, setMlsMapLoading] = useState(false);
+  const [mlsGeoProgress, setMlsGeoProgress] = useState("");
+  const [mlsHighlightIdx, setMlsHighlightIdx] = useState(null);
+  const mlsMapRef = useRef(null);
+  const mlsMapInstanceRef = useRef(null);
+  const mlsMarkersRef = useRef([]);
+  const mlsInfoRef = useRef(null);
+  const mlsCardRefsMap = useRef({});
+  const mlsGeoCache = useRef({});
+
+  // ── MLS Map: add marker ──
+  const addMlsMarker = (map, pos, listing, index) => {
+    const statusColor = MLS_STATUS_COLORS[listing.status]?.color || "#16a34a";
+    const marker = new window.google.maps.Marker({
+      position: pos,
+      map,
+      title: listing.address,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        fillColor: statusColor,
+        fillOpacity: 1,
+        strokeColor: "#fff",
+        strokeWeight: 2,
+        scale: 8,
+      },
+    });
+    marker.addListener("click", () => {
+      const content = `<div style="font-family:'DM Sans',sans-serif;max-width:260px;padding:4px">
+        <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px">${listing.address || "—"}</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <span style="font-size:10px;font-weight:700;color:${statusColor};background:${MLS_STATUS_COLORS[listing.status]?.bg || "#f0fdf4"};padding:2px 8px;border-radius:6px;text-transform:uppercase">${listing.status || "—"}</span>
+          ${listing.propType ? `<span style="font-size:11px;color:#64748b">${listing.propType}</span>` : ""}
+        </div>
+        ${listing.price ? `<div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:2px">${fmt(listing.price)}</div>` : ""}
+        <div style="font-size:11px;color:#94a3b8">${[listing.city, listing.county, listing.zip].filter(Boolean).join(", ") || ""}</div>
+        ${listing.beds || listing.baths ? `<div style="font-size:11px;color:#64748b;margin-top:4px">${listing.beds ? listing.beds + " Beds" : ""}${listing.beds && listing.baths ? " · " : ""}${listing.baths ? listing.baths + " Baths" : ""}</div>` : ""}
+      </div>`;
+      mlsInfoRef.current.setContent(content);
+      mlsInfoRef.current.open(map, marker);
+      setMlsHighlightIdx(index);
+      if (mlsCardRefsMap.current[index]) {
+        mlsCardRefsMap.current[index].scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+    mlsMarkersRef.current.push(marker);
+  };
+
+  // ── MLS Map: initialize ──
+  const initMlsMap = useCallback(async (listingsToMap) => {
+    if (!mlsMapRef.current) return;
+    setMlsMapLoading(true);
+    try {
+      await loadGoogleMaps();
+      const map = new window.google.maps.Map(mlsMapRef.current, {
+        center: { lat: 39.8283, lng: -98.5795 },
+        zoom: 4,
+        mapTypeControl: true,
+        mapTypeControlOptions: { style: window.google.maps.MapTypeControlStyle.HORIZONTAL_BAR, position: window.google.maps.ControlPosition.TOP_RIGHT },
+        streetViewControl: false,
+        fullscreenControl: true,
+        zoomControl: true,
+        styles: [
+          { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+          { featureType: "transit", stylers: [{ visibility: "off" }] },
+        ],
+      });
+      mlsMapInstanceRef.current = map;
+      mlsInfoRef.current = new window.google.maps.InfoWindow();
+      mlsMarkersRef.current.forEach(m => m.setMap(null));
+      mlsMarkersRef.current = [];
+      const bounds = new window.google.maps.LatLngBounds();
+      let hasMarkers = false;
+      const needsGeocode = [];
+      for (let i = 0; i < listingsToMap.length; i++) {
+        const listing = listingsToMap[i];
+        const cacheKey = (listing.address + "|" + listing.city + "|" + listing.zip).toLowerCase();
+        if (mlsGeoCache.current[cacheKey]) {
+          const pos = mlsGeoCache.current[cacheKey];
+          addMlsMarker(map, pos, listing, i);
+          bounds.extend(pos);
+          hasMarkers = true;
+        } else {
+          needsGeocode.push({ listing, index: i, cacheKey });
+        }
+      }
+      if (needsGeocode.length > 0) {
+        setMlsGeoProgress(`Mapping ${needsGeocode.length} listings...`);
+        const geocoder = new window.google.maps.Geocoder();
+        for (let j = 0; j < needsGeocode.length; j++) {
+          const { listing, index, cacheKey } = needsGeocode[j];
+          setMlsGeoProgress(`Geocoding ${j + 1}/${needsGeocode.length}: ${(listing.address || "").substring(0, 30)}...`);
+          const fullAddr = [listing.address, listing.city, listing.zip].filter(Boolean).join(", ");
+          if (!fullAddr) continue;
+          try {
+            const result = await new Promise((resolve, reject) => {
+              geocoder.geocode({ address: fullAddr }, (results, status) => {
+                if (status === "OK" && results[0]) resolve(results[0].geometry.location);
+                else reject(status);
+              });
+            });
+            const pos = { lat: result.lat(), lng: result.lng() };
+            mlsGeoCache.current[cacheKey] = pos;
+            addMlsMarker(map, pos, listing, index);
+            bounds.extend(pos);
+            hasMarkers = true;
+          } catch (_) { /* skip unmappable */ }
+          if (j < needsGeocode.length - 1) await new Promise(r => setTimeout(r, 200));
+        }
+        setMlsGeoProgress("");
+      }
+      if (hasMarkers) {
+        map.fitBounds(bounds);
+        const listener = window.google.maps.event.addListener(map, "idle", () => {
+          if (map.getZoom() > 16) map.setZoom(16);
+          window.google.maps.event.removeListener(listener);
+        });
+      }
+      setMlsMapReady(true);
+    } catch (e) { console.error("MLS map init error:", e); }
+    finally { setMlsMapLoading(false); }
+  }, []);
+
+  // Init MLS map when tab switches to map
+  useEffect(() => {
+    if (activeTab === "map" && !loading && filtered.length > 0) {
+      const timer = setTimeout(() => initMlsMap(filtered), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, loading, filtered, initMlsMap]);
+
+  // Pan to listing from side panel
+  const panToMlsListing = (listing, index) => {
+    const cacheKey = (listing.address + "|" + listing.city + "|" + listing.zip).toLowerCase();
+    const pos = mlsGeoCache.current[cacheKey];
+    if (mlsMapInstanceRef.current && pos) {
+      mlsMapInstanceRef.current.panTo(pos);
+      mlsMapInstanceRef.current.setZoom(15);
+      setMlsHighlightIdx(index);
+      if (mlsMarkersRef.current[index]) {
+        const statusColor = MLS_STATUS_COLORS[listing.status]?.color || "#16a34a";
+        const content = `<div style="font-family:'DM Sans',sans-serif;max-width:260px;padding:4px">
+          <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px">${listing.address || "—"}</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+            <span style="font-size:10px;font-weight:700;color:${statusColor};background:${MLS_STATUS_COLORS[listing.status]?.bg || "#f0fdf4"};padding:2px 8px;border-radius:6px;text-transform:uppercase">${listing.status || "—"}</span>
+          </div>
+          ${listing.price ? `<div style="font-size:13px;font-weight:600;color:#0f172a">${fmt(listing.price)}</div>` : ""}
+        </div>`;
+        mlsInfoRef.current.setContent(content);
+        mlsInfoRef.current.open(mlsMapInstanceRef.current, mlsMarkersRef.current[index]);
+      }
+    }
+  };
+
   const tabs = [
     { id: "cards", label: "Cards", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
     { id: "table", label: "Table", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg> },
+    { id: "map", label: "Map", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg> },
     { id: "dashboard", label: "Dashboard", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
   ];
 
@@ -9420,6 +9589,52 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload }
                 {sorted.length === 0 && <tr><td colSpan={12} style={{ padding: "40px 14px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match</td></tr>}
               </tbody>
             </table>
+          </div>
+
+        /* ── MAP VIEW ── */
+        ) : activeTab === "map" ? (
+          <div style={{ flex: 1, display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden", margin: -20, marginTop: -20 }}>
+            {/* Map container */}
+            <div style={{ flex: 1, minHeight: isMobile ? 300 : "100%", position: "relative" }}>
+              <div ref={mlsMapRef} style={{ width: "100%", height: "100%", minHeight: isMobile ? 300 : 500 }} />
+              {(mlsMapLoading || mlsGeoProgress) && (
+                <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 10, padding: "8px 16px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
+                  <div style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                  <span style={{ fontSize: 11, color: "#475569", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{mlsGeoProgress || "Loading map..."}</span>
+                </div>
+              )}
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+            {/* Side panel with listing cards */}
+            <div style={{ width: isMobile ? "100%" : 340, flexShrink: 0, overflow: "auto", background: "#fff", borderLeft: isMobile ? "none" : "1px solid #e2e8f0", borderTop: isMobile ? "1px solid #e2e8f0" : "none", maxHeight: isMobile ? 280 : "100%" }}>
+              <div style={{ padding: "12px 14px 8px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{filtered.length} Listing{filtered.length !== 1 ? "s" : ""}</div>
+              </div>
+              <div style={{ padding: "8px 10px" }}>
+                {filtered.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: "center", color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>No listings found</div>
+                ) : filtered.map((listing, i) => {
+                  const statusColor = MLS_STATUS_COLORS[listing.status]?.color || "#94a3b8";
+                  const statusBg = MLS_STATUS_COLORS[listing.status]?.bg || "#f8fafc";
+                  const isHighlighted = mlsHighlightIdx === i;
+                  return (
+                    <div key={i} ref={el => mlsCardRefsMap.current[i] = el} onClick={() => panToMlsListing(listing, i)} style={{ padding: "10px 12px", borderRadius: 10, border: isHighlighted ? "1.5px solid #16a34a" : "1px solid #f1f5f9", marginBottom: 6, cursor: "pointer", transition: "all 0.15s", background: isHighlighted ? "#f0fdf4" : "#fff" }} onMouseEnter={e => { if (!isHighlighted) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0"; }}} onMouseLeave={e => { if (!isHighlighted) { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#f1f5f9"; }}}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{listing.address || "—"}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: statusColor, background: statusBg, padding: "2px 6px", borderRadius: 5, textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap", marginLeft: 8 }}>{listing.status || "—"}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", alignItems: "center" }}>
+                        {listing.price && <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmt(listing.price)}</span>}
+                        {listing.propType && <span>{listing.propType}</span>}
+                        {listing.beds && <span>{listing.beds}bd</span>}
+                        {listing.baths && <span>{listing.baths}ba</span>}
+                        {(listing.heatedArea || listing.sqftTotal) && <span>{fmtNum(listing.heatedArea || listing.sqftTotal)} sf</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
         /* ── DASHBOARD VIEW ── */
@@ -12116,6 +12331,8 @@ export default function ReapApp() {
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [pendingDealAddress, setPendingDealAddress] = useState(null);
+  const [pendingPipelineView, setPendingPipelineView] = useState(null);
+  const [activePipelineView, setActivePipelineView] = useState("table");
   const [pendingInvestorId, setPendingInvestorId] = useState(null);
   const [pendingPortfolioId, setPendingPortfolioId] = useState(null);
 
@@ -12169,9 +12386,13 @@ export default function ReapApp() {
       setActiveNav("contacts"); setContactsTab("investors");
       setPendingInvestorId(id);
     } else if (hash.startsWith("realestate/")) {
-      const tab = hash.replace("realestate/", "");
+      const parts = hash.replace("realestate/", "").split("/");
+      const tab = parts[0];
       if (["dashboard","pipeline","portfolios","mls"].includes(tab)) {
         setActiveNav("realestate"); setRealEstateTab(tab);
+        // Handle sub-view (table/map) for pipeline and mls
+        if (parts[1] === "map") setPendingPipelineView("map");
+        else if (parts[1] === "table") setPendingPipelineView("table");
       }
     } else if (["command","realestate","contacts","research","mls"].includes(hash)) {
       setActiveNav(hash);
@@ -12297,11 +12518,11 @@ export default function ReapApp() {
     if (showProfile) {
       updateHash("profile");
     } else if (!selectedDeal && activeNav === "realestate") {
-      updateHash("realestate/" + realEstateTab);
+      updateHash("realestate/" + realEstateTab + (activePipelineView && (realEstateTab === "pipeline" || realEstateTab === "mls") ? "/" + activePipelineView : ""));
     } else if (!selectedDeal) {
       updateHash(activeNav);
     }
-  }, [activeNav, showProfile, selectedDeal, realEstateTab, updateHash]);
+  }, [activeNav, showProfile, selectedDeal, realEstateTab, activePipelineView, updateHash]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -13184,7 +13405,7 @@ export default function ReapApp() {
                       ? (mlsTab === "upload"
                         ? <FileUploaderView session={session} isMobile={true} />
                         : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} />)
-                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} />
+                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} />
                     }
                   </div>
                 </div>
@@ -13212,7 +13433,7 @@ export default function ReapApp() {
                       ? (mlsTab === "upload"
                         ? <FileUploaderView session={session} isMobile={false} />
                         : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} />)
-                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
+                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} />
                     }
                   </div>
                 </div>
