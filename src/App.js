@@ -1797,7 +1797,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
-  const tabs = ["overview", "financials", "cash flow", "financing", "improvements", "units", "ai underwriting", "ai summary", "notes", "tasks", "documents", "shared deal", "activity", "investor updates"];
+  const tabs = ["overview", "cash flow", "financing", "improvements", "units", "ai underwriting", "ai summary", "notes", "tasks", "documents", "shared deal", "activity", "investor updates"];
 
   // Resolve pending deal tab from URL
   useEffect(() => {
@@ -2623,12 +2623,12 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 <MetricCard label="Avg Annual Return" value={fmtPct(deal.aar)} good={num(deal.aar) >= 10} />
                 <MetricCard label="Profitability" value={fmtPct(deal.profitability)} good={num(deal.profitability) >= 15} warn={num(deal.profitability) !== null && num(deal.profitability) < 5} />
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
+                <MetricCard label="REAP Score" value={deal.reapScore || "—"} highlight={num(deal.reapScore) >= 70} good={num(deal.reapScore) >= 70} warn={num(deal.reapScore) !== null && num(deal.reapScore) < 40} />
+                <MetricCard label="Equity Multiple" value={deal.equityMultiple || "—"} good={num(deal.equityMultiple) >= 1.5} />
+              </div>
             </section>
           </>
-        )}
-
-        {activeTab === "financials" && (
-          <FinancialsTab deal={deal} isMobile={isMobile} />
         )}
 
         {/* ── CASH FLOW TAB ── */}
