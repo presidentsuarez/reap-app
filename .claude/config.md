@@ -29,7 +29,7 @@ These secrets must be set in Supabase for the `send-investor-notifications` Edge
 - `QUO_API_KEY` = `c8cd61b340ee8e99f7811b20c943799924204d6a69dcb80692c03b127ea3bd51`
 - `FROM_EMAIL` = `updates@getreap.ai` (or current sending email)
 - `FROM_NAME` = `Suarez Global` (dynamic per org in future)
-- `QUO_FROM_NUMBER` = *(not yet provided — Javier's Quo phone number)*
+- `QUO_FROM_NUMBER` = `+18136944125` (Quo phone number ID: `PNcbag1oru`)
 
 ## Branding Model
 - **Reap** = the platform (like Shopify). Always branded as "Powered by Reap · Real Estate Analytics Platform"
