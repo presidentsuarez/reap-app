@@ -1793,6 +1793,250 @@ function AssignmentsView({ session, isMobile, orgData, orgMembers, teamEmails })
   );
 }
 
+function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, userEmail, isMobile }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingReq, setEditingReq] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const emptyForm = { lender_name: "", company_name: "", status: "considering", term_months: "", acq_financed_pct: "", reno_financed_pct: "", interest_rate: "", points_pct: "", interest_reserve_months: "", inspection_fee: "", loan_doc_fee: "", draw_fee: "", broker_fee: "", estimated_title_fees: "", required_liquidity: "", notes: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+
+  const fetchRequests = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await supabase.from("financing_requests").select("*").eq("deal_address", dealAddress).eq("financing_type", financingType).order("created_at", { ascending: false });
+      setRequests(data || []);
+    } catch (e) { console.error("Fetch financing requests:", e); }
+    finally { setLoading(false); }
+  }, [dealAddress, financingType]);
+
+  useEffect(() => { fetchRequests(); }, [fetchRequests]);
+
+  const resetForm = () => { setForm(emptyForm); setEditingReq(null); setShowForm(false); };
+
+  // Auto-calc fields from deal + form inputs
+  const calcLoan = (f) => {
+    const purchasePrice = parseFloat(String(dealData?.purchasePrice || dealData?.offer || 0).replace(/[$,]/g, "")) || 0;
+    const improvBudget = parseFloat(String(dealData?.improvementBudget || 0).replace(/[$,]/g, "")) || 0;
+    const arv = parseFloat(String(dealData?.arv || 0).replace(/[$,]/g, "")) || 0;
+    const acqPct = parseFloat(f.acq_financed_pct) || 0;
+    const renoPct = parseFloat(f.reno_financed_pct) || 0;
+    const rate = parseFloat(f.interest_rate) || 0;
+    const pts = parseFloat(f.points_pct) || 0;
+    const termMo = parseInt(f.term_months) || 12;
+    const intResMo = parseInt(f.interest_reserve_months) || 0;
+    const acqLoan = purchasePrice * (acqPct / 100);
+    const rehabHoldback = improvBudget * (renoPct / 100);
+    const totalLoan = acqLoan + rehabHoldback;
+    const monthlyInt = totalLoan * (rate / 100 / 12);
+    const intReserve = monthlyInt * intResMo;
+    const origFee = totalLoan * (pts / 100);
+    const brokerFeeAmt = parseFloat(f.broker_fee) || 0;
+    const inspFee = parseFloat(f.inspection_fee) || 0;
+    const docFee = parseFloat(f.loan_doc_fee) || 0;
+    const drawFee = parseFloat(f.draw_fee) || 0;
+    const titleFees = parseFloat(f.estimated_title_fees) || 0;
+    const totalCost = origFee + brokerFeeAmt + inspFee + docFee + drawFee + titleFees + intReserve;
+    const cashToClose = purchasePrice - acqLoan + origFee + brokerFeeAmt + inspFee + docFee + drawFee + titleFees;
+    const totalProjectCost = purchasePrice + improvBudget;
+    const ltvVal = arv > 0 ? (totalLoan / arv) * 100 : 0;
+    const ltcVal = totalProjectCost > 0 ? (acqLoan / totalProjectCost) * 100 : 0;
+    const totalLtc = totalProjectCost > 0 ? (totalLoan / totalProjectCost) * 100 : 0;
+    const eqReq = totalProjectCost - totalLoan;
+    return { total_loan_amount: totalLoan, rehab_holdback: rehabHoldback, interest_reserve: intReserve, origination_fee: origFee, monthly_interest_payment: monthlyInt, cash_to_close: cashToClose, ltv: ltvVal, ltc: ltcVal, total_ltc: totalLtc, equity_required: eqReq, total_loan_cost: totalCost };
+  };
+
+  const handleSave = async () => {
+    if (!form.lender_name && !form.company_name) { alert("Enter a lender or company name."); return; }
+    setSaving(true);
+    try {
+      const calcs = calcLoan(form);
+      const payload = { deal_address: dealAddress, financing_type: financingType, status: form.status, lender_name: form.lender_name, company_name: form.company_name, term_months: parseInt(form.term_months) || 0, acq_financed_pct: parseFloat(form.acq_financed_pct) || 0, reno_financed_pct: parseFloat(form.reno_financed_pct) || 0, interest_rate: parseFloat(form.interest_rate) || 0, points_pct: parseFloat(form.points_pct) || 0, interest_reserve_months: parseInt(form.interest_reserve_months) || 0, inspection_fee: parseFloat(form.inspection_fee) || 0, loan_doc_fee: parseFloat(form.loan_doc_fee) || 0, draw_fee: parseFloat(form.draw_fee) || 0, broker_fee: parseFloat(form.broker_fee) || 0, estimated_title_fees: parseFloat(form.estimated_title_fees) || 0, required_liquidity: parseFloat(form.required_liquidity) || 0, notes: form.notes, ...calcs, org_id: orgId || null, created_by: userEmail };
+      if (editingReq) { await supabase.from("financing_requests").update(payload).eq("id", editingReq.id); }
+      else { await supabase.from("financing_requests").insert(payload); }
+      await fetchRequests(); resetForm();
+    } catch (e) { alert("Error: " + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id) => { if (!window.confirm("Delete this financing request?")) return; await supabase.from("financing_requests").delete().eq("id", id); await fetchRequests(); };
+  const startEdit = (r) => {
+    setForm({ lender_name: r.lender_name || "", company_name: r.company_name || "", status: r.status || "considering", term_months: String(r.term_months || ""), acq_financed_pct: String(r.acq_financed_pct || ""), reno_financed_pct: String(r.reno_financed_pct || ""), interest_rate: String(r.interest_rate || ""), points_pct: String(r.points_pct || ""), interest_reserve_months: String(r.interest_reserve_months || ""), inspection_fee: String(r.inspection_fee || ""), loan_doc_fee: String(r.loan_doc_fee || ""), draw_fee: String(r.draw_fee || ""), broker_fee: String(r.broker_fee || ""), estimated_title_fees: String(r.estimated_title_fees || ""), required_liquidity: String(r.required_liquidity || ""), notes: r.notes || "" });
+    setEditingReq(r); setShowForm(true);
+  };
+
+  const fmt = (v) => { const n = parseFloat(v); return isNaN(n) || n === 0 ? "—" : "$" + n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }); };
+  const fPct = (v) => { const n = parseFloat(v); return isNaN(n) || n === 0 ? "—" : n.toFixed(2) + "%"; };
+  const inputStyle = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", outline: "none", background: "#fff", boxSizing: "border-box" };
+  const labelStyle = { fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 3, display: "block" };
+  const statusGroups = [
+    { key: "accepted", label: "Accepted", color: "#16a34a", bg: "#f0fdf4", border: "#86efac" },
+    { key: "considering", label: "Considering", color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
+    { key: "needs_to_request", label: "Needs to Request", color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe" },
+    { key: "declined", label: "Declined", color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
+  ];
+
+  const liveCalcs = calcLoan(form);
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <h4 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Lender Requests ({requests.length})</h4>
+        <button onClick={() => { resetForm(); setShowForm(true); }} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: financingType === "bridge" ? "linear-gradient(135deg, #d97706, #b45309)" : "linear-gradient(135deg, #7c3aed, #6d28d9)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add Lender</button>
+      </div>
+
+      {/* Add/Edit Form */}
+      {showForm && (
+        <div style={{ background: "#f8fafc", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 14 : 20, marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 14 }}>{editingReq ? "Edit Request" : "New Financing Request"}</div>
+
+          {/* Lender Info */}
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Lender Info</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+            <div><label style={labelStyle}>Lender Name</label><input value={form.lender_name} onChange={e => setForm(f => ({...f, lender_name: e.target.value}))} placeholder="John Smith" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Company</label><input value={form.company_name} onChange={e => setForm(f => ({...f, company_name: e.target.value}))} placeholder="ABC Capital" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Status</label>
+              <select value={form.status} onChange={e => setForm(f => ({...f, status: e.target.value}))} style={inputStyle}>
+                {statusGroups.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Loan Terms */}
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Loan Terms</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10, marginBottom: 16 }}>
+            <div><label style={labelStyle}>Term (Months)</label><input type="number" value={form.term_months} onChange={e => setForm(f => ({...f, term_months: e.target.value}))} placeholder="12" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Acq Financed %</label><input type="number" value={form.acq_financed_pct} onChange={e => setForm(f => ({...f, acq_financed_pct: e.target.value}))} placeholder="85" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Reno Financed %</label><input type="number" value={form.reno_financed_pct} onChange={e => setForm(f => ({...f, reno_financed_pct: e.target.value}))} placeholder="100" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Interest Rate %</label><input type="number" value={form.interest_rate} onChange={e => setForm(f => ({...f, interest_rate: e.target.value}))} placeholder="10" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Points %</label><input type="number" value={form.points_pct} onChange={e => setForm(f => ({...f, points_pct: e.target.value}))} placeholder="2" style={inputStyle} /></div>
+          </div>
+
+          {/* Fees */}
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Fees & Reserves</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+            <div><label style={labelStyle}>Int Reserve (Mo)</label><input type="number" value={form.interest_reserve_months} onChange={e => setForm(f => ({...f, interest_reserve_months: e.target.value}))} placeholder="6" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Inspection Fee $</label><input type="number" value={form.inspection_fee} onChange={e => setForm(f => ({...f, inspection_fee: e.target.value}))} placeholder="500" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Loan Doc Fee $</label><input type="number" value={form.loan_doc_fee} onChange={e => setForm(f => ({...f, loan_doc_fee: e.target.value}))} placeholder="995" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Draw Fee $</label><input type="number" value={form.draw_fee} onChange={e => setForm(f => ({...f, draw_fee: e.target.value}))} placeholder="250" style={inputStyle} /></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+            <div><label style={labelStyle}>Broker Fee $</label><input type="number" value={form.broker_fee} onChange={e => setForm(f => ({...f, broker_fee: e.target.value}))} placeholder="0" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Est. Title Fees $</label><input type="number" value={form.estimated_title_fees} onChange={e => setForm(f => ({...f, estimated_title_fees: e.target.value}))} placeholder="3000" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Req Liquidity $</label><input type="number" value={form.required_liquidity} onChange={e => setForm(f => ({...f, required_liquidity: e.target.value}))} placeholder="50000" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Notes</label><input value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))} placeholder="Optional..." style={inputStyle} /></div>
+          </div>
+
+          {/* Live Calculator */}
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Loan Calculator (Live)</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8, marginBottom: 16, padding: 14, borderRadius: 10, background: "#faf5ff", border: "1px solid #e9d5ff" }}>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Total Loan</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.total_loan_amount)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Monthly Payment</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.monthly_interest_payment)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Rehab Holdback</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.rehab_holdback)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Interest Reserve</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.interest_reserve)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Origination Fee</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.origination_fee)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Cash to Close</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.cash_to_close)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>LTV</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fPct(liveCalcs.ltv)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>LTC</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fPct(liveCalcs.ltc)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Total LTC</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fPct(liveCalcs.total_ltc)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Equity Required</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.equity_required)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Total Loan Cost</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.total_loan_cost)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Broker Fee</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(parseFloat(form.broker_fee) || 0)}</div></div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button onClick={resetForm} style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: saving ? "#94a3b8" : "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: saving ? "default" : "pointer", fontFamily: "'DM Sans', sans-serif" }}>{saving ? "Saving..." : editingReq ? "Update" : "Add Request"}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Comparison Table by Status Groups */}
+      {loading ? <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13 }}>Loading...</div>
+      : requests.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+          <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>
+          <div style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No financing requests yet</div>
+          <div style={{ fontSize: 12, color: "#cbd5e1", marginTop: 4 }}>Add lender submissions to compare terms.</div>
+        </div>
+      ) : (
+        <div>
+          {statusGroups.map(sg => {
+            const grouped = requests.filter(r => r.status === sg.key);
+            if (grouped.length === 0) return null;
+            return (
+              <div key={sg.key} style={{ marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: sg.color }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: sg.color, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{sg.label} ({grouped.length})</span>
+                  <span style={{ flex: 1, height: 1, background: sg.border }} />
+                </div>
+                {/* Comparison table */}
+                <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>
+                    <thead>
+                      <tr style={{ background: sg.bg }}>
+                        {["Lender", "Company", "Rate", "Points", "LTC", "LTV", "Total Loan", "Cash to Close", "Equity Req", "Mo. Payment", "Total Cost", ""].map((h, i) => (
+                          <th key={i} style={{ padding: "8px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: sg.color, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid " + sg.border, whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grouped.map(r => (
+                        <tr key={r.id} onClick={() => setExpandedId(expandedId === r.id ? null : r.id)} style={{ cursor: "pointer", background: expandedId === r.id ? "#f8fafc" : "#fff", transition: "background 0.1s" }}>
+                          <td style={{ padding: "10px", fontWeight: 600, color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{r.lender_name || "—"}</td>
+                          <td style={{ padding: "10px", color: "#64748b", borderBottom: "1px solid #f1f5f9" }}>{r.company_name || "—"}</td>
+                          <td style={{ padding: "10px", fontWeight: 600, color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{fPct(r.interest_rate)}</td>
+                          <td style={{ padding: "10px", color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{fPct(r.points_pct)}</td>
+                          <td style={{ padding: "10px", color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{fPct(r.total_ltc)}</td>
+                          <td style={{ padding: "10px", color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{fPct(r.ltv)}</td>
+                          <td style={{ padding: "10px", fontWeight: 600, color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{fmt(r.total_loan_amount)}</td>
+                          <td style={{ padding: "10px", fontWeight: 600, color: "#d97706", borderBottom: "1px solid #f1f5f9" }}>{fmt(r.cash_to_close)}</td>
+                          <td style={{ padding: "10px", color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{fmt(r.equity_required)}</td>
+                          <td style={{ padding: "10px", color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{fmt(r.monthly_interest_payment)}</td>
+                          <td style={{ padding: "10px", fontWeight: 600, color: "#dc2626", borderBottom: "1px solid #f1f5f9" }}>{fmt(r.total_loan_cost)}</td>
+                          <td style={{ padding: "10px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap" }}>
+                            <button onClick={(e) => { e.stopPropagation(); startEdit(r); }} style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#64748b", marginRight: 4 }} title="Edit"><svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }} style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#dc2626" }} title="Delete"><svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Expanded detail for clicked row */}
+                {grouped.filter(r => expandedId === r.id).map(r => (
+                  <div key={r.id + "-detail"} style={{ marginTop: 8, padding: 16, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(6, 1fr)", gap: 10, marginBottom: 12 }}>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Term</div><div style={{ fontSize: 14, fontWeight: 700 }}>{r.term_months || "—"} mo</div></div>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Acq Financed</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fPct(r.acq_financed_pct)}</div></div>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Reno Financed</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fPct(r.reno_financed_pct)}</div></div>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Int Reserve</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(r.interest_reserve)} ({r.interest_reserve_months} mo)</div></div>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Rehab Holdback</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(r.rehab_holdback)}</div></div>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Origination</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(r.origination_fee)}</div></div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(6, 1fr)", gap: 10 }}>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Inspection Fee</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(r.inspection_fee)}</div></div>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Loan Doc Fee</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(r.loan_doc_fee)}</div></div>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Draw Fee</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(r.draw_fee)}</div></div>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Broker Fee</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(r.broker_fee)}</div></div>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Title Fees</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(r.estimated_title_fees)}</div></div>
+                      <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Req Liquidity</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(r.required_liquidity)}</div></div>
+                    </div>
+                    {r.notes && <div style={{ fontSize: 12, color: "#64748b", marginTop: 10, fontStyle: "italic" }}>{r.notes}</div>}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDeal, updateHash, pendingDealTab, onClearPendingDealTab, orgData, orgMembers }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
@@ -1864,6 +2108,9 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
 
   // ── Financing sub-tab state ──
   const [financingSubTab, setFinancingSubTab] = useState("bridge");
+  const [bridgeInnerTab, setBridgeInnerTab] = useState("overview");
+  const [refiInnerTab, setRefiInnerTab] = useState("overview");
+  const [refiEnabled, setRefiEnabled] = useState(false);
 
   // ── Improvements tab state ──
   const [improvements, setImprovements] = useState([]);
@@ -2757,7 +3004,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
               {/* Bridge Loan sub-tab */}
               {financingSubTab === "bridge" && (
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                       <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>Bridge Loan</h3>
                       <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, color: bridgeEnabled ? "#16a34a" : "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
@@ -2767,17 +3014,27 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                         {bridgeEnabled ? "Active" : "Not Using"}
                       </label>
                     </div>
-                    {bridgeEnabled && !bridgeEditing ? (
+                    {bridgeEnabled && bridgeInnerTab === "overview" && !bridgeEditing ? (
                       <button onClick={() => setBridgeEditing(true)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
                         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit
                       </button>
-                    ) : bridgeEnabled && bridgeEditing ? (
+                    ) : bridgeEnabled && bridgeInnerTab === "overview" && bridgeEditing ? (
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={() => setBridgeEditing(false)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
                         <button onClick={handleSaveBridge} disabled={bridgeSaving} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>{bridgeSaving ? "Saving..." : "Save"}</button>
                       </div>
                     ) : null}
                   </div>
+                  {/* Inner sub-tabs for bridge: Overview vs Lender Requests */}
+                  {bridgeEnabled && (
+                    <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+                      {[{ id: "overview", label: "Overview", icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> }, { id: "requests", label: "Lender Requests", icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> }].map(t => (
+                        <button key={t.id} onClick={() => setBridgeInnerTab(t.id)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 8, border: bridgeInnerTab === t.id ? "1.5px solid #d97706" : "1px solid #e2e8f0", background: bridgeInnerTab === t.id ? "#fffbeb" : "#fff", color: bridgeInnerTab === t.id ? "#d97706" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+                          {t.icon} {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {!bridgeEnabled ? (
                     <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "48px 20px", textAlign: "center" }}>
                       <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(100,116,139,0.06)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
@@ -2786,7 +3043,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                       <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Bridge Loan Not Active</p>
                       <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Toggle the switch above to enable bridge loan tracking for this deal.</p>
                     </div>
-                  ) : (
+                  ) : bridgeInnerTab === "overview" ? (
                     <>
                       {bridgeEditing && (
                         <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px", marginBottom: 20 }}>
@@ -2814,51 +3071,83 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                         <MetricCard label="DSCR (Bridge)" value={(() => { const bInt = num(deal.bridgeInterestMonthly); const exNOI = num(deal.existingNOI); if (!bInt || bInt <= 0) return deal.dscr || "—"; const annualDS = bInt * 12; return annualDS > 0 && exNOI ? (exNOI / annualDS).toFixed(2) : "—"; })()} good={(() => { const bInt = num(deal.bridgeInterestMonthly); const exNOI = num(deal.existingNOI); if (!bInt || bInt <= 0) return num(deal.dscr) >= 1.25; const annualDS = bInt * 12; return annualDS > 0 && exNOI ? (exNOI / annualDS) >= 1.25 : false; })()} warn={(() => { const bInt = num(deal.bridgeInterestMonthly); const exNOI = num(deal.existingNOI); if (!bInt || bInt <= 0) return num(deal.dscr) !== null && num(deal.dscr) < 1.0; const annualDS = bInt * 12; return annualDS > 0 && exNOI !== null ? (exNOI / annualDS) < 1.0 : false; })()} />
                       </div>
                     </>
-                  )}
+                  ) : bridgeInnerTab === "requests" ? (
+                    <FinancingRequestsPanel dealAddress={deal.address || deal.property_address} dealData={deal} financingType="bridge" orgId={orgData?.id} userEmail={userEmail} isMobile={isMobile} />
+                  ) : null}
                 </div>
               )}
 
               {/* Refinance sub-tab */}
               {financingSubTab === "refinance" && (
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                    <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                      Refinance Details <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-                    </h3>
-                    {!refiEditing ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>Refinance</h3>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, color: refiEnabled ? "#16a34a" : "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                        <div onClick={() => { setRefiEnabled(!refiEnabled); if (!refiEditing) setRefiEditing(true); }} style={{ width: 40, height: 22, borderRadius: 11, background: refiEnabled ? "#16a34a" : "#e2e8f0", position: "relative", cursor: "pointer", transition: "background 0.2s" }}>
+                          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: refiEnabled ? 20 : 2, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
+                        </div>
+                        {refiEnabled ? "Active" : "Not Using"}
+                      </label>
+                    </div>
+                    {refiEnabled && refiInnerTab === "overview" && !refiEditing ? (
                       <button onClick={() => setRefiEditing(true)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
                         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit
                       </button>
-                    ) : (
+                    ) : refiEnabled && refiInnerTab === "overview" && refiEditing ? (
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={() => setRefiEditing(false)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
                         <button onClick={handleSaveRefi} disabled={refiSaving} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>{refiSaving ? "Saving..." : "Save"}</button>
                       </div>
-                    )}
+                    ) : null}
                   </div>
-                  {refiEditing && (
-                    <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px", marginBottom: 20 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 14 }}>
-                        <div><label style={lblStyle}>% of ARV</label><input style={inpStyle} value={refiForm.refiPctARV} onChange={e => setRefiForm(f => ({...f, refiPctARV: e.target.value}))} placeholder="75" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                        <div><label style={lblStyle}>Interest Rate %</label><input style={inpStyle} value={refiForm.refiInterestRate} onChange={e => setRefiForm(f => ({...f, refiInterestRate: e.target.value}))} placeholder="7" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                        <div><label style={lblStyle}>Points %</label><input style={inpStyle} value={refiForm.refiPoints} onChange={e => setRefiForm(f => ({...f, refiPoints: e.target.value}))} placeholder="2" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                        <div><label style={lblStyle}>Term (Years)</label><input style={inpStyle} value={refiForm.refiTerm} onChange={e => setRefiForm(f => ({...f, refiTerm: e.target.value}))} placeholder="25" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                      </div>
+                  {/* Inner sub-tabs for refinance: Overview vs Lender Requests */}
+                  {refiEnabled && (
+                    <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+                      {[{ id: "overview", label: "Overview", icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> }, { id: "requests", label: "Lender Requests", icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> }].map(t => (
+                        <button key={t.id} onClick={() => setRefiInnerTab(t.id)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 8, border: refiInnerTab === t.id ? "1.5px solid #7c3aed" : "1px solid #e2e8f0", background: refiInnerTab === t.id ? "#f5f3ff" : "#fff", color: refiInnerTab === t.id ? "#7c3aed" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+                          {t.icon} {t.label}
+                        </button>
+                      ))}
                     </div>
                   )}
-                  <h4 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Calculated Metrics <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h4>
-                  <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-                    <MetricCard label="Refi Loan Amount" value={refiLoanAmt > 0 ? fmt(refiLoanAmt) : fmt(deal.refiLoanAmount)} />
-                    <MetricCard label="% of ARV" value={fmtPct(refiForm.refiPctARV || deal.refiPctARV)} />
-                    <MetricCard label="Monthly Payment" value={refiMonthlyPayment > 0 ? fmt(refiMonthlyPayment) : "—"} />
-                    <MetricCard label="Annual Debt Service" value={refiAnnualDebtService > 0 ? fmt(refiAnnualDebtService) : "—"} />
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-                    <MetricCard label="Cash Flow (Refi)" value={refiCashFlow !== 0 || refiAnnualDebtService > 0 ? fmt(refiCashFlow) : fmt(deal.refiCashFlow)} sub="annual" highlight good={refiCashFlow > 0 || num(deal.refiCashFlow) > 0} warn={(refiAnnualDebtService > 0 && refiCashFlow <= 0) || (num(deal.refiCashFlow) !== null && num(deal.refiCashFlow) <= 0)} />
-                    <MetricCard label="DSCR (Refi)" value={refiDSCR} good={num(refiDSCR) >= 1.25} warn={num(refiDSCR) !== null && num(refiDSCR) < 1.0} />
-                    <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good={num(deal.cashOutRefi) > 0} warn={num(deal.cashOutRefi) !== null && num(deal.cashOutRefi) <= 0} />
-                    <MetricCard label="Equity After Refi" value={fmt(deal.equityAfterRefi)} />
-                  </div>
+                  {!refiEnabled ? (
+                    <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "48px 20px", textAlign: "center" }}>
+                      <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(100,116,139,0.06)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                        <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      </div>
+                      <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Refinance Not Active</p>
+                      <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Toggle the switch above to enable refinance tracking for this deal.</p>
+                    </div>
+                  ) : refiInnerTab === "overview" ? (
+                    <>
+                      {refiEditing && (
+                        <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px", marginBottom: 20 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 14 }}>
+                            <div><label style={lblStyle}>% of ARV</label><input style={inpStyle} value={refiForm.refiPctARV} onChange={e => setRefiForm(f => ({...f, refiPctARV: e.target.value}))} placeholder="75" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                            <div><label style={lblStyle}>Interest Rate %</label><input style={inpStyle} value={refiForm.refiInterestRate} onChange={e => setRefiForm(f => ({...f, refiInterestRate: e.target.value}))} placeholder="7" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                            <div><label style={lblStyle}>Points %</label><input style={inpStyle} value={refiForm.refiPoints} onChange={e => setRefiForm(f => ({...f, refiPoints: e.target.value}))} placeholder="2" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                            <div><label style={lblStyle}>Term (Years)</label><input style={inpStyle} value={refiForm.refiTerm} onChange={e => setRefiForm(f => ({...f, refiTerm: e.target.value}))} placeholder="25" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                          </div>
+                        </div>
+                      )}
+                      <h4 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Calculated Metrics <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h4>
+                      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                        <MetricCard label="Refi Loan Amount" value={refiLoanAmt > 0 ? fmt(refiLoanAmt) : fmt(deal.refiLoanAmount)} />
+                        <MetricCard label="% of ARV" value={fmtPct(refiForm.refiPctARV || deal.refiPctARV)} />
+                        <MetricCard label="Monthly Payment" value={refiMonthlyPayment > 0 ? fmt(refiMonthlyPayment) : "—"} />
+                        <MetricCard label="Annual Debt Service" value={refiAnnualDebtService > 0 ? fmt(refiAnnualDebtService) : "—"} />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+                        <MetricCard label="Cash Flow (Refi)" value={refiCashFlow !== 0 || refiAnnualDebtService > 0 ? fmt(refiCashFlow) : fmt(deal.refiCashFlow)} sub="annual" highlight good={refiCashFlow > 0 || num(deal.refiCashFlow) > 0} warn={(refiAnnualDebtService > 0 && refiCashFlow <= 0) || (num(deal.refiCashFlow) !== null && num(deal.refiCashFlow) <= 0)} />
+                        <MetricCard label="DSCR (Refi)" value={refiDSCR} good={num(refiDSCR) >= 1.25} warn={num(refiDSCR) !== null && num(refiDSCR) < 1.0} />
+                        <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good={num(deal.cashOutRefi) > 0} warn={num(deal.cashOutRefi) !== null && num(deal.cashOutRefi) <= 0} />
+                        <MetricCard label="Equity After Refi" value={fmt(deal.equityAfterRefi)} />
+                      </div>
+                    </>
+                  ) : refiInnerTab === "requests" ? (
+                    <FinancingRequestsPanel dealAddress={deal.address || deal.property_address} dealData={deal} financingType="refinance" orgId={orgData?.id} userEmail={userEmail} isMobile={isMobile} />
+                  ) : null}
                 </div>
               )}
 
