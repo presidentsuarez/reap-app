@@ -135,6 +135,56 @@ function MetricCard({ label, value, sub, highlight, good, warn }) {
   );
 }
 
+function PhotoLightbox({ photos, initialIndex, onClose }) {
+  const [idx, setIdx] = useState(initialIndex || 0);
+  const [touchStart, setTouchStart] = useState(null);
+  const photo = photos[idx];
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") setIdx(i => (i > 0 ? i - 1 : photos.length - 1));
+      if (e.key === "ArrowRight") setIdx(i => (i < photos.length - 1 ? i + 1 : 0));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [photos.length, onClose]);
+  if (!photo) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 99999, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}
+      onClick={onClose}
+      onTouchStart={e => setTouchStart(e.touches[0].clientX)}
+      onTouchEnd={e => {
+        if (touchStart === null) return;
+        const diff = e.changedTouches[0].clientX - touchStart;
+        if (Math.abs(diff) > 50) { diff > 0 ? setIdx(i => (i > 0 ? i - 1 : photos.length - 1)) : setIdx(i => (i < photos.length - 1 ? i + 1 : 0)); }
+        setTouchStart(null);
+      }}>
+      {/* Close button */}
+      <button onClick={onClose} style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 10, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 2 }}>
+        <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+      {/* Counter */}
+      <div style={{ position: "absolute", top: 18, left: "50%", transform: "translateX(-50%)", color: "rgba(255,255,255,0.7)", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", zIndex: 2 }}>{idx + 1} / {photos.length}</div>
+      {/* Left arrow */}
+      {photos.length > 1 && (
+        <button onClick={e => { e.stopPropagation(); setIdx(i => (i > 0 ? i - 1 : photos.length - 1)); }} style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 12, width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 2 }}>
+          <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+      )}
+      {/* Image */}
+      <img src={photo.url} alt={photo.name || "Photo"} onClick={e => e.stopPropagation()} style={{ maxWidth: "90vw", maxHeight: "80vh", borderRadius: 12, objectFit: "contain", boxShadow: "0 8px 40px rgba(0,0,0,0.5)" }} />
+      {/* Right arrow */}
+      {photos.length > 1 && (
+        <button onClick={e => { e.stopPropagation(); setIdx(i => (i < photos.length - 1 ? i + 1 : 0)); }} style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 12, width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 2 }}>
+          <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      )}
+      {/* Caption */}
+      {photo.name && <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, marginTop: 12, fontFamily: "'DM Sans', sans-serif" }}>{photo.name}</div>}
+    </div>
+  );
+}
+
 function LoadingSpinner() {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, background: "#f8fafc" }}>
@@ -1317,11 +1367,31 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   );
 }
 
-function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDeal }) {
+function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDeal, updateHash, pendingDealTab, onClearPendingDealTab }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
   const tabs = ["overview", "financials", "refinance", "bridge loan", "income", "financing", "ai underwriting", "ai summary", "notes", "documents", "shared deal", "activity", "investor updates"];
+
+  // Resolve pending deal tab from URL
+  useEffect(() => {
+    if (pendingDealTab && tabs.includes(pendingDealTab)) {
+      setActiveTab(pendingDealTab);
+    }
+    if (onClearPendingDealTab) onClearPendingDealTab();
+  }, [pendingDealTab]);
+
+  // Update hash when tab changes
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    if (updateHash && deal?.address) {
+      if (tab === "overview") {
+        updateHash("deal/" + encodeURIComponent(deal.address));
+      } else {
+        updateHash("deal/" + encodeURIComponent(deal.address) + "/" + encodeURIComponent(tab));
+      }
+    }
+  };
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
@@ -1398,6 +1468,8 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [updatePhotos, setUpdatePhotos] = useState([]);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [notifyInvestors, setNotifyInvestors] = useState(true);
+  const [adminLightboxPhotos, setAdminLightboxPhotos] = useState(null);
+  const [adminLightboxIndex, setAdminLightboxIndex] = useState(0);
   const [linkedInvestors, setLinkedInvestors] = useState([]);
   const [notificationsSent, setNotificationsSent] = useState({});
   const [engagementData, setEngagementData] = useState({ reads: [], notifications: [] });
@@ -1923,7 +1995,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
         {/* Tabs */}
         <div style={{ display: "flex", gap: 0, marginBottom: isMobile ? 20 : 28, borderBottom: "1px solid #e2e8f0", overflowX: isMobile ? "auto" : "visible", WebkitOverflowScrolling: "touch" }}>
           {tabs.map(t => (
-            <button key={t} onClick={() => setActiveTab(t)} style={{ background: "transparent", border: "none", borderBottom: activeTab === t ? "2px solid #16a34a" : "2px solid transparent", padding: isMobile ? "10px 14px" : "10px 20px", color: activeTab === t ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize", transition: "all 0.15s", marginBottom: -1, whiteSpace: "nowrap", flexShrink: 0 }}>{t}</button>
+            <button key={t} onClick={() => handleTabChange(t)} style={{ background: "transparent", border: "none", borderBottom: activeTab === t ? "2px solid #16a34a" : "2px solid transparent", padding: isMobile ? "10px 14px" : "10px 20px", color: activeTab === t ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize", transition: "all 0.15s", marginBottom: -1, whiteSpace: "nowrap", flexShrink: 0 }}>{t}</button>
           ))}
         </div>
 
@@ -3015,6 +3087,27 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                     });
                     if (notifRecords.length > 0) {
                       await supabase.from("investor_notifications").insert(notifRecords);
+                      // Auto-log communications for each investor
+                      const commLogs = [];
+                      const loggedInvestors = new Set();
+                      notifRecords.forEach(nr => {
+                        if (!loggedInvestors.has(nr.investor_id + "_" + nr.notification_type)) {
+                          loggedInvestors.add(nr.investor_id + "_" + nr.notification_type);
+                          commLogs.push({
+                            investor_id: nr.investor_id,
+                            comm_type: nr.notification_type === "sms" ? "SMS" : "Email",
+                            direction: "outbound",
+                            subject: updateForm.title.trim(),
+                            body: "Investor update notification: " + updateForm.title.trim(),
+                            related_update_id: updateId,
+                            sent_by: userEmail,
+                            status: "sent",
+                          });
+                        }
+                      });
+                      if (commLogs.length > 0) {
+                        await supabase.from("investor_communications").insert(commLogs).then(() => {}).catch(e => console.log("[REAP] Communications log table may not exist yet:", e));
+                      }
                       // 3. Invoke Edge Function to actually deliver notifications
                       try {
                         await supabase.functions.invoke("send-investor-notifications", {
@@ -3086,9 +3179,9 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                       {u.photos && (() => { try { const photos = JSON.parse(u.photos); return photos.length > 0 ? (
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
                           {photos.map((p, i) => (
-                            <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" style={{ width: 80, height: 80, borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0", display: "block" }}>
+                            <div key={i} onClick={() => { setAdminLightboxPhotos(photos); setAdminLightboxIndex(i); }} style={{ width: 80, height: 80, borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0", display: "block", cursor: "pointer" }}>
                               <img src={p.url} alt={p.name || "Photo"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                            </a>
+                            </div>
                           ))}
                         </div>
                       ) : null; } catch { return null; } })()}
@@ -3110,6 +3203,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
           </div>
         )}
       </div>
+      {adminLightboxPhotos && <PhotoLightbox photos={adminLightboxPhotos} initialIndex={adminLightboxIndex} onClose={() => setAdminLightboxPhotos(null)} />}
     </div>
   );
 }
@@ -3132,12 +3226,17 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [funds, setFunds] = useState([]);
+  const [lightboxPhotos, setLightboxPhotos] = useState(null);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   useEffect(() => {
     const handle = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handle);
     return () => window.removeEventListener("resize", handle);
   }, []);
+
+  const openLightbox = (photos, index) => { setLightboxPhotos(photos); setLightboxIndex(index || 0); };
+  const closeLightbox = () => setLightboxPhotos(null);
 
   // Fetch notification preferences + check onboarding
   useEffect(() => {
@@ -3522,7 +3621,7 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                       {u.photos && (() => { try { const photos = JSON.parse(u.photos); return photos.length > 0 ? (
                         <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                           {photos.slice(0, 4).map((p, i) => (
-                            <div key={i} style={{ width: 56, height: 56, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", position: "relative" }}>
+                            <div key={i} onClick={e => { e.stopPropagation(); openLightbox(photos, i); }} style={{ width: 56, height: 56, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", position: "relative", cursor: "pointer" }}>
                               <img src={p.url} alt={p.name || "Photo"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                               {i === 3 && photos.length > 4 && <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700 }}>+{photos.length - 4}</div>}
                             </div>
@@ -3605,9 +3704,9 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                         {u.photos && (() => { try { const photos = JSON.parse(u.photos); return photos.length > 0 ? (
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
                             {photos.map((p, i) => (
-                              <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0", display: "block" }}>
+                              <div key={i} onClick={() => openLightbox(photos, i)} style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0", display: "block", cursor: "pointer" }}>
                                 <img src={p.url} alt={p.name || "Photo"} style={{ width: 120, height: 90, objectFit: "cover", display: "block" }} />
-                              </a>
+                              </div>
                             ))}
                           </div>
                         ) : null; } catch { return null; } })()}
@@ -3900,6 +3999,7 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
           </div>
         ) : null}
       </div>
+      {lightboxPhotos && <PhotoLightbox photos={lightboxPhotos} initialIndex={lightboxIndex} onClose={closeLightbox} />}
     </div>
   );
 }
@@ -8071,6 +8171,17 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
   const investorContacts = (investor.contactIds || []).filter(id => id).map(id => contacts.find(c => c.rowId === id)).filter(Boolean);
   const investorActivities = activities.filter(a => a.investorId === investor.id);
   const actTypeColors = { "Call": "#16a34a", "Email": "#3b82f6", "Meeting": "#7c3aed", "Note": "#64748b", "Document Sent": "#d97706", "Follow-Up": "#0891b2", "Other": "#94a3b8" };
+  const [commsLog, setCommsLog] = useState([]);
+  const [commsLoading, setCommsLoading] = useState(false);
+  useEffect(() => {
+    if (activeTab === "communications" && investor?.id) {
+      setCommsLoading(true);
+      supabase.from("investor_communications").select("*").eq("investor_id", investor.id).order("created_at", { ascending: false })
+        .then(({ data }) => { setCommsLog(data || []); setCommsLoading(false); })
+        .catch(() => { setCommsLog([]); setCommsLoading(false); });
+    }
+  }, [activeTab, investor?.id]);
+  const commTypeConfig = { "SMS": { color: "#16a34a", bg: "#f0fdf4", icon: "SMS" }, "Email": { color: "#2563eb", bg: "#eff6ff", icon: "Email" }, "Call": { color: "#7c3aed", bg: "#f5f3ff", icon: "Call" }, "Portal": { color: "#d97706", bg: "#fffbeb", icon: "Portal" } };
 
   return (
     <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", padding: isMobile ? "16px 16px 80px" : "28px 36px" }}>
@@ -8162,19 +8273,47 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
 
         {activeTab === "funds" && (() => {
           const myAssignments = (investorFunds || []).filter(af => af.investor_id === investor.id);
+          const assignedFundIds = new Set(myAssignments.map(a => a.fund_id));
           const myFundDetails = myAssignments.map(a => {
             const fund = (funds || []).find(f => f.id === a.fund_id);
             return fund ? { ...a, fund } : null;
           }).filter(Boolean);
+          const unassignedFunds = (funds || []).filter(f => !assignedFundIds.has(f.id));
           const totalMyCommitted = myAssignments.reduce((s, a) => s + (parseFloat(a.committed_capital) || 0), 0);
           const totalMyFunded = myAssignments.reduce((s, a) => s + (parseFloat(a.funded_capital) || 0), 0);
           return (
             <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Fund Assignments <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
-              {myFundDetails.length === 0 ? (
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
+                Fund Assignments <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                {unassignedFunds.length > 0 && (
+                  <select onChange={async (e) => {
+                    const fundId = e.target.value;
+                    if (!fundId) return;
+                    try {
+                      await supabase.from("investor_funds").insert({ fund_id: fundId, investor_id: investor.id, user_email: investor.user || "" });
+                      // Re-fetch - parent handles this via investorFunds prop
+                      window.location.reload();
+                    } catch (err) { alert("Error: " + err.message); }
+                    e.target.value = "";
+                  }} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #16a34a", background: "#f0fdf4", color: "#16a34a", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                    <option value="">+ Assign to Fund</option>
+                    {unassignedFunds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                )}
+              </div>
+
+              {myFundDetails.length === 0 && (funds || []).length === 0 ? (
+                <div style={{ textAlign: "center", padding: 30 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 12, background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                    <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                  </div>
+                  <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No funds have been created yet.</p>
+                  <p style={{ fontSize: 12, color: "#cbd5e1", margin: "6px 0 0" }}>Create funds from the Investor Pipeline page, then assign this investor.</p>
+                </div>
+              ) : myFundDetails.length === 0 ? (
                 <div style={{ textAlign: "center", padding: 30 }}>
                   <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>This investor is not assigned to any funds yet.</p>
-                  <p style={{ fontSize: 12, color: "#cbd5e1", margin: "6px 0 0" }}>Use the Funds panel to assign investors to funds with capital commitments.</p>
+                  <p style={{ fontSize: 12, color: "#cbd5e1", margin: "6px 0 0" }}>Use the dropdown above to assign them to a fund.</p>
                 </div>
               ) : (
                 <>
@@ -8208,7 +8347,10 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
                               <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{f.name}</div>
                               {f.description && <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{f.description}</div>}
                             </div>
-                            <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: f.status === "Active" ? "#f0fdf4" : "#f8fafc", color: f.status === "Active" ? "#16a34a" : "#64748b" }}>{f.status || "Active"}</span>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: f.status === "Active" ? "#f0fdf4" : "#f8fafc", color: f.status === "Active" ? "#16a34a" : "#64748b" }}>{f.status || "Active"}</span>
+                              <button onClick={async () => { if (window.confirm("Remove " + investor.investorName + " from " + f.name + "?")) { await supabase.from("investor_funds").delete().eq("id", a.id); window.location.reload(); }}} style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontSize: 10, fontWeight: 600, cursor: "pointer", color: "#dc2626" }}>Remove</button>
+                            </div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
                             <div style={{ padding: 10, borderRadius: 8, background: "#f8fafc" }}>
@@ -8309,9 +8451,42 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
 
         {activeTab === "communications" && (
           <>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Activity log <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
-            {investorActivities.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No activity logged yet. Click "Log activity" to start tracking communications.</div>
+            {/* Auto-logged communications */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Communications Log <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+            {commsLoading ? (
+              <div style={{ textAlign: "center", padding: 20, color: "#94a3b8", fontSize: 13 }}>Loading...</div>
+            ) : commsLog.length > 0 ? (
+              <div style={{ marginBottom: 24 }}>
+                {commsLog.map((c, i) => {
+                  const cfg = commTypeConfig[c.comm_type] || { color: "#64748b", bg: "#f8fafc", icon: c.comm_type };
+                  return (
+                    <div key={c.id || i} style={{ display: "flex", gap: 12, padding: "14px 0", borderBottom: "1px solid #f8fafc" }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color }}>{cfg.icon}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{c.subject || c.comm_type + " notification"}</span>
+                          <span style={{ padding: "2px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700, background: cfg.bg, color: cfg.color, textTransform: "uppercase" }}>{c.direction === "outbound" ? "Sent" : "Received"}</span>
+                        </div>
+                        {c.body && <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.4, marginBottom: 4 }}>{c.body}</div>}
+                        <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                          {c.created_at ? new Date(c.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
+                          {c.sent_by ? ` · ${c.sent_by.split("@")[0]}` : ""}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {/* Manual activity log */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Activity Log <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+            {investorActivities.length === 0 && commsLog.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No communications logged yet. Notifications sent through investor updates will appear here automatically.</div>
+            ) : investorActivities.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "16px", color: "#cbd5e1", fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>No manual activities logged. Click "Log activity" to add calls, emails, and meetings.</div>
             ) : investorActivities.sort((a, b) => new Date(b.date) - new Date(a.date)).map((a, i) => (
               <div key={i} style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: "1px solid #f8fafc" }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: actTypeColors[a.activityType] || "#94a3b8", marginTop: 5, flexShrink: 0 }} />
@@ -9152,14 +9327,20 @@ export default function ReapApp() {
     }
   }, []);
 
+  const [pendingDealTab, setPendingDealTab] = useState(null);
+
   // Parse hash on initial load
   useEffect(() => {
     const hash = window.location.hash.replace("#", "");
     if (!hash) return;
     if (hash.startsWith("deal/")) {
-      const addr = decodeURIComponent(hash.replace("deal/", ""));
+      const rest = hash.replace("deal/", "");
+      const slashIdx = rest.indexOf("/");
+      const addr = slashIdx > -1 ? decodeURIComponent(rest.substring(0, slashIdx)) : decodeURIComponent(rest);
+      const tab = slashIdx > -1 ? decodeURIComponent(rest.substring(slashIdx + 1)) : null;
       setActiveNav("realestate"); setRealEstateTab("pipeline");
       setPendingDealAddress(addr);
+      if (tab) setPendingDealTab(tab);
     } else if (hash.startsWith("portfolio/")) {
       const id = decodeURIComponent(hash.replace("portfolio/", ""));
       setActiveNav("realestate"); setRealEstateTab("portfolios");
@@ -9172,6 +9353,11 @@ export default function ReapApp() {
       const id = decodeURIComponent(hash.replace("contacts/investor/", ""));
       setActiveNav("contacts"); setContactsTab("investors");
       setPendingInvestorId(id);
+    } else if (hash.startsWith("realestate/")) {
+      const tab = hash.replace("realestate/", "");
+      if (["dashboard","pipeline","portfolios","mls"].includes(tab)) {
+        setActiveNav("realestate"); setRealEstateTab(tab);
+      }
     } else if (["command","realestate","contacts","research","mls"].includes(hash)) {
       setActiveNav(hash);
     }
@@ -9194,12 +9380,16 @@ export default function ReapApp() {
     const onHashChange = () => {
       const hash = window.location.hash.replace("#", "");
       if (hash.startsWith("deal/")) {
-        const addr = decodeURIComponent(hash.replace("deal/", ""));
+        const rest = hash.replace("deal/", "");
+        const slashIdx = rest.indexOf("/");
+        const addr = slashIdx > -1 ? decodeURIComponent(rest.substring(0, slashIdx)) : decodeURIComponent(rest);
+        const tab = slashIdx > -1 ? decodeURIComponent(rest.substring(slashIdx + 1)) : null;
         const deal = deals.find(d => d.address === addr);
         if (deal) {
           setActiveNav("realestate"); setRealEstateTab("pipeline");
           setShowProfile(false);
           setSelectedDeal(deal);
+          if (tab) setPendingDealTab(tab);
           if (isMobile) setDealTransition(true);
         }
       } else if (hash.startsWith("portfolio/")) {
@@ -9214,6 +9404,12 @@ export default function ReapApp() {
         const id = decodeURIComponent(hash.replace("contacts/investor/", ""));
         setActiveNav("contacts"); setContactsTab("investors"); setShowProfile(false);
         setPendingInvestorId(id);
+      } else if (hash.startsWith("realestate/")) {
+        const tab = hash.replace("realestate/", "");
+        if (["dashboard","pipeline","portfolios","mls"].includes(tab)) {
+          setActiveNav("realestate"); setRealEstateTab(tab); setShowProfile(false);
+          setSelectedDeal(null); if (isMobile) setDealTransition(false);
+        }
       } else if (["command","realestate","contacts","research","mls"].includes(hash)) {
         setActiveNav(hash);
         setShowProfile(false);
@@ -9285,10 +9481,12 @@ export default function ReapApp() {
     if (!hashInitRef.current) { hashInitRef.current = true; return; }
     if (showProfile) {
       updateHash("profile");
+    } else if (!selectedDeal && activeNav === "realestate") {
+      updateHash("realestate/" + realEstateTab);
     } else if (!selectedDeal) {
       updateHash(activeNav);
     }
-  }, [activeNav, showProfile, selectedDeal, updateHash]);
+  }, [activeNav, showProfile, selectedDeal, realEstateTab, updateHash]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -10127,11 +10325,11 @@ export default function ReapApp() {
             <>
               {selectedDeal ? (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                  <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} onUpdateDeal={fetchDeals} />
+                  <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} />
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); }} title="Real Estate" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {realEstateTab === "dashboard"
                       ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
@@ -10154,10 +10352,10 @@ export default function ReapApp() {
               : activeNav === "command"
               ? <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} teamEmails={teamEmails} />
               : activeNav === "realestate" && selectedDeal
-              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} />
+              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} />
               : activeNav === "realestate"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); }} title="Real Estate" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {realEstateTab === "dashboard"
                       ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
