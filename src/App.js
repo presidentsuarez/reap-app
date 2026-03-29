@@ -9520,7 +9520,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                 {/* Street View Image */}
                 <div style={{ height: 140, background: "linear-gradient(135deg, #f1f5f9, #e2e8f0)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
                   {listing.address ? (
-                    <img src={`https://maps.googleapis.com/maps/api/streetview?size=400x160&location=${encodeURIComponent([listing.address, listing.city, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "absolute", top: 0, left: 0, zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                    <img src={`https://maps.googleapis.com/maps/api/streetview?size=400x160&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "absolute", top: 0, left: 0, zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
                   ) : null}
                   <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ zIndex: 0 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                   <div style={{ position: "absolute", top: 10, left: 10 }}><MLSStatusBadge status={listing.status} /></div>
@@ -9589,7 +9589,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                     <td style={{ padding: "8px 4px 8px 10px", width: 52 }}>
                       <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
                         {listing.address ? (
-                          <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([listing.address, listing.city, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                          <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
                         ) : null}
                         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
                           <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -10041,6 +10041,191 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MARKETPLACE LISTINGS VIEW
+   ═══════════════════════════════════════════════════════════ */
+
+function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHash }) {
+  const [viewMode, setViewMode] = useState("deals"); // "deals" or "investments"
+  const [search, setSearch] = useState("");
+  const [hoveredRow, setHoveredRow] = useState(null);
+
+  // Filter to published deals (status = Closed or any with marketplace_published flag)
+  const publishedDeals = deals.filter(d => d.marketplace_published || d.status === "Closed");
+  const filtered = publishedDeals.filter(d => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return (d.address || "").toLowerCase().includes(s) || (d.city || "").toLowerCase().includes(s) || (d.type || "").toLowerCase().includes(s);
+  });
+
+  return (
+    <div style={{ padding: isMobile ? 16 : 28 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Marketplace</h2>
+          <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>Browse available deals and investment offerings</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* Toggle between deals and investments */}
+          <div style={{ display: "flex", borderRadius: 8, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+            <button onClick={() => setViewMode("deals")} style={{ padding: "7px 14px", border: "none", background: viewMode === "deals" ? "#0f172a" : "#fff", color: viewMode === "deals" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+              Deals
+            </button>
+            <button onClick={() => setViewMode("investments")} style={{ padding: "7px 14px", border: "none", borderLeft: "1px solid #e2e8f0", background: viewMode === "investments" ? "#0f172a" : "#fff", color: viewMode === "investments" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+              Investments
+            </button>
+          </div>
+          <div style={{ position: "relative" }}>
+            <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: isMobile ? 140 : 200 }} />
+          </div>
+        </div>
+      </div>
+
+      {viewMode === "deals" ? (
+        filtered.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+            <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 16 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>No marketplace listings yet</p>
+            <p style={{ fontSize: 12, margin: 0 }}>Published deals and offerings will appear here</p>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+            {filtered.map((deal, i) => (
+              <div key={deal._id || i} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{
+                background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", cursor: "pointer",
+                boxShadow: hoveredRow === i ? "0 8px 24px rgba(0,0,0,0.08)" : "0 1px 4px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s, transform 0.2s",
+                transform: hoveredRow === i ? "translateY(-2px)" : "none",
+              }}>
+                {/* Street View Image */}
+                <div style={{ height: 160, background: "#f1f5f9", position: "relative", overflow: "hidden" }}>
+                  {deal.address ? (
+                    <img src={`https://maps.googleapis.com/maps/api/streetview?size=640x320&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                  ) : null}
+                  <div style={{ position: "absolute", bottom: 8, left: 8 }}>
+                    <StatusBadge status={deal.status} />
+                  </div>
+                </div>
+                {/* Deal Info */}
+                <div style={{ padding: "14px 16px" }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>{deal.address || "—"}</h3>
+                  <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px", fontFamily: "'DM Sans', sans-serif" }}>{[deal.city, deal.state, deal.zip].filter(Boolean).join(", ")}</p>
+                  <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                    {deal.offer && <span style={{ fontSize: 14, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>{fmt(deal.offer)}</span>}
+                    {deal.type && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{deal.type}</span>}
+                    {deal.sqft && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)} SF</span>}
+                  </div>
+                  <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                    <button style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #16a34a22", background: "rgba(22,163,74,0.06)", color: "#16a34a", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                      Interested
+                    </button>
+                    <button style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#475569", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                      Make Offer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+        <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+          <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 16 }}><path d="M12 2v20M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6"/></svg>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>Investment offerings coming soon</p>
+          <p style={{ fontSize: 12, margin: 0 }}>Published investment offerings will appear here</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   OFFERINGS VIEW (Real Estate Tab)
+   ═══════════════════════════════════════════════════════════ */
+
+function OfferingsView({ deals, isMobile, session, userEmail, updateHash }) {
+  const [search, setSearch] = useState("");
+  const [hoveredRow, setHoveredRow] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [selectedDealForOffering, setSelectedDealForOffering] = useState(null);
+
+  // Offerings would come from a dedicated table; for now show deals marked as offerings
+  const offerings = deals.filter(d => d.marketplace_published);
+  const filtered = offerings.filter(d => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return (d.address || "").toLowerCase().includes(s) || (d.city || "").toLowerCase().includes(s);
+  });
+
+  return (
+    <div style={{ padding: isMobile ? 16 : 28 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Offerings</h2>
+          <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>Manage investment offerings linked to your deals</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ position: "relative" }}>
+            <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search offerings..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: isMobile ? 140 : 200 }} />
+          </div>
+          <button onClick={() => setShowCreate(true)} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "9px 18px", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap" }}>
+            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
+            New Offering
+          </button>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+          <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 16 }}><path d="M12 2v20M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6"/></svg>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>No offerings yet</p>
+          <p style={{ fontSize: 12, margin: 0 }}>Create an offering to list a deal on the marketplace</p>
+        </div>
+      ) : (
+        <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
+                {["Address", "Type", "Price", "Status", "Published", "Interested"].map(h => (
+                  <th key={h} style={{ padding: "11px 16px", textAlign: "left", fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((deal, i) => (
+                <tr key={deal._id || i} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
+                  <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
+                      {deal.address ? (
+                        <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                      ) : null}
+                      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
+                        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
+                  <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</td>
+                  <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.offer)}</td>
+                  <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
+                  <td style={{ padding: "13px 16px" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", background: "#f0fdf4", padding: "3px 8px", borderRadius: 6, textTransform: "uppercase" }}>Live</span>
+                  </td>
+                  <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>0</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -12638,6 +12823,7 @@ export default function ReapApp() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [realEstateTab, setRealEstateTab] = useState("dashboard");
   const [contactsTab, setContactsTab] = useState("contacts");
+  const [marketplaceTab, setMarketplaceTab] = useState("intelligence");
   const [mlsTab, setMlsTab] = useState("feed");
   const [selectedMLSListing, setSelectedMLSListing] = useState(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -12715,16 +12901,19 @@ export default function ReapApp() {
       const id = decodeURIComponent(hash.replace("contacts/investor/", ""));
       setActiveNav("contacts"); setContactsTab("investors");
       setPendingInvestorId(id);
+    } else if (hash.startsWith("marketplace/")) {
+      const sub = hash.replace("marketplace/", "");
+      setActiveNav("marketplace");
+      if (["intelligence","listings"].includes(sub)) setMarketplaceTab(sub);
     } else if (hash.startsWith("realestate/")) {
       const parts = hash.replace("realestate/", "").split("/");
       const tab = parts[0];
-      if (["dashboard","pipeline","portfolios","mls"].includes(tab)) {
+      if (["dashboard","pipeline","portfolios","mls","offerings"].includes(tab)) {
         setActiveNav("realestate"); setRealEstateTab(tab);
-        // Handle sub-view (table/map) for pipeline and mls
         if (parts[1] === "map") setPendingPipelineView("map");
         else if (parts[1] === "table") setPendingPipelineView("table");
       }
-    } else if (["command","realestate","contacts","research","mls"].includes(hash)) {
+    } else if (["command","realestate","contacts","marketplace","mls"].includes(hash)) {
       setActiveNav(hash);
     }
   }, []);
@@ -12808,14 +12997,18 @@ export default function ReapApp() {
         const id = decodeURIComponent(hash.replace("contacts/investor/", ""));
         setActiveNav("contacts"); setContactsTab("investors"); setShowProfile(false);
         setPendingInvestorId(id);
+      } else if (hash.startsWith("marketplace/")) {
+        const sub = hash.replace("marketplace/", "");
+        setActiveNav("marketplace"); setShowProfile(false);
+        if (["intelligence","listings"].includes(sub)) setMarketplaceTab(sub);
       } else if (hash.startsWith("realestate/")) {
         const parts = hash.replace("realestate/", "").split("/");
         const tab = parts[0];
-        if (["dashboard","pipeline","portfolios","mls"].includes(tab)) {
+        if (["dashboard","pipeline","portfolios","mls","offerings"].includes(tab)) {
           setActiveNav("realestate"); setRealEstateTab(tab); setShowProfile(false);
           setSelectedDeal(null); setSelectedMLSListing(null); if (isMobile) setDealTransition(false);
         }
-      } else if (["command","realestate","contacts","research","mls"].includes(hash)) {
+      } else if (["command","realestate","contacts","marketplace","mls"].includes(hash)) {
         setActiveNav(hash);
         setShowProfile(false);
         setSelectedDeal(null); setSelectedMLSListing(null);
@@ -13600,11 +13793,11 @@ export default function ReapApp() {
   const userName = session?.user?.user_metadata?.full_name || userEmail;
   const initials = userName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   const FEATURE_NAV_MAP = {
-    command: "dashboard", realestate: "pipeline", contacts: "contacts", research: "market_intel"
+    command: "dashboard", realestate: "pipeline", contacts: "contacts", marketplace: "market_intel"
   };
   const allNavItems = [
     { id: "realestate", label: "Real Estate", mobileOrder: 0, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-    { id: "research", label: "Research", mobileOrder: 1, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
+    { id: "marketplace", label: "Marketplace", mobileOrder: 1, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
     { id: "command", label: "Command Center", mobileLabel: "Dashboard", featured: true, mobileOrder: 2, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
     { id: "contacts", label: "Contacts", mobileOrder: 3, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
     { id: "assignments", label: "Assignments", mobileOrder: 4, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
@@ -13768,13 +13961,14 @@ export default function ReapApp() {
                   }
                 </div>
               </div>
-            ) : activeNav === "research" ? (
+            ) : activeNav === "marketplace" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "16px 20px", flexShrink: 0 }}>
-                  <h1 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Research</h1>
-                </div>
+                <SubTabBar tabs={[{ id: "intelligence", label: "Intelligence" }, { id: "listings", label: "Marketplace" }]} active={marketplaceTab} onChange={(tab) => { setMarketplaceTab(tab); updateHash("marketplace/" + tab); }} title="Marketplace" />
                 <div style={{ flex: 1, overflow: "auto" }}>
-                  <MarketIntelligenceView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} />
+                  {marketplaceTab === "intelligence"
+                    ? <MarketIntelligenceView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} />
+                    : <MarketplaceListingsView deals={deals} isMobile={true} session={session} userEmail={userEmail} updateHash={updateHash} />
+                  }
                 </div>
               </div>
             ) : activeNav === "realestate" ? (
@@ -13789,7 +13983,7 @@ export default function ReapApp() {
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }, { id: "offerings", label: "Offerings" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {realEstateTab === "dashboard"
                       ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
@@ -13799,6 +13993,8 @@ export default function ReapApp() {
                       ? (mlsTab === "upload"
                         ? <FileUploaderView session={session} isMobile={true} />
                         : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} />)
+                      : realEstateTab === "offerings"
+                      ? <OfferingsView deals={deals} isMobile={true} session={session} userEmail={userEmail} updateHash={updateHash} />
                       : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} />
                     }
                   </div>
@@ -13819,7 +14015,7 @@ export default function ReapApp() {
               ? <MLSListingDetailView listing={selectedMLSListing} onBack={handleMLSBack} isMobile={false} session={session} updateHash={updateHash} />
               : activeNav === "realestate"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }, { id: "offerings", label: "Offerings" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {realEstateTab === "dashboard"
                       ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
@@ -13829,6 +14025,8 @@ export default function ReapApp() {
                       ? (mlsTab === "upload"
                         ? <FileUploaderView session={session} isMobile={false} />
                         : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} />)
+                      : realEstateTab === "offerings"
+                      ? <OfferingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} />
                       : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} />
                     }
                   </div>
@@ -13843,13 +14041,14 @@ export default function ReapApp() {
                     }
                   </div>
                 </div>
-              : activeNav === "research"
+              : activeNav === "marketplace"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "16px 20px", flexShrink: 0 }}>
-                    <h1 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Research</h1>
-                  </div>
+                  <SubTabBar tabs={[{ id: "intelligence", label: "Intelligence" }, { id: "listings", label: "Marketplace" }]} active={marketplaceTab} onChange={(tab) => { setMarketplaceTab(tab); updateHash("marketplace/" + tab); }} title="Marketplace" />
                   <div style={{ flex: 1, overflow: "auto" }}>
-                    <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} />
+                    {marketplaceTab === "intelligence"
+                      ? <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} />
+                      : <MarketplaceListingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} />
+                    }
                   </div>
                 </div>
               : activeNav === "assignments"
