@@ -8323,7 +8323,7 @@ function LinkDealModal({ isOpen, onClose, deals, linkedAddresses, onLink, isMobi
   );
 }
 
-function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, deals }) {
+function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, deals, pendingInvestorId, onInvestorSelected, updateHash }) {
   const [investors, setInvestors] = useState([]);
   const [activities, setActivities] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -8443,6 +8443,15 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
 
   useEffect(() => { if (session) { fetchInvestors(); fetchActivities(); fetchContacts(); fetchFunds(); } }, [session, fetchInvestors, fetchActivities, fetchContacts, fetchFunds]);
 
+  // Auto-select investor from URL hash
+  useEffect(() => {
+    if (pendingInvestorId && investors.length > 0) {
+      const inv = investors.find(i => i.id === pendingInvestorId);
+      if (inv) setSelectedInvestor(inv);
+      if (onInvestorSelected) onInvestorSelected();
+    }
+  }, [pendingInvestorId, investors, onInvestorSelected]);
+
   const handleSaveInvestor = async (form) => {
     setSaving(true);
     try {
@@ -8543,7 +8552,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
         <InvestorDetailView
           investor={selectedInvestor} activities={activities} deals={deals} contacts={contacts}
           isMobile={isMobile}
-          onBack={() => setSelectedInvestor(null)}
+          onBack={() => { setSelectedInvestor(null); if (updateHash) updateHash("contacts/investors"); }}
           onEdit={() => { setEditingInvestor(selectedInvestor); setShowModal(true); }}
           onLogActivity={() => setShowActivityModal(true)}
           onLinkDeal={() => setShowLinkDealModal(true)}
@@ -8783,7 +8792,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
           </div>
         ) : isMobile ? (
           stageFiltered.map((inv, i) => (
-            <div key={inv.id || i} onClick={() => setSelectedInvestor(inv)} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "16px", marginBottom: 10, cursor: "pointer", transition: "all 0.15s" }}>
+            <div key={inv.id || i} onClick={() => { setSelectedInvestor(inv); if (updateHash) updateHash("contacts/investor/" + inv.id); }} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "16px", marginBottom: 10, cursor: "pointer", transition: "all 0.15s" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
                 <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{(inv.investorName || "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -8816,7 +8825,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
               </thead>
               <tbody>
                 {stageFiltered.map((inv, i) => (
-                  <tr key={inv.id || i} onClick={() => setSelectedInvestor(inv)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ cursor: "pointer", background: hoveredRow === i ? "#f8fafc" : "transparent", transition: "background 0.1s", borderBottom: "1px solid #f8fafc" }}>
+                  <tr key={inv.id || i} onClick={() => { setSelectedInvestor(inv); if (updateHash) updateHash("contacts/investor/" + inv.id); }} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ cursor: "pointer", background: hoveredRow === i ? "#f8fafc" : "transparent", transition: "background 0.1s", borderBottom: "1px solid #f8fafc" }}>
                     <td style={{ padding: "14px 16px", fontWeight: 600, color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>{inv.investorName}</td>
                     <td style={{ padding: "14px 16px", color: "#64748b", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>{inv.investorType}</td>
                     <td style={{ padding: "14px 16px" }}><InvestorStageBadge stage={inv.pipelineStage} /></td>
@@ -8866,6 +8875,7 @@ export default function ReapApp() {
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [pendingDealAddress, setPendingDealAddress] = useState(null);
+  const [pendingInvestorId, setPendingInvestorId] = useState(null);
   const [pendingPortfolioId, setPendingPortfolioId] = useState(null);
 
   // ── Organization / Team state ──
@@ -8905,6 +8915,12 @@ export default function ReapApp() {
       setPendingPortfolioId(id);
     } else if (hash === "profile") {
       setShowProfile(true);
+    } else if (hash === "contacts/investors") {
+      setActiveNav("contacts"); setContactsTab("investors");
+    } else if (hash.startsWith("contacts/investor/")) {
+      const id = decodeURIComponent(hash.replace("contacts/investor/", ""));
+      setActiveNav("contacts"); setContactsTab("investors");
+      setPendingInvestorId(id);
     } else if (["command","realestate","contacts","research","mls"].includes(hash)) {
       setActiveNav(hash);
     }
@@ -8941,6 +8957,12 @@ export default function ReapApp() {
         setPendingPortfolioId(decodeURIComponent(hash.replace("portfolio/", "")));
       } else if (hash === "profile") {
         setShowProfile(true);
+      } else if (hash === "contacts/investors") {
+        setActiveNav("contacts"); setContactsTab("investors"); setShowProfile(false);
+      } else if (hash.startsWith("contacts/investor/")) {
+        const id = decodeURIComponent(hash.replace("contacts/investor/", ""));
+        setActiveNav("contacts"); setContactsTab("investors"); setShowProfile(false);
+        setPendingInvestorId(id);
       } else if (["command","realestate","contacts","research","mls"].includes(hash)) {
         setActiveNav(hash);
         setShowProfile(false);
@@ -9833,10 +9855,10 @@ export default function ReapApp() {
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={setContactsTab} title="Contacts" />
+                <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "investors" ? "contacts/investors" : "contacts"); }} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {contactsTab === "investors"
-                    ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} />
+                    ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} />
                     : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
                   }
                 </div>
@@ -9900,10 +9922,10 @@ export default function ReapApp() {
                 </div>
               : activeNav === "contacts"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={setContactsTab} title="Contacts" />
+                  <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "investors" ? "contacts/investors" : "contacts"); }} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {contactsTab === "investors"
-                      ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} />
+                      ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} />
                       : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
                     }
                   </div>

@@ -1,0 +1,211 @@
+================================================================================
+ REAP APP — MASTER SESSION LOG & REFERENCE
+ Last Updated: March 28, 2026
+================================================================================
+
+OVERVIEW
+--------
+Reap is a real estate analytics platform (app.getreap.ai) built as a React 19
+single-page app deployed on GitHub Pages, backed by Supabase (Postgres, Auth,
+Storage, Edge Functions). Organization: Suarez Global. Owner: Javier A. Suarez.
+
+================================================================================
+SESSION HISTORY
+================================================================================
+
+SESSION 1 — Foundation
+- Built investor pipeline (CRUD for investors table)
+- Investor detail view with tabs: overview, contacts, capital, linked deals,
+  communications, documents, portal access
+- Link/unlink deals to investors via pipe-delimited addresses
+- Investor activities logging (calls, emails, meetings, notes)
+- Portal email setup for investor portal access
+
+SESSION 2 — Investor Portal & Updates
+- Built InvestorPortalView (full portal for investors who log in)
+- Investor updates system (post updates per deal)
+- Update type categories: Construction Progress, Financial Update,
+  Status Change, General Announcement (color-coded)
+- Read receipt tracking (investor_update_reads table)
+- Type filtering on portal updates
+- Unread badges on portal nav tabs
+- Public/Private toggle on updates (is_public boolean)
+- Notify investors toggle with email/SMS recipient preview
+
+SESSION 3 — Automated Notifications
+- Supabase Edge Function (send-investor-notifications) for email + SMS
+- Resend API integration for branded HTML emails
+- Quo API integration for SMS notifications
+- Notification preferences (email/SMS toggles) in portal settings
+- Investor notification tracking (investor_notifications table)
+- Branded email template: company name header, poster attribution,
+  "Powered by Reap" footer
+- Edge Function deployed via Supabase CLI
+- All secrets configured: RESEND_API_KEY, QUO_API_KEY, FROM_EMAIL,
+  FROM_NAME, QUO_FROM_NUMBER
+
+SESSION 4 — Photos, Onboarding, Metrics, Funds, Routing
+- Photo uploads on investor updates (multi-photo, Supabase Storage)
+  - Photos stored in deal-documents bucket under update-photos/ prefix
+  - Thumbnails with remove button on post form
+  - Full-size display in admin previous updates + portal views
+  - Cleanup on delete (removes from storage too)
+- Investor onboarding flow (3-step welcome wizard)
+  - Step 1: Welcome + feature overview grid
+  - Step 2: Linked deals preview
+  - Step 3: Notification preference setup
+  - Only shows once (localStorage flag per investor)
+  - Save prefs on completion, skip option available
+- Engagement metrics dashboard (admin side)
+  - Collapsible panel on Investor Updates tab
+  - Summary cards: total updates, read receipts, sent/failed, delivery rate
+  - Per-update performance breakdown (reads + sends)
+  - Active investors list with read counts
+- Fund-level grouping
+  - New funds table (name, description, status, target_raise, capital_raised,
+    target_irr, preferred_return, hold_period, vintage_year, deal_addresses)
+  - Admin: Funds management panel in Investor Pipeline view
+  - Admin: Create/edit fund modal with deal assignment picker
+  - Portal: Funds tab with capital progress bar, metrics, deal list,
+    recent updates, fund details footer
+  - Funds tab dynamically shows/hides based on investor's linked deals
+- Hash routing fixes for contacts/investors
+  - #contacts/investors — lands on investors tab
+  - #contacts/investor/{id} — deep links to specific investor
+  - URL updates when navigating between contacts/investors tabs
+  - URL updates when selecting an investor from list
+  - Back button resets hash to #contacts/investors
+  - Refresh now preserves investor tab and detail view
+
+================================================================================
+BRANDING MODEL
+================================================================================
+- Reap = the platform (like Shopify)
+- Suarez Global (or any company) = the organization using Reap
+- Portal header: company name dynamically + "Powered by Reap"
+- Emails: company name in header, poster name in body,
+  "Powered by Reap · Real Estate Analytics Platform" in footer
+- Scalable: any team using Reap gets their own branding
+
+================================================================================
+SUPABASE TABLES
+================================================================================
+deals                    — main deal/property records
+deal_documents           — uploaded files (deal-documents storage bucket)
+deal_activities          — activity timeline and notes
+deal_shares              — deal sharing with permissions
+organizations            — team/org management
+org_members              — org membership
+org_invites              — pending invitations
+feature_flags            — per-org feature toggles
+investors                — investor pipeline
+  - portal_email         — email for portal access (Google OAuth)
+  - contact_ids          — pipe-delimited (|||) contact IDs
+  - linked_deal_addresses — pipe-delimited property addresses
+  - notification_prefs   — JSON string {email:bool, sms:bool}
+investor_updates         — posted updates per deal
+  - is_public            — boolean (public=portal visible, private=internal)
+  - photos               — JSON string of photo objects [{url, path, name}]
+investor_update_reads    — read receipts (portal_email + update_id)
+investor_notifications   — email/SMS delivery tracking (status, sent_at, error)
+contacts / buyers        — contact management
+portfolios               — portfolio groupings (deal_addresses pipe-delimited)
+funds                    — investment funds (NEW — Session 4)
+  - name, description, status, user_email
+  - target_raise, capital_raised, target_irr, preferred_return
+  - hold_period, vintage_year
+  - deal_addresses       — pipe-delimited property addresses
+market_intel             — market research data
+user_profiles            — user account data
+
+================================================================================
+EDGE FUNCTIONS
+================================================================================
+generate-summary         — AI summary generation for deals
+stripe-webhook           — Stripe payment processing
+send-investor-notifications — automated email + SMS delivery
+
+================================================================================
+API KEYS & SECRETS (stored in .claude/config.md in repo)
+================================================================================
+- Supabase project: cpgwnrpaflaftlxrzlar
+- Resend API Key: re_KFaHT73z_JE31132r2GGpqikid5Lu54VP
+- Quo API Key: c8cd61b340ee8e99f7811b20c943799924204d6a69dcb80692c03b127ea3bd51
+- Quo Phone: +18136944125 (ID: PNcbag1oru)
+- Stripe: pk_live_51SLWy2CPBlmmKk8H
+- GitHub PAT: ask Javier (not stored in repo for security)
+
+================================================================================
+DESIGN SYSTEM
+================================================================================
+- Fonts: DM Sans (body), Playfair Display (headings), DM Mono (monospace)
+- Primary color: #16a34a (green)
+- Update type colors:
+  Construction Progress = #EA580C (orange)
+  Financial Update = #2563EB (blue)
+  Status Change = #16A34A (green)
+  General Announcement = #7C3AED (purple)
+- All inline styles, no CSS framework
+- Responsive: isMobile check at 768px breakpoint
+
+================================================================================
+DEPLOYMENT
+================================================================================
+GitHub Pages via gh-pages package
+Custom domain: app.getreap.ai (CNAME in build folder)
+Deploy from /tmp to avoid EPERM issues on mounted folders:
+  cd /tmp && rm -rf reap-deploy
+  git clone https://presidentsuarez:<PAT>@github.com/presidentsuarez/reap-app.git reap-deploy
+  cd reap-deploy && cp <workspace>/src/App.js src/App.js
+  cp <workspace>/.env .env
+  npm install && CI=false npm run build
+  echo "app.getreap.ai" > build/CNAME
+  npx gh-pages -d build
+
+Edge Function deploy:
+  supabase functions deploy send-investor-notifications
+
+================================================================================
+PENDING SQL (run in Supabase Dashboard → SQL Editor)
+================================================================================
+
+-- Photos column on investor_updates (Session 4)
+ALTER TABLE investor_updates ADD COLUMN IF NOT EXISTS photos text;
+
+-- Funds table (Session 4)
+CREATE TABLE IF NOT EXISTS funds (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_email text,
+  org_id uuid,
+  name text NOT NULL,
+  description text,
+  status text DEFAULT 'Active',
+  target_raise numeric,
+  capital_raised numeric,
+  target_irr numeric,
+  preferred_return numeric,
+  hold_period text,
+  vintage_year text,
+  deal_addresses text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- Enable RLS (match your existing policy pattern)
+ALTER TABLE funds ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for authenticated users" ON funds
+  FOR ALL USING (auth.role() = 'authenticated');
+
+================================================================================
+FUTURE WORK (Session 5+)
+================================================================================
+- Fund-level investor linking (assign investors directly to funds)
+- Contact cross-referencing (show which deals/investors reference a contact)
+- Contact click-through from investor detail to contact record
+- Multi-org support with per-org branding in portal + emails
+- Resend custom domain setup (DNS via Wix)
+- Image gallery / lightbox for update photos
+- Investor engagement scoring / analytics
+- Batch investor import (CSV)
+- Investor communications log (auto-log sent emails/SMS)
+================================================================================
