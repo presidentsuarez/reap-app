@@ -627,114 +627,20 @@ function FinancialsTab({ deal, isMobile }) {
 
   return (
     <>
-      {/* Existing / Current Financials */}
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-          Current Financials <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-        </h2>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-          <MetricCard label="Revenue (Annual)" value={fmt(deal.existingRevenueAnnual)} />
-          <MetricCard label="Revenue (Monthly)" value={fmt(deal.existingRevenueMonthly)} />
-          <MetricCard label="Revenue $/sqft" value={deal.existingRevenuePerSF ? `$${parseFloat(deal.existingRevenuePerSF).toFixed(2)}` : "—"} />
-          <MetricCard label="Expense Ratio" value={fmtPct(deal.existingExpensePct)} warn={num(deal.existingExpensePct) > 60} good={num(deal.existingExpensePct) !== null && num(deal.existingExpensePct) <= 45} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-          <MetricCard label="Current Expenses" value={fmt(deal.existingExpenses)} />
-          <MetricCard label="Annual Taxes" value={fmt(deal.annualTaxes)} />
-          <MetricCard label="Insurance (Annual)" value={fmt(deal.insuranceCost)} />
-          <MetricCard label="Current NOI" value={fmt(deal.existingNOI)} highlight good={num(deal.existingNOI) > 0} warn={num(deal.existingNOI) !== null && num(deal.existingNOI) <= 0} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-          <MetricCard label="Current Cap Rate" value={fmtPct(deal.existingCapRate)} good={num(deal.existingCapRate) >= 6} warn={num(deal.existingCapRate) !== null && num(deal.existingCapRate) < 4} />
-        </div>
-      </section>
-
-      {/* Proforma Income & Expenses */}
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-          Proforma Income & Expenses <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-        </h2>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-          <MetricCard label="Revenue (Annual)" value={fmt(deal.proformaRevenueAnnual)} highlight />
-          <MetricCard label="Revenue (Monthly)" value={fmt(deal.proformaRevenueMonthly)} />
-          <MetricCard label="Revenue $/sqft" value={deal.proformaRentPerSF ? `$${deal.proformaRentPerSF}` : "—"} />
-          <MetricCard label="Vacancy" value={fmtPct(deal.proformaVacancy)} warn={num(deal.proformaVacancy) > 10} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-          <MetricCard label="Expenses (Annual)" value={fmt(deal.proformaExpensesAnnual)} />
-          <MetricCard label="Expenses (Monthly)" value={fmt(deal.proformaExpensesMonthly)} />
-          <MetricCard label="Expense Ratio" value={fmtPct(deal.proformaExpensesPct)} warn={num(deal.proformaExpensesPct) > 60} good={num(deal.proformaExpensesPct) !== null && num(deal.proformaExpensesPct) <= 45} />
-          <MetricCard label="Expenses $/sqft" value={deal.proformaExpensesPerSF ? `$${deal.proformaExpensesPerSF}` : "—"} />
-        </div>
-      </section>
-
-      {/* NOI & Cash Flow */}
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-          NOI & Cash Flow <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-        </h2>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-          <MetricCard label="Net Operating Income" value={fmt(deal.noiAnnual)} highlight good={num(deal.noiAnnual) > 0} warn={num(deal.noiAnnual) !== null && num(deal.noiAnnual) <= 0} />
-          <MetricCard label="NOI (Monthly)" value={fmt(deal.noiMonthly)} />
-          <MetricCard label="NOI $/sqft" value={deal.noiPerSF ? `$${deal.noiPerSF}` : "—"} />
-          <MetricCard label="Cash Flow (Pre-Tax)" value={fmt(deal.cashFlowMonthly)} sub="monthly" highlight good={num(deal.cashFlowMonthly) > 0} warn={num(deal.cashFlowMonthly) !== null && num(deal.cashFlowMonthly) <= 0} />
-        </div>
-      </section>
-
       {/* Key Investment Metrics */}
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-          Key Metrics <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+          Key Investment Metrics <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
         </h2>
         <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-          <MetricCard label="Cap Rate" value={fmtPct(deal.capRate)} highlight good={num(deal.capRate) >= 6} warn={num(deal.capRate) !== null && num(deal.capRate) < 4} />
-          <MetricCard label="DSCR" value={deal.dscr || "—"} good={num(deal.dscr) >= 1.25} warn={num(deal.dscr) !== null && num(deal.dscr) < 1.0} />
           <MetricCard label="ROI" value={fmtPct(deal.roi)} highlight good={num(deal.roi) >= 15} warn={num(deal.roi) !== null && num(deal.roi) < 5} />
           <MetricCard label="AAR" value={fmtPct(deal.aar)} good={num(deal.aar) >= 10} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
           <MetricCard label="Cost to Value" value={fmtPct(deal.ctv)} good={num(deal.ctv) !== null && num(deal.ctv) <= 75} warn={num(deal.ctv) > 90} />
           <MetricCard label="Profitability" value={fmtPct(deal.profitability)} good={num(deal.profitability) >= 15} warn={num(deal.profitability) !== null && num(deal.profitability) < 5} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
           <MetricCard label="REAP Score" value={deal.reapScore || "—"} highlight={num(deal.reapScore) >= 70} good={num(deal.reapScore) >= 70} warn={num(deal.reapScore) !== null && num(deal.reapScore) < 40} />
           <MetricCard label="Equity Multiple" value={deal.equityMultiple || "—"} good={num(deal.equityMultiple) >= 1.5} />
-        </div>
-      </section>
-
-      {/* Bridge Loan */}
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-          Bridge Loan <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-        </h2>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-          <MetricCard label="Loan Total" value={fmt(deal.bridgeLoanTotal)} />
-          <MetricCard label="Interest Rate" value={fmtPct(deal.bridgeInterestRate)} />
-          <MetricCard label="Interest Cost (Mo)" value={fmt(deal.bridgeInterestMonthly)} />
-          <MetricCard label="Points" value={fmtPct(deal.bridgePoints)} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-          <MetricCard label="LTC" value={fmtPct(deal.bridgeLTC)} warn={num(deal.bridgeLTC) > 90} />
-          <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} good={num(deal.bridgeLTV) !== null && num(deal.bridgeLTV) <= 75} warn={num(deal.bridgeLTV) > 85} />
-          <MetricCard label="Equity Required" value={fmt(deal.equityRequired)} />
-          <MetricCard label="Bridge Total Cost" value={fmt(deal.bridgeTotalCost)} />
-        </div>
-      </section>
-
-      {/* Refinance */}
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-          Refinance <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-        </h2>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-          <MetricCard label="Refi Loan Amount" value={fmt(deal.refiLoanAmount)} />
-          <MetricCard label="% of ARV" value={fmtPct(deal.refiPctARV)} />
-          <MetricCard label="Refi Interest Rate" value={fmtPct(deal.refiInterestRate)} />
-          <MetricCard label="Cash Flow (Refi)" value={fmt(deal.refiCashFlow)} sub="annual" highlight good={num(deal.refiCashFlow) > 0} warn={num(deal.refiCashFlow) !== null && num(deal.refiCashFlow) <= 0} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-          <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good={num(deal.cashOutRefi) > 0} warn={num(deal.cashOutRefi) !== null && num(deal.cashOutRefi) <= 0} />
-          <MetricCard label="Profit at Refi" value={fmt(deal.profitAtRefi)} highlight good={num(deal.profitAtRefi) > 0} warn={num(deal.profitAtRefi) !== null && num(deal.profitAtRefi) <= 0} />
-          <MetricCard label="Equity After Refi" value={fmt(deal.equityAfterRefi)} />
-          <MetricCard label="Refi Valuation" value={fmt(deal.refiValuation)} />
         </div>
       </section>
     </>
@@ -2773,8 +2679,19 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
                   <MetricCard label="Revenue (Annual)" value={fmt(deal.existingRevenueAnnual)} />
                   <MetricCard label="Revenue (Monthly)" value={fmt(deal.existingRevenueMonthly)} />
+                  <MetricCard label="Revenue $/sqft" value={deal.existingRevenuePerSF ? `$${parseFloat(deal.existingRevenuePerSF).toFixed(2)}` : "—"} />
                   <MetricCard label="Expense Ratio" value={fmtPct(deal.existingExpensePct)} warn={num(deal.existingExpensePct) > 60} good={num(deal.existingExpensePct) !== null && num(deal.existingExpensePct) <= 45} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+                  <MetricCard label="Current Expenses" value={fmt(deal.existingExpenses)} />
+                  <MetricCard label="Annual Taxes" value={fmt(deal.annualTaxes)} />
+                  <MetricCard label="Insurance (Annual)" value={fmt(deal.insuranceCost)} />
                   <MetricCard label="Current NOI" value={fmt(deal.existingNOI)} highlight good={num(deal.existingNOI) > 0} warn={num(deal.existingNOI) !== null && num(deal.existingNOI) <= 0} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+                  <MetricCard label="NOI (Monthly)" value={deal.existingNOI ? fmt(num(deal.existingNOI) / 12) : "—"} />
+                  <MetricCard label="Cash Flow (Pre-Tax)" value={fmt(deal.cashFlowMonthly)} sub="monthly" highlight good={num(deal.cashFlowMonthly) > 0} warn={num(deal.cashFlowMonthly) !== null && num(deal.cashFlowMonthly) <= 0} />
+                  <MetricCard label="Current Cap Rate" value={fmtPct(deal.existingCapRate)} good={num(deal.existingCapRate) >= 6} warn={num(deal.existingCapRate) !== null && num(deal.existingCapRate) < 4} />
                 </div>
               </section>
               {/* Pro Forma Cash Flow */}
@@ -2783,8 +2700,20 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
                   <MetricCard label="Revenue (Annual)" value={fmt(deal.proformaRevenueAnnual)} highlight />
                   <MetricCard label="Revenue (Monthly)" value={fmt(deal.proformaRevenueMonthly)} />
+                  <MetricCard label="Revenue $/sqft" value={deal.proformaRentPerSF ? `$${deal.proformaRentPerSF}` : "—"} />
                   <MetricCard label="Vacancy" value={fmtPct(deal.proformaVacancy)} warn={num(deal.proformaVacancy) > 10} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+                  <MetricCard label="Expenses (Annual)" value={fmt(deal.proformaExpensesAnnual)} />
+                  <MetricCard label="Expenses (Monthly)" value={fmt(deal.proformaExpensesMonthly)} />
+                  <MetricCard label="Expense Ratio" value={fmtPct(deal.proformaExpensesPct)} warn={num(deal.proformaExpensesPct) > 60} good={num(deal.proformaExpensesPct) !== null && num(deal.proformaExpensesPct) <= 45} />
+                  <MetricCard label="Expenses $/sqft" value={deal.proformaExpensesPerSF ? `$${deal.proformaExpensesPerSF}` : "—"} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
                   <MetricCard label="Proforma NOI" value={fmt(deal.noiAnnual)} highlight good={num(deal.noiAnnual) > 0} warn={num(deal.noiAnnual) !== null && num(deal.noiAnnual) <= 0} />
+                  <MetricCard label="NOI (Monthly)" value={deal.noiMonthly ? fmt(deal.noiMonthly) : (deal.noiAnnual ? fmt(num(deal.noiAnnual) / 12) : "—")} />
+                  <MetricCard label="Cash Flow (Pre-Tax)" value={fmt(deal.cashFlowMonthly)} sub="monthly" highlight good={num(deal.cashFlowMonthly) > 0} warn={num(deal.cashFlowMonthly) !== null && num(deal.cashFlowMonthly) <= 0} />
+                  <MetricCard label="Pro Forma Cap Rate" value={fmtPct(deal.capRate)} highlight good={num(deal.capRate) >= 6} warn={num(deal.capRate) !== null && num(deal.capRate) < 4} />
                 </div>
               </section>
             </div>
@@ -2880,6 +2809,9 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                         <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} good={num(deal.bridgeLTV) !== null && num(deal.bridgeLTV) <= 75} warn={num(deal.bridgeLTV) > 85} />
                         <MetricCard label="Equity Required" value={fmt(deal.equityRequired)} />
                         <MetricCard label="Bridge Total Cost" value={fmt(deal.bridgeTotalCost)} />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+                        <MetricCard label="DSCR (Bridge)" value={(() => { const bInt = num(deal.bridgeInterestMonthly); const exNOI = num(deal.existingNOI); if (!bInt || bInt <= 0) return deal.dscr || "—"; const annualDS = bInt * 12; return annualDS > 0 && exNOI ? (exNOI / annualDS).toFixed(2) : "—"; })()} good={(() => { const bInt = num(deal.bridgeInterestMonthly); const exNOI = num(deal.existingNOI); if (!bInt || bInt <= 0) return num(deal.dscr) >= 1.25; const annualDS = bInt * 12; return annualDS > 0 && exNOI ? (exNOI / annualDS) >= 1.25 : false; })()} warn={(() => { const bInt = num(deal.bridgeInterestMonthly); const exNOI = num(deal.existingNOI); if (!bInt || bInt <= 0) return num(deal.dscr) !== null && num(deal.dscr) < 1.0; const annualDS = bInt * 12; return annualDS > 0 && exNOI !== null ? (exNOI / annualDS) < 1.0 : false; })()} />
                       </div>
                     </>
                   )}
