@@ -1321,7 +1321,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
-  const tabs = ["overview", "financials", "refinance", "bridge loan", "income", "financing", "ai underwriting", "ai summary", "notes", "documents", "shared deal", "activity"];
+  const tabs = ["overview", "financials", "refinance", "bridge loan", "income", "financing", "ai underwriting", "ai summary", "notes", "documents", "shared deal", "activity", "investor updates"];
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
@@ -1390,6 +1390,12 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [linkForm, setLinkForm] = useState({ url: "", title: "", type: "website" });
   const [linkSaving, setLinkSaving] = useState(false);
 
+  // ── Investor Updates tab state ──
+  const [updates, setUpdates] = useState([]);
+  const [updatesLoading, setUpdatesLoading] = useState(false);
+  const [updateSaving, setUpdateSaving] = useState(false);
+  const [updateForm, setUpdateForm] = useState({ title: "", content: "", type: "announcement" });
+
   // ── Fetch documents ──
   const fetchDocuments = useCallback(async () => {
     if (!deal?._id) return;
@@ -1428,11 +1434,31 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
     }
   }, [deal?._id]);
 
-  // Load docs/activities when tab switches
+  // ── Fetch investor updates ──
+  const fetchInvestorUpdates = useCallback(async () => {
+    if (!deal?._id) return;
+    setUpdatesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("investor_updates")
+        .select("*")
+        .eq("deal_id", deal._id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setUpdates(data || []);
+    } catch (err) {
+      console.error("Error fetching investor updates:", err);
+    } finally {
+      setUpdatesLoading(false);
+    }
+  }, [deal?._id]);
+
+  // Load docs/activities/investor updates when tab switches
   useEffect(() => {
     if (activeTab === "documents" && documents.length === 0 && !docsLoading) fetchDocuments();
     if ((activeTab === "activity" || activeTab === "notes") && activities.length === 0 && !activitiesLoading) fetchActivities();
-  }, [activeTab, deal?._id]);
+    if (activeTab === "investor updates" && updates.length === 0 && !updatesLoading) fetchInvestorUpdates();
+  }, [activeTab, deal?._id, fetchDocuments, fetchActivities, fetchInvestorUpdates]);
 
   // ── Upload document ──
   const handleUploadFiles = async (files) => {
@@ -2657,6 +2683,413 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
             )}
           </div>
         )}
+
+        {activeTab === "investor updates" && (
+          <div>
+            {/* Post New Update */}
+            <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+              <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
+                Post Investor Update <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              </h2>
+
+              <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                {[
+                  { id: "Construction Progress", color: "#EA580C", bg: "#FFF7ED", border: "#FDBA74" },
+                  { id: "Financial Update", color: "#2563EB", bg: "#EFF6FF", border: "#93C5FD" },
+                  { id: "Status Change", color: "#16A34A", bg: "#F0FDF4", border: "#86EFAC" },
+                  { id: "General Announcement", color: "#7C3AED", bg: "#F5F3FF", border: "#C4B5FD" },
+                ].map(t => (
+                  <button key={t.id} onClick={() => setUpdateForm(prev => ({ ...prev, type: t.id }))} style={{
+                    padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s",
+                    border: "1.5px solid " + (updateForm.type === t.id ? t.color : "#e2e8f0"),
+                    background: updateForm.type === t.id ? t.bg : "#fff",
+                    color: updateForm.type === t.id ? t.color : "#64748b",
+                  }}>{t.id}</button>
+                ))}
+              </div>
+
+              <input value={updateForm.title} onChange={e => setUpdateForm(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="Update title" style={{ width: "100%", padding: "10px 14px", fontSize: 14, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 10, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", marginBottom: 12 }}
+                onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+
+              <textarea value={updateForm.content} onChange={e => setUpdateForm(prev => ({ ...prev, content: e.target.value }))}
+                placeholder="Write your update here... This will be visible to all investors linked to this deal."
+                rows={4} style={{ width: "100%", padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 10, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", resize: "vertical", lineHeight: 1.6, marginBottom: 14 }}
+                onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+
+              <button onClick={async () => {
+                if (!updateForm.title.trim() || !updateForm.content.trim() || !deal?._id) return;
+                setUpdateSaving(true);
+                try {
+                  const { error } = await supabase.from("investor_updates").insert({
+                    deal_id: deal._id, update_type: updateForm.type,
+                    title: updateForm.title.trim(), body: updateForm.content.trim(),
+                    posted_by: userEmail,
+                  });
+                  if (error) throw error;
+                  setUpdateForm({ title: "", content: "", type: "General Announcement" });
+                  fetchInvestorUpdates();
+                } catch (err) { alert("Error posting update: " + err.message); } finally { setUpdateSaving(false); }
+              }} disabled={updateSaving || !updateForm.title.trim() || !updateForm.content.trim()} style={{
+                padding: "10px 24px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 600, cursor: updateForm.title.trim() && updateForm.content.trim() ? "pointer" : "default",
+                fontFamily: "'DM Sans', sans-serif",
+                background: updateForm.title.trim() && updateForm.content.trim() ? "linear-gradient(135deg, #16a34a, #15803d)" : "#e2e8f0",
+                color: updateForm.title.trim() && updateForm.content.trim() ? "#fff" : "#94a3b8",
+                boxShadow: updateForm.title.trim() && updateForm.content.trim() ? "0 2px 10px rgba(22,163,74,0.3)" : "none",
+                opacity: updateSaving ? 0.7 : 1, transition: "all 0.2s",
+              }}>
+                {updateSaving ? "Posting..." : "Post Update"}
+              </button>
+            </div>
+
+            {/* Previous Updates */}
+            <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+              Previous Updates ({updates.length}) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+            </h2>
+
+            {updatesLoading ? (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+              </div>
+            ) : updates.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0" }}>
+                <div style={{ width: 48, height: 48, borderRadius: 12, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                  <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.8}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                </div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>No updates yet</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Post your first investor update above to get started.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {updates.map(u => {
+                  const typeConfig = {
+                    "Construction Progress": { color: "#EA580C", bg: "#FFF7ED", border: "#FDBA74" },
+                    "Financial Update": { color: "#2563EB", bg: "#EFF6FF", border: "#93C5FD" },
+                    "Status Change": { color: "#16A34A", bg: "#F0FDF4", border: "#86EFAC" },
+                    "General Announcement": { color: "#7C3AED", bg: "#F5F3FF", border: "#C4B5FD" },
+                  }[u.update_type] || { color: "#64748b", bg: "#f8fafc", border: "#e2e8f0" };
+                  return (
+                    <div key={u.id} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 14 : 20, position: "relative" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", background: typeConfig.bg, color: typeConfig.color, border: "1px solid " + typeConfig.border }}>{u.update_type}</span>
+                        <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                        <span style={{ fontSize: 11, color: "#cbd5e1", fontFamily: "'DM Mono', monospace" }}>{u.posted_by}</span>
+                      </div>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 6px" }}>{u.title}</h3>
+                      <p style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif", margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{u.body}</p>
+                      <button onClick={async () => {
+                        if (!window.confirm("Delete this update?")) return;
+                        try {
+                          await supabase.from("investor_updates").delete().eq("id", u.id);
+                          fetchInvestorUpdates();
+                        } catch (err) { alert("Error: " + err.message); }
+                      }} style={{ position: "absolute", top: isMobile ? 10 : 16, right: isMobile ? 10 : 16, width: 28, height: 28, borderRadius: 8, background: "#fff", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title="Delete update">
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
+   INVESTOR PORTAL VIEW — branded portal for investors
+   ═══════════════════════════════════════════════════════ */
+function InvestorPortalView({ investorProfile, onSignOut }) {
+  const [activeSection, setActiveSection] = useState("dashboard");
+  const [deals, setDeals] = useState([]);
+  const [updates, setUpdates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDeal, setSelectedDeal] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handle = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handle);
+    return () => window.removeEventListener("resize", handle);
+  }, []);
+
+  // Fetch investor's linked deals
+  useEffect(() => {
+    if (!investorProfile?.linkedDealAddresses?.length) { setLoading(false); return; }
+    async function fetchData() {
+      setLoading(true);
+      try {
+        // Fetch deals by address
+        const { data: allDeals } = await supabase.from("deals").select("*");
+        const linked = (allDeals || []).filter(d => investorProfile.linkedDealAddresses.includes(d.property_address));
+        const v = (val) => val != null ? String(val) : "";
+        const parsed = linked.map(r => ({
+          _id: r.id, address: r.property_address || "", status: r.deal_status || "", type: r.type || "",
+          purchasePrice: v(r.purchase_price), arv: v(r.arv_value), profit: v(r.profit), roi: v(r.roi),
+          improvementBudget: v(r.improvement_budget), capRate: v(r.cap_rate),
+          noiAnnual: v(r.noi_annual), cashFlowMonthly: v(r.cash_flow_monthly),
+          city: r.city || "", state: r.state || "", dealName: r.deal_name || "",
+        }));
+        setDeals(parsed);
+
+        // Fetch updates for all linked deals
+        const dealIds = parsed.map(d => d._id).filter(Boolean);
+        if (dealIds.length > 0) {
+          const { data: updatesData } = await supabase.from("investor_updates").select("*").in("deal_id", dealIds).order("created_at", { ascending: false });
+          setUpdates(updatesData || []);
+        }
+      } catch (err) { console.error("Portal data error:", err); } finally { setLoading(false); }
+    }
+    fetchData();
+  }, [investorProfile]);
+
+  const typeConfig = (type) => ({
+    "Construction Progress": { color: "#EA580C", bg: "#FFF7ED", border: "#FDBA74", icon: "🏗️" },
+    "Financial Update": { color: "#2563EB", bg: "#EFF6FF", border: "#93C5FD", icon: "💰" },
+    "Status Change": { color: "#16A34A", bg: "#F0FDF4", border: "#86EFAC", icon: "📋" },
+    "General Announcement": { color: "#7C3AED", bg: "#F5F3FF", border: "#C4B5FD", icon: "📢" },
+  }[type] || { color: "#64748b", bg: "#f8fafc", border: "#e2e8f0", icon: "📝" });
+
+  const fmt = (v) => { const n = parseFloat(v); return isNaN(n) ? "—" : "$" + n.toLocaleString(); };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px 20px" : "16px 40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <div>
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>Suarez Capital</span>
+            <span style={{ fontSize: 11, color: "#94a3b8", display: "block", marginTop: -2 }}>Investor Portal</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ textAlign: "right" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", display: "block" }}>{investorProfile?.investorName || "Investor"}</span>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>{investorProfile?.company || ""}</span>
+          </div>
+          <button onClick={onSignOut} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Sign Out</button>
+        </div>
+      </div>
+
+      {/* Nav tabs */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "0 16px" : "0 40px" }}>
+        <div style={{ display: "flex", gap: 0 }}>
+          {[{ id: "dashboard", label: "Dashboard" }, { id: "updates", label: "Updates" }, { id: "deals", label: "My Deals" }].map(t => (
+            <button key={t.id} onClick={() => { setActiveSection(t.id); setSelectedDeal(null); }} style={{
+              background: "transparent", border: "none", borderBottom: activeSection === t.id ? "2px solid #16a34a" : "2px solid transparent",
+              padding: "12px 20px", color: activeSection === t.id ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600,
+              cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", marginBottom: -1,
+            }}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: isMobile ? "20px 16px" : "28px 40px" }}>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 60 }}>
+            <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+            <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 16 }}>Loading your portfolio...</p>
+          </div>
+        ) : selectedDeal ? (
+          /* ── Deal Detail View ── */
+          <div>
+            <button onClick={() => setSelectedDeal(null)} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#16a34a", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: 20 }}>
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="15 18 9 12 15 6"/></svg>
+              Back to {activeSection === "deals" ? "My Deals" : "Dashboard"}
+            </button>
+            <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 28, marginBottom: 20 }}>
+              <h2 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>{selectedDeal.dealName || selectedDeal.address}</h2>
+              <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 20px" }}>{selectedDeal.city}{selectedDeal.state ? ", " + selectedDeal.state : ""}</p>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 14 }}>
+                {[{ label: "Status", value: selectedDeal.status }, { label: "Type", value: selectedDeal.type }, { label: "Purchase Price", value: fmt(selectedDeal.purchasePrice) }, { label: "ARV", value: fmt(selectedDeal.arv) }, { label: "Improvement Budget", value: fmt(selectedDeal.improvementBudget) }, { label: "Cap Rate", value: selectedDeal.capRate ? selectedDeal.capRate + "%" : "—" }, { label: "NOI (Annual)", value: fmt(selectedDeal.noiAnnual) }, { label: "Cash Flow / Mo", value: fmt(selectedDeal.cashFlowMonthly) }].map(m => (
+                  <div key={m.label} style={{ padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #f1f5f9" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{m.label}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>{m.value || "—"}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Updates for this deal */}
+            <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>Updates for This Property</h3>
+            {updates.filter(u => u.deal_id === selectedDeal._id).length === 0 ? (
+              <div style={{ textAlign: "center", padding: 30, background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0" }}>
+                <p style={{ fontSize: 13, color: "#94a3b8" }}>No updates posted for this property yet.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {updates.filter(u => u.deal_id === selectedDeal._id).map(u => {
+                  const tc = typeConfig(u.update_type);
+                  return (
+                    <div key={u.id} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 14 : 20, borderLeft: "4px solid " + tc.color }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: tc.bg, color: tc.color, border: "1px solid " + tc.border }}>{u.update_type}</span>
+                        <span style={{ fontSize: 12, color: "#94a3b8" }}>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                      </div>
+                      <h4 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 6px" }}>{u.title}</h4>
+                      <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{u.body}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : activeSection === "dashboard" ? (
+          /* ── Dashboard ── */
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Welcome back, {(investorProfile?.investorName || "").split(" ")[0] || "Investor"}</h1>
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 24px" }}>Here's an overview of your investments.</p>
+
+            {/* Summary cards */}
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 14, marginBottom: 28 }}>
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 18 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Active Deals</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a" }}>{deals.length}</div>
+              </div>
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 18 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>New Updates</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: "#16a34a" }}>{updates.length}</div>
+              </div>
+              {!isMobile && (
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 18 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Capital Committed</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a" }}>{fmt(investorProfile?.capitalCommitted)}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Recent updates */}
+            <h2 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+              Recent Updates <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+            </h2>
+            {updates.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0" }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: "0 0 4px" }}>No updates yet</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>Updates from the team will appear here as they're posted.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {updates.slice(0, 5).map(u => {
+                  const tc = typeConfig(u.update_type);
+                  const deal = deals.find(d => d._id === u.deal_id);
+                  return (
+                    <div key={u.id} onClick={() => { const d = deals.find(dd => dd._id === u.deal_id); if (d) { setSelectedDeal(d); setActiveSection("deals"); } }} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 14 : 20, borderLeft: "4px solid " + tc.color, cursor: deal ? "pointer" : "default", transition: "box-shadow 0.2s" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                        <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: tc.bg, color: tc.color, border: "1px solid " + tc.border }}>{u.update_type}</span>
+                        {deal && <span style={{ fontSize: 12, color: "#0f172a", fontWeight: 600 }}>{deal.dealName || deal.address}</span>}
+                        <span style={{ fontSize: 12, color: "#94a3b8" }}>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                      </div>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 4px" }}>{u.title}</h3>
+                      <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.5, margin: 0, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{u.body}</p>
+                    </div>
+                  );
+                })}
+                {updates.length > 5 && (
+                  <button onClick={() => setActiveSection("updates")} style={{ padding: "10px 0", background: "none", border: "none", color: "#16a34a", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>View all {updates.length} updates →</button>
+                )}
+              </div>
+            )}
+
+            {/* Deals overview */}
+            {deals.length > 0 && (
+              <>
+                <h2 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "28px 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                  Your Properties ({deals.length}) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                </h2>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+                  {deals.map(d => (
+                    <div key={d._id} onClick={() => { setSelectedDeal(d); setActiveSection("deals"); }} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 18, cursor: "pointer", transition: "box-shadow 0.2s" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                        <div>
+                          <h3 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", margin: "0 0 2px" }}>{d.dealName || d.address}</h3>
+                          <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>{d.city}{d.state ? ", " + d.state : ""}</p>
+                        </div>
+                        <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: d.status === "Active" ? "#f0fdf4" : "#f8fafc", color: d.status === "Active" ? "#16a34a" : "#64748b", border: "1px solid " + (d.status === "Active" ? "#86efac" : "#e2e8f0") }}>{d.status || "New"}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 16 }}>
+                        <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Purchase</div><div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{fmt(d.purchasePrice)}</div></div>
+                        <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>ARV</div><div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{fmt(d.arv)}</div></div>
+                        {d.roi && <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>ROI</div><div style={{ fontSize: 13, fontWeight: 700, color: "#16a34a" }}>{d.roi}%</div></div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        ) : activeSection === "updates" ? (
+          /* ── All Updates ── */
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 20px" }}>All Updates</h1>
+            {updates.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0" }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: "0 0 4px" }}>No updates yet</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>Check back soon for investment updates.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {updates.map(u => {
+                  const tc = typeConfig(u.update_type);
+                  const deal = deals.find(d => d._id === u.deal_id);
+                  return (
+                    <div key={u.id} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 14 : 20, borderLeft: "4px solid " + tc.color }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                        <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: tc.bg, color: tc.color, border: "1px solid " + tc.border }}>{u.update_type}</span>
+                        {deal && <span style={{ fontSize: 12, color: "#0f172a", fontWeight: 600 }}>{deal.dealName || deal.address}</span>}
+                        <span style={{ fontSize: 12, color: "#94a3b8" }}>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                      </div>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 6px" }}>{u.title}</h3>
+                      <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{u.body}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : activeSection === "deals" ? (
+          /* ── My Deals ── */
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 20px" }}>My Deals</h1>
+            {deals.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0" }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: "0 0 4px" }}>No deals linked yet</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>Your investment deals will appear here once they're assigned.</p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+                {deals.map(d => (
+                  <div key={d._id} onClick={() => setSelectedDeal(d)} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 20, cursor: "pointer", transition: "box-shadow 0.2s" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                      <div>
+                        <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 2px" }}>{d.dealName || d.address}</h3>
+                        <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>{d.city}{d.state ? ", " + d.state : ""} · {d.type || "—"}</p>
+                      </div>
+                      <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: d.status === "Active" ? "#f0fdf4" : "#f8fafc", color: d.status === "Active" ? "#16a34a" : "#64748b", border: "1px solid " + (d.status === "Active" ? "#86efac" : "#e2e8f0") }}>{d.status || "New"}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Purchase</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(d.purchasePrice)}</div></div>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>ARV</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(d.arv)}</div></div>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Updates</div><div style={{ fontSize: 14, fontWeight: 700, color: "#16a34a" }}>{updates.filter(u => u.deal_id === d._id).length}</div></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -6705,7 +7138,10 @@ function ActivityModal({ isOpen, onClose, onSave, saving, isMobile }) {
 
 function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivity, onLinkDeal, deals, isMobile, contacts }) {
   const [activeTab, setActiveTab] = useState("overview");
-  const tabs = ["overview", "contacts", "capital", "linked deals", "communications", "documents"];
+  const tabs = ["overview", "contacts", "capital", "linked deals", "communications", "documents", "portal access"];
+  const [portalEmail, setPortalEmail] = useState(investor.portalEmail || "");
+  const [portalSaving, setPortalSaving] = useState(false);
+  const [portalSuccess, setPortalSuccess] = useState("");
   const initials = (investor.investorName || "??").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
   const committed = num(investor.capitalCommitted) || 0;
   const funded = num(investor.capitalFunded) || 0;
@@ -6911,6 +7347,68 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
             Subscription agreements, PPMs, K-1s, and investor letters will appear here.
           </div>
         )}
+
+        {activeTab === "portal access" && (
+          <div>
+            <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 24 }}>
+              <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
+                Investor Portal Access <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              </h2>
+
+              {/* Status indicator */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, padding: "12px 16px", borderRadius: 10, background: investor.portalEmail ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (investor.portalEmail ? "#86efac" : "#e2e8f0") }}>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", background: investor.portalEmail ? "#16a34a" : "#94a3b8" }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: investor.portalEmail ? "#16a34a" : "#64748b", fontFamily: "'DM Sans', sans-serif" }}>
+                  {investor.portalEmail ? "Portal Active" : "Not Invited"}
+                </span>
+                {investor.portalEmail && <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>· {investor.portalEmail}</span>}
+              </div>
+
+              <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, marginBottom: 16 }}>
+                Set the email address this investor will use to log into the portal. They'll be able to see their linked deals, property updates, and financial information you post for them.
+              </p>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Portal Login Email</label>
+                  <input value={portalEmail} onChange={e => setPortalEmail(e.target.value)} placeholder="investor@email.com" type="email"
+                    style={{ width: "100%", padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 10, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" }}
+                    onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                </div>
+                <button onClick={async () => {
+                  if (!portalEmail.trim() || !portalEmail.includes("@")) { alert("Please enter a valid email address."); return; }
+                  setPortalSaving(true); setPortalSuccess("");
+                  try {
+                    const { error } = await supabase.from("investors").update({ portal_email: portalEmail.trim().toLowerCase() }).eq("id", investor.id);
+                    if (error) throw error;
+                    investor.portalEmail = portalEmail.trim().toLowerCase();
+                    setPortalSuccess("Portal access saved! The investor can now sign up at app.getreap.ai with this email.");
+                  } catch (err) { alert("Error: " + err.message); } finally { setPortalSaving(false); }
+                }} disabled={portalSaving} style={{
+                  padding: "10px 20px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  fontFamily: "'DM Sans', sans-serif",
+                  background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff",
+                  boxShadow: "0 2px 10px rgba(22,163,74,0.3)", opacity: portalSaving ? 0.7 : 1,
+                  whiteSpace: "nowrap",
+                }}>
+                  {portalSaving ? "Saving..." : investor.portalEmail ? "Update Portal Email" : "Enable Portal Access"}
+                </button>
+              </div>
+
+              {portalSuccess && (
+                <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8, background: "#f0fdf4", border: "1px solid #86efac", fontSize: 12, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>
+                  {portalSuccess}
+                </div>
+              )}
+
+              <div style={{ marginTop: 20, padding: "14px 16px", borderRadius: 10, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
+                <p style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, margin: 0 }}>
+                  <strong style={{ color: "#0f172a" }}>How it works:</strong> Once you set a portal email, the investor can sign up at <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#16a34a" }}>app.getreap.ai</span> using that email address and a password. They'll automatically be routed to their investor portal where they can see their deals and any updates you've posted.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -6988,7 +7486,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
         linkedDealAddresses: r.linked_deal_addresses ? r.linked_deal_addresses.split("|||").filter(Boolean) : [],
         notes: r.notes || "", dateAdded: r.date_added || "",
         dateLastContact: r.date_last_contact || "", nextFollowUp: r.next_follow_up || "",
-        company: r.company || "",
+        company: r.company || "", portalEmail: r.portal_email || "",
       })).filter(inv => inv.investorName && inv.investorName.trim() !== "");
       const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
       const filtered = teamList.length > 0
@@ -7341,6 +7839,10 @@ export default function ReapApp() {
   const [inviteSuccess, setInviteSuccess] = useState("");
   const [featureFlags, setFeatureFlags] = useState([]);    // raw feature_flags rows
 
+  // ── Investor Portal state ──
+  const [isInvestorPortal, setIsInvestorPortal] = useState(false);
+  const [investorProfile, setInvestorProfile] = useState(null);
+
   // --- Hash-based routing ---
   const updateHash = useCallback((hash) => {
     if (window.location.hash !== "#" + hash) {
@@ -7484,6 +7986,35 @@ export default function ReapApp() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // ── Investor portal detection ──
+  useEffect(() => {
+    if (!session?.user?.email) { setIsInvestorPortal(false); setInvestorProfile(null); return; }
+    const email = session.user.email.toLowerCase();
+    async function checkInvestorPortal() {
+      try {
+        const { data, error } = await supabase.from("investors").select("*").eq("portal_email", email).limit(1).single();
+        if (!error && data) {
+          setIsInvestorPortal(true);
+          setInvestorProfile({
+            id: data.id, investorName: data.investor_name || "",
+            company: data.company || "", investorType: data.investor_type || "",
+            linkedDealAddresses: data.linked_deal_addresses ? data.linked_deal_addresses.split("|||").filter(Boolean) : [],
+            capitalCommitted: data.capital_committed || 0,
+            email: data.portal_email || email,
+          });
+        } else {
+          setIsInvestorPortal(false);
+          setInvestorProfile(null);
+        }
+      } catch (err) {
+        console.log("[REAP] Not an investor portal user");
+        setIsInvestorPortal(false);
+        setInvestorProfile(null);
+      }
+    }
+    checkInvestorPortal();
+  }, [session]);
 
   /* ═══════════════════════════════════════════════════════
      ORG / TEAM DATA — loads on session change
@@ -8129,6 +8660,9 @@ export default function ReapApp() {
   );
 
   if (!session) return <AuthScreen onAuth={(user) => setSession({ user })} />;
+
+  // Investor portal — if logged-in user is an investor, show their portal
+  if (isInvestorPortal && investorProfile) return <InvestorPortalView investorProfile={investorProfile} onSignOut={() => supabase.auth.signOut()} />;
 
   const handleFinishOnboarding = (openNewDeal) => {
     localStorage.setItem("reap_onboarded", "true");
