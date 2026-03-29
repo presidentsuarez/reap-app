@@ -9103,7 +9103,7 @@ function MLSStatusBadge({ status }) {
   );
 }
 
-function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload }) {
+function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, onSelectListing }) {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -9126,14 +9126,17 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload }
       if (fetchErr) throw new Error(fetchErr.message);
       const v = (val) => val != null ? String(val) : "";
       const parsed = (rows || []).map((r, i) => ({
+        _id: r.id,
         rowIndex: i + 2,
         mlsNumber: r.mls_number || "",
         status: r.status || "",
+        reviewStatus: r.review_status || "New",
         adom: v(r.adom),
         cdom: v(r.cdom),
         price: v(r.price),
         address: r.address || "",
         city: r.city || "",
+        state: r.state || "",
         county: r.county || "",
         ownership: r.ownership || "",
         propType: r.prop_type || "",
@@ -9497,7 +9500,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload }
         ) : activeTab === "cards" ? (
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340, 1fr))", gap: 14 }}>
             {filtered.map(listing => (
-              <div key={listing.rowIndex} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.03)", transition: "box-shadow 0.15s" }}>
+              <div key={listing.rowIndex} onClick={() => onSelectListing && onSelectListing(listing)} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.03)", transition: "box-shadow 0.15s", cursor: "pointer" }}>
                 {/* Image placeholder — future Zillow API */}
                 <div style={{ height: 140, background: "linear-gradient(135deg, #f1f5f9, #e2e8f0)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
                   <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -9562,7 +9565,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload }
               </thead>
               <tbody>
                 {sorted.map(listing => (
-                  <tr key={listing.rowIndex} onMouseEnter={() => setHoveredRow(listing.rowIndex)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f8fafc", background: hoveredRow === listing.rowIndex ? "#fafffe" : "transparent", transition: "background 0.1s" }}>
+                  <tr key={listing.rowIndex} onClick={() => onSelectListing && onSelectListing(listing)} onMouseEnter={() => setHoveredRow(listing.rowIndex)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f8fafc", background: hoveredRow === listing.rowIndex ? "#fafffe" : "transparent", transition: "background 0.1s", cursor: "pointer" }}>
                     <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{listing.address || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>{listing.city || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace", textAlign: "right" }}>{listing.price ? fmt(listing.price) : "—"}</td>
@@ -9716,6 +9719,279 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload }
             </div>
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MLS LISTING DETAIL VIEW
+   ═══════════════════════════════════════════════════════════ */
+
+const MLS_REVIEW_STATUS = {
+  "New":              { color: "#3b82f6", bg: "#eff6ff", label: "New" },
+  "Reviewing":        { color: "#d97706", bg: "#fffbeb", label: "Reviewing" },
+  "Added to Pipeline":{ color: "#16a34a", bg: "#f0fdf4", label: "Added to Pipeline" },
+  "Declined":         { color: "#dc2626", bg: "#fef2f2", label: "Declined" },
+  "Watching":         { color: "#7c3aed", bg: "#f5f3ff", label: "Watching" },
+};
+
+function buildZillowUrl(address, city, state, zip) {
+  if (!address) return null;
+  const slug = [address, city, state, zip].filter(Boolean).join(" ")
+    .replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "-");
+  return `https://www.zillow.com/homes/${slug}_rb/`;
+}
+
+function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, updateHash }) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [reviewStatus, setReviewStatus] = useState(listing.reviewStatus || "New");
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [notesText, setNotesText] = useState("");
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesLoaded, setNotesLoaded] = useState(false);
+  const scrollRef = useRef(null);
+  const [scrolled, setScrolled] = useState(false);
+
+  const tabs = ["overview"];
+
+  // Load notes from DB
+  useEffect(() => {
+    if (!listing._id) return;
+    (async () => {
+      const { data } = await supabase.from("mls_listings").select("notes, review_status").eq("id", listing._id).single();
+      if (data) {
+        setNotesText(data.notes || "");
+        if (data.review_status) setReviewStatus(data.review_status);
+      }
+      setNotesLoaded(true);
+    })();
+  }, [listing._id]);
+
+  const handleReviewStatusChange = async (newStatus) => {
+    setReviewStatus(newStatus);
+    setReviewSaving(true);
+    try {
+      await supabase.from("mls_listings").update({ review_status: newStatus }).eq("id", listing._id);
+    } catch (e) { console.error("Error updating review status:", e); }
+    finally { setReviewSaving(false); }
+  };
+
+  const handleSaveNotes = async () => {
+    setNotesSaving(true);
+    try {
+      await supabase.from("mls_listings").update({ notes: notesText }).eq("id", listing._id);
+    } catch (e) { console.error("Error saving notes:", e); }
+    finally { setNotesSaving(false); }
+  };
+
+  const zillowUrl = buildZillowUrl(listing.address, listing.city, listing.state, listing.zip);
+  const streetViewUrl = listing.address ? `https://maps.googleapis.com/maps/api/streetview?size=1200x220&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}` : null;
+
+  const price = listing.price ? parseFloat(String(listing.price).replace(/[$,]/g, "")) : null;
+  const sqft = listing.heatedArea || listing.sqftTotal ? parseFloat(String(listing.heatedArea || listing.sqftTotal).replace(/,/g, "")) : null;
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#f8fafc", overflow: "hidden" }}>
+      {/* Sticky Header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px 16px 0" : "20px 32px 0", transition: "box-shadow 0.2s", boxShadow: scrolled ? "0 2px 12px rgba(0,0,0,0.06)" : "none" }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: "#16a34a", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", padding: 0, marginBottom: 12 }}>
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="15 18 9 12 15 6"/></svg>
+          Back to MLS Feed
+        </button>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 12 : 0 }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.08em", fontWeight: 700, textTransform: "uppercase", margin: "0 0 6px" }}>{listing.propType || "Property"} · {[listing.city, listing.county].filter(Boolean).join(", ")}</p>
+            <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 10px", letterSpacing: "-0.02em", wordBreak: "break-word" }}>{listing.address || "MLS# " + listing.mlsNumber}</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <MLSStatusBadge status={listing.status} />
+              {/* Review status badge */}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, background: (MLS_REVIEW_STATUS[reviewStatus] || MLS_REVIEW_STATUS["New"]).bg, color: (MLS_REVIEW_STATUS[reviewStatus] || MLS_REVIEW_STATUS["New"]).color, fontSize: 10, fontWeight: 600, letterSpacing: "0.03em", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", border: `1px solid ${(MLS_REVIEW_STATUS[reviewStatus] || MLS_REVIEW_STATUS["New"]).color}22` }}>
+                <svg width={10} height={10} viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+                {reviewStatus}
+              </span>
+              {listing.mlsNumber && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>MLS# {listing.mlsNumber}</span>}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignSelf: isMobile ? "stretch" : "auto" }}>
+            {zillowUrl && (
+              <a href={zillowUrl} target="_blank" rel="noopener noreferrer" style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 18px", color: "#475569", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, textDecoration: "none", flex: isMobile ? 1 : "none" }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                Zillow
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Tab bar */}
+        <div style={{ display: "flex", gap: 0, marginTop: 16, overflow: "auto" }}>
+          {tabs.map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} style={{
+              padding: "10px 20px", border: "none", borderBottom: activeTab === tab ? "2px solid #16a34a" : "2px solid transparent",
+              background: "transparent", color: activeTab === tab ? "#0f172a" : "#94a3b8",
+              fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+              textTransform: "capitalize", transition: "all 0.15s", whiteSpace: "nowrap",
+            }}>{tab}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div ref={scrollRef} onScroll={e => setScrolled(e.target.scrollTop > 5)} style={{ flex: 1, overflow: "auto", padding: isMobile ? "20px 16px" : "28px 32px" }}>
+
+        {/* Street View Image */}
+        {streetViewUrl && (
+          <div style={{ width: "100%", height: isMobile ? 160 : 220, borderRadius: 14, overflow: "hidden", marginBottom: isMobile ? 20 : 28, position: "relative", background: "#f1f5f9", border: "1px solid #e2e8f0" }}>
+            <img src={streetViewUrl} alt={listing.address} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }} />
+            <div style={{ display: "none", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", position: "absolute", top: 0, left: 0 }}>
+              <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </div>
+          </div>
+        )}
+
+        {/* ── OVERVIEW TAB ── */}
+        {activeTab === "overview" && (
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20 }}>
+            {/* Left column */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+
+              {/* Review Status Selector */}
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                  <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>My Review Status</h3>
+                  {reviewSaving && <span style={{ fontSize: 10, color: "#16a34a", fontFamily: "'DM Sans', sans-serif" }}>Saving...</span>}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {Object.entries(MLS_REVIEW_STATUS).map(([key, cfg]) => (
+                    <button key={key} onClick={() => handleReviewStatusChange(key)} style={{
+                      padding: "7px 16px", borderRadius: 8, border: reviewStatus === key ? `1.5px solid ${cfg.color}` : "1px solid #e2e8f0",
+                      background: reviewStatus === key ? cfg.bg : "#fff", color: reviewStatus === key ? cfg.color : "#64748b",
+                      fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s",
+                    }}>{cfg.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Key Metrics */}
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>Listing Details</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14 }}>
+                  {[
+                    { label: "List Price", value: price ? "$" + price.toLocaleString() : "—" },
+                    { label: "Beds", value: listing.beds || "—" },
+                    { label: "Baths", value: listing.baths || "—" },
+                    { label: "SqFt", value: sqft ? sqft.toLocaleString() : "—" },
+                    { label: "$/SqFt", value: listing.ppsf ? (listing.ppsf.startsWith("$") ? listing.ppsf : "$" + listing.ppsf) : "—" },
+                    { label: "Lot (Acres)", value: listing.lotAcres || "—" },
+                    { label: "Year Built", value: listing.yearBuilt || "—" },
+                    { label: "Units", value: listing.units && parseInt(listing.units) > 0 ? listing.units : "—" },
+                    { label: "Style", value: listing.style || "—" },
+                    { label: "Ownership", value: listing.ownership || "—" },
+                    { label: "Days on Market", value: listing.cdom || listing.adom || "—" },
+                    { label: "ADOM", value: listing.adom || "—" },
+                  ].map((item, i) => (
+                    <div key={i}>
+                      <p style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 4px" }}>{item.label}</p>
+                      <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0, letterSpacing: "-0.02em" }}>{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Agent Info */}
+              {listing.agent && (
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>Listing Agent</h3>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>{listing.agent}</p>
+                </div>
+              )}
+
+              {/* Public Remarks */}
+              {listing.publicRemarks && (
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>Public Remarks</h3>
+                  <p style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, margin: 0 }}>{listing.publicRemarks}</p>
+                </div>
+              )}
+
+              {/* Realtor Remarks */}
+              {listing.realtorRemarks && (
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px" }}>Realtor Remarks</h3>
+                  <p style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, margin: 0 }}>{listing.realtorRemarks}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Right column / sidebar */}
+            <div style={{ width: isMobile ? "100%" : 320, flexShrink: 0 }}>
+
+              {/* Online Listing Link */}
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>Online Listing</h3>
+                {zillowUrl ? (
+                  <a href={zillowUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 10, background: "#f0fdf4", border: "1px solid #16a34a22", textDecoration: "none", transition: "all 0.15s" }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 2px" }}>View on Zillow</p>
+                      <p style={{ fontSize: 10, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>zillow.com</p>
+                    </div>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </a>
+                ) : (
+                  <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>No address available for link generation</p>
+                )}
+              </div>
+
+              {/* Location Card */}
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>Location</h3>
+                <div style={{ fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.8 }}>
+                  <div>{listing.address}</div>
+                  <div>{[listing.city, listing.state, listing.zip].filter(Boolean).join(", ")}</div>
+                  {listing.county && <div style={{ color: "#94a3b8", fontSize: 12 }}>County: {listing.county}</div>}
+                </div>
+              </div>
+
+              {/* My Notes */}
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>My Notes</h3>
+                  <button onClick={handleSaveNotes} disabled={notesSaving} style={{
+                    padding: "4px 12px", borderRadius: 6, border: "1px solid #16a34a33",
+                    background: notesSaving ? "#f0fdf4" : "rgba(22,163,74,0.06)", color: "#16a34a",
+                    fontSize: 10, fontWeight: 700, cursor: notesSaving ? "not-allowed" : "pointer",
+                    fontFamily: "'DM Sans', sans-serif",
+                  }}>{notesSaving ? "Saving..." : "Save"}</button>
+                </div>
+                <textarea value={notesText} onChange={e => setNotesText(e.target.value)} placeholder="Add your notes about this listing..." rows={5} style={{
+                  width: "100%", borderRadius: 8, border: "1px solid #e2e8f0", padding: "10px 12px",
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: "vertical", outline: "none",
+                  background: "#f8fafc", color: "#0f172a", lineHeight: 1.6, boxSizing: "border-box",
+                }} />
+              </div>
+
+              {/* Quick Stats */}
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px" }}>
+                <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>Market Data</h3>
+                {[
+                  { label: "MLS Status", value: listing.status || "—" },
+                  { label: "Property Type", value: listing.propType || "—" },
+                  { label: "Days on Market (CDOM)", value: listing.cdom || "—" },
+                  { label: "Est. Monthly Payment", value: price ? "$" + Math.round(price * 0.00676).toLocaleString() + "/mo" : "—" },
+                ].map((item, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i < 3 ? "1px solid #f8fafc" : "none" }}>
+                    <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{item.label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -12315,6 +12591,7 @@ export default function ReapApp() {
   const [realEstateTab, setRealEstateTab] = useState("dashboard");
   const [contactsTab, setContactsTab] = useState("contacts");
   const [mlsTab, setMlsTab] = useState("feed");
+  const [selectedMLSListing, setSelectedMLSListing] = useState(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState(TRIAL_DAYS);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -12331,6 +12608,7 @@ export default function ReapApp() {
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [pendingDealAddress, setPendingDealAddress] = useState(null);
+  const [pendingMLSSlug, setPendingMLSSlug] = useState(null);
   const [pendingPipelineView, setPendingPipelineView] = useState(null);
   const [activePipelineView, setActivePipelineView] = useState("table");
   const [pendingInvestorId, setPendingInvestorId] = useState(null);
@@ -12373,6 +12651,10 @@ export default function ReapApp() {
       setActiveNav("realestate"); setRealEstateTab("pipeline");
       setPendingDealAddress(addr);
       if (tab) setPendingDealTab(tab);
+    } else if (hash.startsWith("mls/")) {
+      const slug = decodeURIComponent(hash.replace("mls/", ""));
+      setActiveNav("realestate"); setRealEstateTab("mls"); setMlsTab("feed");
+      setPendingMLSSlug(slug);
     } else if (hash.startsWith("portfolio/")) {
       const id = decodeURIComponent(hash.replace("portfolio/", ""));
       setActiveNav("realestate"); setRealEstateTab("portfolios");
@@ -12411,6 +12693,38 @@ export default function ReapApp() {
     }
   }, [pendingDealAddress, deals, isMobile]);
 
+  // Resolve pending MLS listing from URL slug
+  useEffect(() => {
+    if (!pendingMLSSlug) return;
+    (async () => {
+      try {
+        const v = (val) => val != null ? String(val) : "";
+        // Try by mls_number first, then by address
+        let { data: row } = await supabase.from("mls_listings").select("*").eq("mls_number", pendingMLSSlug).single();
+        if (!row) {
+          const decoded = decodeURIComponent(pendingMLSSlug);
+          const res = await supabase.from("mls_listings").select("*").eq("address", decoded).single();
+          row = res.data;
+        }
+        if (row) {
+          const listing = {
+            _id: row.id, rowIndex: 0, mlsNumber: row.mls_number || "", status: row.status || "",
+            reviewStatus: row.review_status || "New", adom: v(row.adom), cdom: v(row.cdom), price: v(row.price),
+            address: row.address || "", city: row.city || "", state: row.state || "", county: row.county || "",
+            ownership: row.ownership || "", propType: row.prop_type || "", style: row.style || "",
+            units: v(row.units), heatedArea: v(row.heated_area), lotAcres: v(row.lot_acres),
+            beds: v(row.beds), baths: v(row.baths), yearBuilt: v(row.year_built), ppsf: v(row.ppsf),
+            agent: row.agent || "", publicRemarks: row.public_remarks || "", realtorRemarks: row.realtor_remarks || "",
+            zip: row.zip || "", sqftTotal: v(row.sqft_total),
+          };
+          setSelectedMLSListing(listing);
+          if (isMobile) setDealTransition(true);
+        }
+      } catch (e) { console.error("Error resolving MLS listing:", e); }
+      setPendingMLSSlug(null);
+    })();
+  }, [pendingMLSSlug, isMobile]);
+
   // Listen for browser back/forward
   useEffect(() => {
     const onHashChange = () => {
@@ -12428,6 +12742,12 @@ export default function ReapApp() {
           if (tab) setPendingDealTab(tab);
           if (isMobile) setDealTransition(true);
         }
+      } else if (hash.startsWith("mls/")) {
+        const slug = decodeURIComponent(hash.replace("mls/", ""));
+        setActiveNav("realestate"); setRealEstateTab("mls"); setMlsTab("feed");
+        setShowProfile(false);
+        setPendingMLSSlug(slug);
+        setSelectedMLSListing(null); // will resolve from pendingMLSSlug
       } else if (hash.startsWith("portfolio/")) {
         setActiveNav("realestate"); setRealEstateTab("portfolios");
         setShowProfile(false);
@@ -12441,15 +12761,16 @@ export default function ReapApp() {
         setActiveNav("contacts"); setContactsTab("investors"); setShowProfile(false);
         setPendingInvestorId(id);
       } else if (hash.startsWith("realestate/")) {
-        const tab = hash.replace("realestate/", "");
+        const parts = hash.replace("realestate/", "").split("/");
+        const tab = parts[0];
         if (["dashboard","pipeline","portfolios","mls"].includes(tab)) {
           setActiveNav("realestate"); setRealEstateTab(tab); setShowProfile(false);
-          setSelectedDeal(null); if (isMobile) setDealTransition(false);
+          setSelectedDeal(null); setSelectedMLSListing(null); if (isMobile) setDealTransition(false);
         }
       } else if (["command","realestate","contacts","research","mls"].includes(hash)) {
         setActiveNav(hash);
         setShowProfile(false);
-        setSelectedDeal(null);
+        setSelectedDeal(null); setSelectedMLSListing(null);
         if (isMobile) setDealTransition(false);
       }
     };
@@ -13152,6 +13473,27 @@ export default function ReapApp() {
     updateHash("pipeline");
   };
 
+  const handleSelectMLSListing = (listing) => {
+    if (isMobile) {
+      setDealTransition(true);
+      setTimeout(() => setSelectedMLSListing(listing), 10);
+    } else {
+      setSelectedMLSListing(listing);
+    }
+    const slug = listing.mlsNumber || encodeURIComponent(listing.address || listing._id);
+    updateHash("mls/" + slug);
+  };
+
+  const handleMLSBack = () => {
+    if (isMobile) {
+      setDealTransition(false);
+      setTimeout(() => setSelectedMLSListing(null), 300);
+    } else {
+      setSelectedMLSListing(null);
+    }
+    updateHash("realestate/mls");
+  };
+
   const handleSaveBuyer = async (form) => {
     setSavingBuyer(true);
     try {
@@ -13393,6 +13735,10 @@ export default function ReapApp() {
                 <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                   <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} />
                 </div>
+              ) : selectedMLSListing ? (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                  <MLSListingDetailView listing={selectedMLSListing} onBack={handleMLSBack} isMobile={true} session={session} updateHash={updateHash} />
+                </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                   <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
@@ -13404,7 +13750,7 @@ export default function ReapApp() {
                       : realEstateTab === "mls"
                       ? (mlsTab === "upload"
                         ? <FileUploaderView session={session} isMobile={true} />
-                        : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} />)
+                        : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} />)
                       : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} />
                     }
                   </div>
@@ -13421,6 +13767,8 @@ export default function ReapApp() {
               ? <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} teamEmails={teamEmails} />
               : activeNav === "realestate" && selectedDeal
               ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} />
+              : activeNav === "realestate" && selectedMLSListing
+              ? <MLSListingDetailView listing={selectedMLSListing} onBack={handleMLSBack} isMobile={false} session={session} updateHash={updateHash} />
               : activeNav === "realestate"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                   <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
@@ -13432,7 +13780,7 @@ export default function ReapApp() {
                       : realEstateTab === "mls"
                       ? (mlsTab === "upload"
                         ? <FileUploaderView session={session} isMobile={false} />
-                        : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} />)
+                        : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} />)
                       : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} />
                     }
                   </div>
