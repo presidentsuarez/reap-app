@@ -1394,7 +1394,10 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [updates, setUpdates] = useState([]);
   const [updatesLoading, setUpdatesLoading] = useState(false);
   const [updateSaving, setUpdateSaving] = useState(false);
-  const [updateForm, setUpdateForm] = useState({ title: "", content: "", type: "announcement" });
+  const [updateForm, setUpdateForm] = useState({ title: "", content: "", type: "General Announcement" });
+  const [notifyInvestors, setNotifyInvestors] = useState(true);
+  const [linkedInvestors, setLinkedInvestors] = useState([]);
+  const [notificationsSent, setNotificationsSent] = useState({});
 
   // ── Fetch documents ──
   const fetchDocuments = useCallback(async () => {
@@ -1453,12 +1456,61 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
     }
   }, [deal?._id]);
 
+  // ── Fetch linked investors for notification preview ──
+  const fetchLinkedInvestors = useCallback(async () => {
+    if (!deal?.address) return;
+    try {
+      const { data: allInvestors } = await supabase.from("investors").select("id, investor_name, portal_email, contact_ids, linked_deal_addresses, company");
+      const linked = (allInvestors || []).filter(inv => {
+        const addrs = inv.linked_deal_addresses ? inv.linked_deal_addresses.split("|||").filter(Boolean) : [];
+        return addrs.includes(deal.address);
+      });
+      // For each investor, look up their contacts for email/phone
+      const contactIds = linked.flatMap(inv => inv.contact_ids ? inv.contact_ids.split("|||").filter(Boolean) : []);
+      let contactMap = {};
+      if (contactIds.length > 0) {
+        const { data: contacts } = await supabase.from("contacts").select("id, contact_name, email, phone").in("id", contactIds);
+        (contacts || []).forEach(c => { contactMap[c.id] = c; });
+      }
+      const enriched = linked.map(inv => ({
+        ...inv,
+        contacts: (inv.contact_ids ? inv.contact_ids.split("|||").filter(Boolean) : []).map(id => contactMap[id]).filter(Boolean),
+        allEmails: [
+          inv.portal_email,
+          ...(inv.contact_ids ? inv.contact_ids.split("|||").filter(Boolean) : []).map(id => contactMap[id]?.email).filter(Boolean)
+        ].filter(Boolean),
+        allPhones: (inv.contact_ids ? inv.contact_ids.split("|||").filter(Boolean) : []).map(id => contactMap[id]?.phone).filter(Boolean),
+      }));
+      setLinkedInvestors(enriched);
+    } catch (err) { console.error("Error fetching linked investors:", err); }
+  }, [deal?.address]);
+
+  // ── Fetch notification status for updates ──
+  const fetchNotificationStatus = useCallback(async () => {
+    if (updates.length === 0) return;
+    try {
+      const updateIds = updates.map(u => u.id);
+      const { data } = await supabase.from("investor_notifications").select("update_id, status, contact_name").in("update_id", updateIds);
+      const grouped = {};
+      (data || []).forEach(n => {
+        if (!grouped[n.update_id]) grouped[n.update_id] = [];
+        grouped[n.update_id].push(n);
+      });
+      setNotificationsSent(grouped);
+    } catch (err) { console.error("Error fetching notification status:", err); }
+  }, [updates]);
+
   // Load docs/activities/investor updates when tab switches
   useEffect(() => {
     if (activeTab === "documents" && documents.length === 0 && !docsLoading) fetchDocuments();
     if ((activeTab === "activity" || activeTab === "notes") && activities.length === 0 && !activitiesLoading) fetchActivities();
-    if (activeTab === "investor updates" && updates.length === 0 && !updatesLoading) fetchInvestorUpdates();
-  }, [activeTab, deal?._id, fetchDocuments, fetchActivities, fetchInvestorUpdates]);
+    if (activeTab === "investor updates") {
+      if (updates.length === 0 && !updatesLoading) fetchInvestorUpdates();
+      fetchLinkedInvestors();
+    }
+  }, [activeTab, deal?._id, fetchDocuments, fetchActivities, fetchInvestorUpdates, fetchLinkedInvestors]);
+
+  useEffect(() => { if (updates.length > 0) fetchNotificationStatus(); }, [updates, fetchNotificationStatus]);
 
   // ── Upload document ──
   const handleUploadFiles = async (files) => {
@@ -2718,16 +2770,75 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 rows={4} style={{ width: "100%", padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 10, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", resize: "vertical", lineHeight: 1.6, marginBottom: 14 }}
                 onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
 
+              {/* Notify investors toggle */}
+              {linkedInvestors.length > 0 && (
+                <div style={{ marginBottom: 14, padding: "12px 16px", borderRadius: 10, background: notifyInvestors ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (notifyInvestors ? "#86efac" : "#e2e8f0"), transition: "all 0.2s" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: notifyInvestors ? 10 : 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <button onClick={() => setNotifyInvestors(!notifyInvestors)} style={{
+                        width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
+                        background: notifyInvestors ? "#16a34a" : "#cbd5e1", position: "relative", transition: "background 0.2s",
+                      }}>
+                        <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: notifyInvestors ? 21 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                      </button>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: notifyInvestors ? "#16a34a" : "#64748b", fontFamily: "'DM Sans', sans-serif" }}>
+                        Notify {linkedInvestors.length} investor{linkedInvestors.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                      {linkedInvestors.reduce((sum, inv) => sum + inv.allEmails.length, 0)} email{linkedInvestors.reduce((sum, inv) => sum + inv.allEmails.length, 0) !== 1 ? "s" : ""}
+                      {linkedInvestors.reduce((sum, inv) => sum + inv.allPhones.length, 0) > 0 ? ` · ${linkedInvestors.reduce((sum, inv) => sum + inv.allPhones.length, 0)} SMS` : ""}
+                    </span>
+                  </div>
+                  {notifyInvestors && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {linkedInvestors.map(inv => (
+                        <span key={inv.id} style={{ padding: "3px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "#fff", border: "1px solid #e2e8f0", color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>
+                          {inv.investor_name}{inv.allEmails.length > 0 ? " ✓" : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <button onClick={async () => {
                 if (!updateForm.title.trim() || !updateForm.content.trim() || !deal?._id) return;
                 setUpdateSaving(true);
                 try {
-                  const { error } = await supabase.from("investor_updates").insert({
+                  // 1. Post the update
+                  const { data: insertedRows, error } = await supabase.from("investor_updates").insert({
                     deal_id: deal._id, update_type: updateForm.type,
                     title: updateForm.title.trim(), body: updateForm.content.trim(),
                     posted_by: userEmail,
-                  });
+                  }).select();
                   if (error) throw error;
+                  const updateId = insertedRows && insertedRows[0] ? insertedRows[0].id : null;
+
+                  // 2. Create notification records for each investor
+                  if (notifyInvestors && updateId && linkedInvestors.length > 0) {
+                    const notifRecords = [];
+                    linkedInvestors.forEach(inv => {
+                      inv.allEmails.forEach(email => {
+                        notifRecords.push({
+                          update_id: updateId, investor_id: inv.id,
+                          contact_email: email, contact_name: inv.investor_name,
+                          notification_type: "email", status: "pending",
+                        });
+                      });
+                      inv.allPhones.forEach(phone => {
+                        notifRecords.push({
+                          update_id: updateId, investor_id: inv.id,
+                          contact_phone: phone, contact_name: inv.investor_name,
+                          notification_type: "sms", status: "pending",
+                        });
+                      });
+                    });
+                    if (notifRecords.length > 0) {
+                      await supabase.from("investor_notifications").insert(notifRecords);
+                    }
+                  }
+
                   setUpdateForm({ title: "", content: "", type: "General Announcement" });
                   fetchInvestorUpdates();
                 } catch (err) { alert("Error posting update: " + err.message); } finally { setUpdateSaving(false); }
@@ -2739,7 +2850,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 boxShadow: updateForm.title.trim() && updateForm.content.trim() ? "0 2px 10px rgba(22,163,74,0.3)" : "none",
                 opacity: updateSaving ? 0.7 : 1, transition: "all 0.2s",
               }}>
-                {updateSaving ? "Posting..." : "Post Update"}
+                {updateSaving ? "Posting..." : (notifyInvestors && linkedInvestors.length > 0 ? "Post & Notify" : "Post Update")}
               </button>
             </div>
 
@@ -2775,6 +2886,11 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                         <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", background: typeConfig.bg, color: typeConfig.color, border: "1px solid " + typeConfig.border }}>{u.update_type}</span>
                         <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                         <span style={{ fontSize: 11, color: "#cbd5e1", fontFamily: "'DM Mono', monospace" }}>{u.posted_by}</span>
+                        {notificationsSent[u.id] && notificationsSent[u.id].length > 0 && (
+                          <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: "#f0fdf4", color: "#16a34a", border: "1px solid #86efac", fontFamily: "'DM Sans', sans-serif" }}>
+                            {notificationsSent[u.id].filter(n => n.status === "sent").length}/{notificationsSent[u.id].length} notified
+                          </span>
+                        )}
                       </div>
                       <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 6px" }}>{u.title}</h3>
                       <p style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif", margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{u.body}</p>
@@ -2809,6 +2925,8 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
   const [loading, setLoading] = useState(true);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [readUpdates, setReadUpdates] = useState(new Set());
+  const [typeFilter, setTypeFilter] = useState(null);
 
   useEffect(() => {
     const handle = () => setIsMobile(window.innerWidth < 768);
@@ -2840,6 +2958,27 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
         if (dealIds.length > 0) {
           const { data: updatesData } = await supabase.from("investor_updates").select("*").in("deal_id", dealIds).order("created_at", { ascending: false });
           setUpdates(updatesData || []);
+
+          // Fetch read receipts for this investor
+          const { data: reads } = await supabase.from("investor_update_reads").select("update_id").eq("portal_email", investorProfile.email);
+          const readSet = new Set((reads || []).map(r => r.update_id));
+          setReadUpdates(readSet);
+
+          // Mark all currently fetched updates as read
+          const unread = (updatesData || []).filter(u => !readSet.has(u.id));
+          if (unread.length > 0) {
+            const readRecords = unread.map(u => ({
+              update_id: u.id, investor_id: investorProfile.id,
+              portal_email: investorProfile.email,
+            }));
+            await supabase.from("investor_update_reads").insert(readRecords).then(() => {
+              setReadUpdates(prev => {
+                const next = new Set(prev);
+                unread.forEach(u => next.add(u.id));
+                return next;
+              });
+            });
+          }
         }
       } catch (err) { console.error("Portal data error:", err); } finally { setLoading(false); }
     }
@@ -2887,13 +3026,21 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
       {/* Nav tabs */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "0 16px" : "0 40px" }}>
         <div style={{ display: "flex", gap: 0 }}>
-          {[{ id: "dashboard", label: "Dashboard" }, { id: "updates", label: "Updates" }, { id: "deals", label: "My Deals" }].map(t => (
-            <button key={t.id} onClick={() => { setActiveSection(t.id); setSelectedDeal(null); }} style={{
-              background: "transparent", border: "none", borderBottom: activeSection === t.id ? "2px solid #16a34a" : "2px solid transparent",
-              padding: "12px 20px", color: activeSection === t.id ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600,
-              cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", marginBottom: -1,
-            }}>{t.label}</button>
-          ))}
+          {(() => {
+            const unreadCount = updates.filter(u => !readUpdates.has(u.id)).length;
+            return [{ id: "dashboard", label: "Dashboard" }, { id: "updates", label: "Updates" }, { id: "deals", label: "My Deals" }].map(t => (
+              <button key={t.id} onClick={() => { setActiveSection(t.id); setSelectedDeal(null); }} style={{
+                background: "transparent", border: "none", borderBottom: activeSection === t.id ? "2px solid #16a34a" : "2px solid transparent",
+                padding: "12px 20px", color: activeSection === t.id ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600,
+                cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", marginBottom: -1, position: "relative", display: "flex", alignItems: "center", gap: 6,
+              }}>
+                {t.label}
+                {t.id === "updates" && unreadCount > 0 && (
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 18, height: 18, borderRadius: 9, background: "#16a34a", color: "#fff", fontSize: 10, fontWeight: 700, padding: "0 5px", lineHeight: 1 }}>{unreadCount}</span>
+                )}
+              </button>
+            ));
+          })()}
         </div>
       </div>
 
@@ -2960,8 +3107,8 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                 <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a" }}>{deals.length}</div>
               </div>
               <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 18 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>New Updates</div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: "#16a34a" }}>{updates.length}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Unread Updates</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: "#16a34a" }}>{updates.filter(u => !readUpdates.has(u.id)).length}</div>
               </div>
               {!isMobile && (
                 <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 18 }}>
@@ -2985,8 +3132,10 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                 {updates.slice(0, 5).map(u => {
                   const tc = typeConfig(u.update_type);
                   const deal = deals.find(d => d._id === u.deal_id);
+                  const isUnread = !readUpdates.has(u.id);
                   return (
-                    <div key={u.id} onClick={() => { const d = deals.find(dd => dd._id === u.deal_id); if (d) { setSelectedDeal(d); setActiveSection("deals"); } }} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 14 : 20, borderLeft: "4px solid " + tc.color, cursor: deal ? "pointer" : "default", transition: "box-shadow 0.2s" }}>
+                    <div key={u.id} onClick={() => { const d = deals.find(dd => dd._id === u.deal_id); if (d) { setSelectedDeal(d); setActiveSection("deals"); } }} style={{ background: isUnread ? "#f0fdf4" : "#fff", borderRadius: 14, border: "1px solid " + (isUnread ? "#bbf7d0" : "#e2e8f0"), padding: isMobile ? 14 : 20, borderLeft: "4px solid " + tc.color, cursor: deal ? "pointer" : "default", transition: "box-shadow 0.2s", position: "relative" }}>
+                      {isUnread && <span style={{ position: "absolute", top: 10, right: 10, width: 8, height: 8, borderRadius: "50%", background: "#16a34a" }} />}
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
                         <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: tc.bg, color: tc.color, border: "1px solid " + tc.border }}>{u.update_type}</span>
                         {deal && <span style={{ fontSize: 12, color: "#0f172a", fontWeight: 600 }}>{deal.dealName || deal.address}</span>}
@@ -3033,31 +3182,46 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
         ) : activeSection === "updates" ? (
           /* ── All Updates ── */
           <div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 20px" }}>All Updates</h1>
-            {updates.length === 0 ? (
-              <div style={{ textAlign: "center", padding: 40, background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0" }}>
-                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: "0 0 4px" }}>No updates yet</p>
-                <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>Check back soon for investment updates.</p>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {updates.map(u => {
-                  const tc = typeConfig(u.update_type);
-                  const deal = deals.find(d => d._id === u.deal_id);
-                  return (
-                    <div key={u.id} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 14 : 20, borderLeft: "4px solid " + tc.color }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                        <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: tc.bg, color: tc.color, border: "1px solid " + tc.border }}>{u.update_type}</span>
-                        {deal && <span style={{ fontSize: 12, color: "#0f172a", fontWeight: 600 }}>{deal.dealName || deal.address}</span>}
-                        <span style={{ fontSize: 12, color: "#94a3b8" }}>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 16px" }}>All Updates</h1>
+            {/* Type filter */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
+              <button onClick={() => setTypeFilter(null)} style={{ padding: "5px 14px", borderRadius: 20, border: "1px solid " + (!typeFilter ? "#16a34a" : "#e2e8f0"), background: !typeFilter ? "#f0fdf4" : "#fff", color: !typeFilter ? "#16a34a" : "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>All ({updates.length})</button>
+              {["Construction Progress", "Financial Update", "Status Change", "General Announcement"].map(t => {
+                const count = updates.filter(u => u.update_type === t).length;
+                if (count === 0) return null;
+                const tc = typeConfig(t);
+                return <button key={t} onClick={() => setTypeFilter(t)} style={{ padding: "5px 14px", borderRadius: 20, border: "1px solid " + (typeFilter === t ? tc.color : "#e2e8f0"), background: typeFilter === t ? tc.bg : "#fff", color: typeFilter === t ? tc.color : "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{t} ({count})</button>;
+              })}
+            </div>
+            {(() => {
+              const filtered = typeFilter ? updates.filter(u => u.update_type === typeFilter) : updates;
+              return filtered.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 40, background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0" }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: "0 0 4px" }}>{typeFilter ? "No " + typeFilter.toLowerCase() + " updates" : "No updates yet"}</p>
+                  <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>{typeFilter ? "Try selecting a different filter." : "Check back soon for investment updates."}</p>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {filtered.map(u => {
+                    const tc = typeConfig(u.update_type);
+                    const deal = deals.find(d => d._id === u.deal_id);
+                    const isUnread = !readUpdates.has(u.id);
+                    return (
+                      <div key={u.id} style={{ background: isUnread ? "#f0fdf4" : "#fff", borderRadius: 14, border: "1px solid " + (isUnread ? "#bbf7d0" : "#e2e8f0"), padding: isMobile ? 14 : 20, borderLeft: "4px solid " + tc.color, position: "relative" }}>
+                        {isUnread && <span style={{ position: "absolute", top: 10, right: 10, width: 8, height: 8, borderRadius: "50%", background: "#16a34a" }} />}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                          <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: tc.bg, color: tc.color, border: "1px solid " + tc.border }}>{u.update_type}</span>
+                          {deal && <span style={{ fontSize: 12, color: "#0f172a", fontWeight: 600 }}>{deal.dealName || deal.address}</span>}
+                          <span style={{ fontSize: 12, color: "#94a3b8" }}>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                        </div>
+                        <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 6px" }}>{u.title}</h3>
+                        <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{u.body}</p>
                       </div>
-                      <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 6px" }}>{u.title}</h3>
-                      <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{u.body}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         ) : activeSection === "deals" ? (
           /* ── My Deals ── */
