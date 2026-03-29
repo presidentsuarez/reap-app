@@ -1799,9 +1799,62 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
   const [showForm, setShowForm] = useState(false);
   const [editingReq, setEditingReq] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
-  const emptyForm = { lender_name: "", company_name: "", status: "considering", term_months: "", acq_financed_pct: "", reno_financed_pct: "", interest_rate: "", points_pct: "", interest_reserve_months: "", inspection_fee: "", loan_doc_fee: "", draw_fee: "", broker_fee: "", estimated_title_fees: "", required_liquidity: "", notes: "" };
+  const emptyForm = { contact_id: "", lender_name: "", company_name: "", status: "considering", term_months: "", acq_financed_pct: "", reno_financed_pct: "", interest_rate: "", points_pct: "", interest_reserve_months: "", inspection_fee: "", loan_doc_fee: "", draw_fee: "", broker_fee_pct: "", estimated_title_fees: "", required_liquidity: "", notes: "" };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+
+  // Contact search state
+  const [lenderContacts, setLenderContacts] = useState([]);
+  const [contactSearch, setContactSearch] = useState("");
+  const [showContactDropdown, setShowContactDropdown] = useState(false);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickAddForm, setQuickAddForm] = useState({ name: "", company: "", email: "", phone: "" });
+  const [quickAddSaving, setQuickAddSaving] = useState(false);
+  const contactSearchRef = useRef(null);
+
+  // Fetch lender contacts
+  const fetchLenderContacts = useCallback(async () => {
+    try {
+      const { data } = await supabase.from("contacts").select("id, contact_name, company, email, phone, contact_type").order("contact_name");
+      const allContacts = data || [];
+      // Prioritize lenders but show all contacts
+      const lenders = allContacts.filter(c => (c.contact_type || "").toLowerCase().includes("lender"));
+      const others = allContacts.filter(c => !(c.contact_type || "").toLowerCase().includes("lender"));
+      setLenderContacts([...lenders, ...others]);
+    } catch (e) { console.error("Fetch lender contacts:", e); }
+  }, []);
+
+  useEffect(() => { fetchLenderContacts(); }, [fetchLenderContacts]);
+
+  // Filter contacts based on search
+  const filteredContacts = contactSearch.trim()
+    ? lenderContacts.filter(c => {
+        const q = contactSearch.toLowerCase();
+        return (c.contact_name || "").toLowerCase().includes(q) || (c.company || "").toLowerCase().includes(q) || (c.email || "").toLowerCase().includes(q);
+      })
+    : lenderContacts;
+
+  // Select a contact
+  const selectContact = (c) => {
+    setForm(f => ({ ...f, contact_id: c.id, lender_name: c.contact_name || "", company_name: c.company || "" }));
+    setContactSearch(c.contact_name + (c.company ? " — " + c.company : ""));
+    setShowContactDropdown(false);
+  };
+
+  // Quick add a new lender contact
+  const handleQuickAdd = async () => {
+    if (!quickAddForm.name.trim()) { alert("Enter a contact name."); return; }
+    setQuickAddSaving(true);
+    try {
+      const { data, error } = await supabase.from("contacts").insert({ contact_name: quickAddForm.name.trim(), company: quickAddForm.company.trim(), email: quickAddForm.email.trim(), phone: quickAddForm.phone.trim(), contact_type: "Lender", org_id: orgId || null, user_email: userEmail, date_added: new Date().toISOString() }).select().single();
+      if (error) throw error;
+      await fetchLenderContacts();
+      selectContact(data);
+      setShowQuickAdd(false);
+      setQuickAddForm({ name: "", company: "", email: "", phone: "" });
+    } catch (e) { alert("Error adding contact: " + e.message); }
+    finally { setQuickAddSaving(false); }
+  };
 
   const fetchRequests = useCallback(async () => {
     setLoading(true);
@@ -1814,7 +1867,7 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
 
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
-  const resetForm = () => { setForm(emptyForm); setEditingReq(null); setShowForm(false); };
+  const resetForm = () => { setForm(emptyForm); setEditingReq(null); setShowForm(false); setContactSearch(""); setShowContactDropdown(false); setShowQuickAdd(false); };
 
   // Auto-calc fields from deal + form inputs
   const calcLoan = (f) => {
@@ -1833,7 +1886,8 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
     const monthlyInt = totalLoan * (rate / 100 / 12);
     const intReserve = monthlyInt * intResMo;
     const origFee = totalLoan * (pts / 100);
-    const brokerFeeAmt = parseFloat(f.broker_fee) || 0;
+    const brokerFeePct = parseFloat(f.broker_fee_pct) || 0;
+    const brokerFeeAmt = totalLoan * (brokerFeePct / 100);
     const inspFee = parseFloat(f.inspection_fee) || 0;
     const docFee = parseFloat(f.loan_doc_fee) || 0;
     const drawFee = parseFloat(f.draw_fee) || 0;
@@ -1845,15 +1899,15 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
     const ltcVal = totalProjectCost > 0 ? (acqLoan / totalProjectCost) * 100 : 0;
     const totalLtc = totalProjectCost > 0 ? (totalLoan / totalProjectCost) * 100 : 0;
     const eqReq = totalProjectCost - totalLoan;
-    return { total_loan_amount: totalLoan, rehab_holdback: rehabHoldback, interest_reserve: intReserve, origination_fee: origFee, monthly_interest_payment: monthlyInt, cash_to_close: cashToClose, ltv: ltvVal, ltc: ltcVal, total_ltc: totalLtc, equity_required: eqReq, total_loan_cost: totalCost };
+    return { total_loan_amount: totalLoan, rehab_holdback: rehabHoldback, interest_reserve: intReserve, origination_fee: origFee, monthly_interest_payment: monthlyInt, cash_to_close: cashToClose, ltv: ltvVal, ltc: ltcVal, total_ltc: totalLtc, equity_required: eqReq, total_loan_cost: totalCost, broker_fee_amount: brokerFeeAmt };
   };
 
   const handleSave = async () => {
-    if (!form.lender_name && !form.company_name) { alert("Enter a lender or company name."); return; }
+    if (!form.lender_name && !form.company_name) { alert("Select or add a lender contact."); return; }
     setSaving(true);
     try {
       const calcs = calcLoan(form);
-      const payload = { deal_address: dealAddress, financing_type: financingType, status: form.status, lender_name: form.lender_name, company_name: form.company_name, term_months: parseInt(form.term_months) || 0, acq_financed_pct: parseFloat(form.acq_financed_pct) || 0, reno_financed_pct: parseFloat(form.reno_financed_pct) || 0, interest_rate: parseFloat(form.interest_rate) || 0, points_pct: parseFloat(form.points_pct) || 0, interest_reserve_months: parseInt(form.interest_reserve_months) || 0, inspection_fee: parseFloat(form.inspection_fee) || 0, loan_doc_fee: parseFloat(form.loan_doc_fee) || 0, draw_fee: parseFloat(form.draw_fee) || 0, broker_fee: parseFloat(form.broker_fee) || 0, estimated_title_fees: parseFloat(form.estimated_title_fees) || 0, required_liquidity: parseFloat(form.required_liquidity) || 0, notes: form.notes, ...calcs, org_id: orgId || null, created_by: userEmail };
+      const payload = { deal_address: dealAddress, financing_type: financingType, status: form.status, contact_id: form.contact_id || null, lender_name: form.lender_name, company_name: form.company_name, term_months: parseInt(form.term_months) || 0, acq_financed_pct: parseFloat(form.acq_financed_pct) || 0, reno_financed_pct: parseFloat(form.reno_financed_pct) || 0, interest_rate: parseFloat(form.interest_rate) || 0, points_pct: parseFloat(form.points_pct) || 0, interest_reserve_months: parseInt(form.interest_reserve_months) || 0, inspection_fee: parseFloat(form.inspection_fee) || 0, loan_doc_fee: parseFloat(form.loan_doc_fee) || 0, draw_fee: parseFloat(form.draw_fee) || 0, broker_fee: calcs.broker_fee_amount || 0, estimated_title_fees: parseFloat(form.estimated_title_fees) || 0, required_liquidity: parseFloat(form.required_liquidity) || 0, notes: form.notes, ...calcs, org_id: orgId || null, created_by: userEmail };
       if (editingReq) { await supabase.from("financing_requests").update(payload).eq("id", editingReq.id); }
       else { await supabase.from("financing_requests").insert(payload); }
       await fetchRequests(); resetForm();
@@ -1863,7 +1917,8 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
 
   const handleDelete = async (id) => { if (!window.confirm("Delete this financing request?")) return; await supabase.from("financing_requests").delete().eq("id", id); await fetchRequests(); };
   const startEdit = (r) => {
-    setForm({ lender_name: r.lender_name || "", company_name: r.company_name || "", status: r.status || "considering", term_months: String(r.term_months || ""), acq_financed_pct: String(r.acq_financed_pct || ""), reno_financed_pct: String(r.reno_financed_pct || ""), interest_rate: String(r.interest_rate || ""), points_pct: String(r.points_pct || ""), interest_reserve_months: String(r.interest_reserve_months || ""), inspection_fee: String(r.inspection_fee || ""), loan_doc_fee: String(r.loan_doc_fee || ""), draw_fee: String(r.draw_fee || ""), broker_fee: String(r.broker_fee || ""), estimated_title_fees: String(r.estimated_title_fees || ""), required_liquidity: String(r.required_liquidity || ""), notes: r.notes || "" });
+    setForm({ contact_id: r.contact_id || "", lender_name: r.lender_name || "", company_name: r.company_name || "", status: r.status || "considering", term_months: String(r.term_months || ""), acq_financed_pct: String(r.acq_financed_pct || ""), reno_financed_pct: String(r.reno_financed_pct || ""), interest_rate: String(r.interest_rate || ""), points_pct: String(r.points_pct || ""), interest_reserve_months: String(r.interest_reserve_months || ""), inspection_fee: String(r.inspection_fee || ""), loan_doc_fee: String(r.loan_doc_fee || ""), draw_fee: String(r.draw_fee || ""), broker_fee_pct: String(r.broker_fee_pct || ""), estimated_title_fees: String(r.estimated_title_fees || ""), required_liquidity: String(r.required_liquidity || ""), notes: r.notes || "" });
+    setContactSearch(r.lender_name + (r.company_name ? " — " + r.company_name : ""));
     setEditingReq(r); setShowForm(true);
   };
 
@@ -1892,11 +1947,61 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
         <div style={{ background: "#f8fafc", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 14 : 20, marginBottom: 20 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 14 }}>{editingReq ? "Edit Request" : "New Financing Request"}</div>
 
-          {/* Lender Info */}
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Lender Info</div>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-            <div><label style={labelStyle}>Lender Name</label><input value={form.lender_name} onChange={e => setForm(f => ({...f, lender_name: e.target.value}))} placeholder="John Smith" style={inputStyle} /></div>
-            <div><label style={labelStyle}>Company</label><input value={form.company_name} onChange={e => setForm(f => ({...f, company_name: e.target.value}))} placeholder="ABC Capital" style={inputStyle} /></div>
+          {/* Lender Contact Search */}
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Lender Contact</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 16 }}>
+            <div style={{ position: "relative" }}>
+              <label style={labelStyle}>Search Contact</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ flex: 1, position: "relative" }} ref={contactSearchRef}>
+                  <input
+                    value={contactSearch}
+                    onChange={e => { setContactSearch(e.target.value); setShowContactDropdown(true); }}
+                    onFocus={() => setShowContactDropdown(true)}
+                    placeholder="Search lender contacts..."
+                    style={{ ...inputStyle, paddingRight: 32 }}
+                  />
+                  {form.contact_id && <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}><svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg></div>}
+                  {showContactDropdown && (
+                    <div style={{ position: "absolute", top: "100%", left: 0, right: 0, maxHeight: 220, overflowY: "auto", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 25px rgba(0,0,0,0.1)", zIndex: 50, marginTop: 4 }}>
+                      {filteredContacts.length === 0 ? (
+                        <div style={{ padding: "12px 14px", fontSize: 12, color: "#94a3b8", textAlign: "center" }}>No contacts found</div>
+                      ) : filteredContacts.slice(0, 20).map(c => (
+                        <div key={c.id} onClick={() => selectContact(c)} style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid #f8fafc", display: "flex", alignItems: "center", justifyContent: "space-between", transition: "background 0.1s" }} onMouseEnter={e => e.currentTarget.style.background="#f8fafc"} onMouseLeave={e => e.currentTarget.style.background="#fff"}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{c.contact_name}</div>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>{[c.company, c.email].filter(Boolean).join(" • ")}</div>
+                          </div>
+                          {(c.contact_type || "").toLowerCase().includes("lender") && (
+                            <span style={{ fontSize: 9, background: "#fffbeb", color: "#d97706", padding: "2px 6px", borderRadius: 6, fontWeight: 700, textTransform: "uppercase", whiteSpace: "nowrap" }}>Lender</span>
+                          )}
+                        </div>
+                      ))}
+                      <div onClick={() => { setShowContactDropdown(false); setShowQuickAdd(true); }} style={{ padding: "10px 14px", cursor: "pointer", borderTop: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 6, color: "#16a34a", fontWeight: 600, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }} onMouseEnter={e => e.currentTarget.style.background="#f0fdf4"} onMouseLeave={e => e.currentTarget.style.background="#fff"}>
+                        <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                        Add New Lender Contact
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* Quick-add new contact inline */}
+              {showQuickAdd && (
+                <div style={{ marginTop: 8, padding: 12, borderRadius: 10, border: "1px solid #bbf7d0", background: "#f0fdf4" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Quick Add Lender</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                    <div><label style={labelStyle}>Name *</label><input value={quickAddForm.name} onChange={e => setQuickAddForm(f => ({...f, name: e.target.value}))} placeholder="John Smith" style={inputStyle} /></div>
+                    <div><label style={labelStyle}>Company</label><input value={quickAddForm.company} onChange={e => setQuickAddForm(f => ({...f, company: e.target.value}))} placeholder="ABC Capital" style={inputStyle} /></div>
+                    <div><label style={labelStyle}>Email</label><input value={quickAddForm.email} onChange={e => setQuickAddForm(f => ({...f, email: e.target.value}))} placeholder="john@abc.com" style={inputStyle} /></div>
+                    <div><label style={labelStyle}>Phone</label><input value={quickAddForm.phone} onChange={e => setQuickAddForm(f => ({...f, phone: e.target.value}))} placeholder="(555) 123-4567" style={inputStyle} /></div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    <button onClick={() => setShowQuickAdd(false)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                    <button onClick={handleQuickAdd} disabled={quickAddSaving} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{quickAddSaving ? "Adding..." : "Add & Select"}</button>
+                  </div>
+                </div>
+              )}
+            </div>
             <div><label style={labelStyle}>Status</label>
               <select value={form.status} onChange={e => setForm(f => ({...f, status: e.target.value}))} style={inputStyle}>
                 {statusGroups.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
@@ -1923,7 +2028,7 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
             <div><label style={labelStyle}>Draw Fee $</label><input type="number" value={form.draw_fee} onChange={e => setForm(f => ({...f, draw_fee: e.target.value}))} placeholder="250" style={inputStyle} /></div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
-            <div><label style={labelStyle}>Broker Fee $</label><input type="number" value={form.broker_fee} onChange={e => setForm(f => ({...f, broker_fee: e.target.value}))} placeholder="0" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Broker Fee %</label><input type="number" value={form.broker_fee_pct} onChange={e => setForm(f => ({...f, broker_fee_pct: e.target.value}))} placeholder="1" style={inputStyle} /></div>
             <div><label style={labelStyle}>Est. Title Fees $</label><input type="number" value={form.estimated_title_fees} onChange={e => setForm(f => ({...f, estimated_title_fees: e.target.value}))} placeholder="3000" style={inputStyle} /></div>
             <div><label style={labelStyle}>Req Liquidity $</label><input type="number" value={form.required_liquidity} onChange={e => setForm(f => ({...f, required_liquidity: e.target.value}))} placeholder="50000" style={inputStyle} /></div>
             <div><label style={labelStyle}>Notes</label><input value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))} placeholder="Optional..." style={inputStyle} /></div>
@@ -1943,7 +2048,7 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
             <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Total LTC</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fPct(liveCalcs.total_ltc)}</div></div>
             <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Equity Required</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.equity_required)}</div></div>
             <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Total Loan Cost</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.total_loan_cost)}</div></div>
-            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Broker Fee</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(parseFloat(form.broker_fee) || 0)}</div></div>
+            <div><div style={{ fontSize: 9, color: "#7c3aed", fontWeight: 600, textTransform: "uppercase" }}>Broker Fee ({fPct(parseFloat(form.broker_fee_pct) || 0)})</div><div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fmt(liveCalcs.broker_fee_amount)}</div></div>
           </div>
 
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
@@ -1978,7 +2083,7 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>
                     <thead>
                       <tr style={{ background: sg.bg }}>
-                        {["Lender", "Company", "Rate", "Points", "LTC", "LTV", "Total Loan", "Cash to Close", "Equity Req", "Mo. Payment", "Total Cost", ""].map((h, i) => (
+                        {["Lender / Contact", "Rate", "Points", "LTC", "LTV", "Total Loan", "Cash to Close", "Equity Req", "Mo. Payment", "Total Cost", ""].map((h, i) => (
                           <th key={i} style={{ padding: "8px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: sg.color, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid " + sg.border, whiteSpace: "nowrap" }}>{h}</th>
                         ))}
                       </tr>
@@ -1986,8 +2091,7 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
                     <tbody>
                       {grouped.map(r => (
                         <tr key={r.id} onClick={() => setExpandedId(expandedId === r.id ? null : r.id)} style={{ cursor: "pointer", background: expandedId === r.id ? "#f8fafc" : "#fff", transition: "background 0.1s" }}>
-                          <td style={{ padding: "10px", fontWeight: 600, color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{r.lender_name || "—"}</td>
-                          <td style={{ padding: "10px", color: "#64748b", borderBottom: "1px solid #f1f5f9" }}>{r.company_name || "—"}</td>
+                          <td style={{ padding: "10px", borderBottom: "1px solid #f1f5f9" }}><div style={{ fontWeight: 600, color: "#0f172a" }}>{r.lender_name || "—"}</div>{r.company_name && <div style={{ fontSize: 10, color: "#94a3b8" }}>{r.company_name}</div>}</td>
                           <td style={{ padding: "10px", fontWeight: 600, color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{fPct(r.interest_rate)}</td>
                           <td style={{ padding: "10px", color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{fPct(r.points_pct)}</td>
                           <td style={{ padding: "10px", color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{fPct(r.total_ltc)}</td>
