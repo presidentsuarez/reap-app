@@ -5966,7 +5966,7 @@ function MLSStatusBadge({ status }) {
   );
 }
 
-function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
+function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload }) {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -6135,6 +6135,17 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline }) {
             ) : (
               <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><circle cx={11} cy={11} r={8}/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </button>
+            )}
+            {onShowUpload && (
+              <button onClick={onShowUpload} style={{
+                height: 36, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)",
+                border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                padding: "0 14px", color: "#fff", fontSize: 12, fontWeight: 600,
+                fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
+              }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload
               </button>
             )}
           </div>
@@ -8079,14 +8090,13 @@ export default function ReapApp() {
   const userName = session?.user?.user_metadata?.full_name || userEmail;
   const initials = userName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   const FEATURE_NAV_MAP = {
-    command: "dashboard", realestate: "pipeline", contacts: "contacts", research: "market_intel", mls: "mls_feed"
+    command: "dashboard", realestate: "pipeline", contacts: "contacts", research: "market_intel"
   };
   const allNavItems = [
     { id: "command", label: "Command Center", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
     { id: "realestate", label: "Real Estate", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
     { id: "contacts", label: "Contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
     { id: "research", label: "Research", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
-    { id: "mls", label: "MLS Feed", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
   ];
   // Filter nav items by feature flags (fallback: show all if features haven't loaded yet)
   const navItems = Object.keys(features).length === 0
@@ -8236,7 +8246,7 @@ export default function ReapApp() {
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={setContactsTab} />
+                <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={setContactsTab} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {contactsTab === "investors"
                     ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} />
@@ -8245,15 +8255,12 @@ export default function ReapApp() {
                 </div>
               </div>
             ) : activeNav === "research" ? (
-              <MarketIntelligenceView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} />
-            ) : activeNav === "mls" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "feed", label: "Feed" }, { id: "upload", label: "Upload" }]} active={mlsTab} onChange={setMlsTab} />
+                <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "16px 20px", flexShrink: 0 }}>
+                  <h1 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Research</h1>
+                </div>
                 <div style={{ flex: 1, overflow: "auto" }}>
-                  {mlsTab === "upload"
-                    ? <FileUploaderView session={session} isMobile={true} />
-                    : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} />
-                  }
+                  <MarketIntelligenceView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} />
                 </div>
               </div>
             ) : activeNav === "realestate" ? (
@@ -8264,12 +8271,16 @@ export default function ReapApp() {
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }]} active={realEstateTab} onChange={setRealEstateTab} title="Real Estate" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {realEstateTab === "dashboard"
                       ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
                       : realEstateTab === "portfolios"
                       ? <PortfolioView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setRealEstateTab("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
+                      : realEstateTab === "mls"
+                      ? (mlsTab === "upload"
+                        ? <FileUploaderView session={session} isMobile={true} />
+                        : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} />)
                       : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} />
                     }
                   </div>
@@ -8286,19 +8297,23 @@ export default function ReapApp() {
               ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} />
               : activeNav === "realestate"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }]} active={realEstateTab} onChange={setRealEstateTab} title="Real Estate" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {realEstateTab === "dashboard"
                       ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
                       : realEstateTab === "portfolios"
                       ? <PortfolioView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setRealEstateTab("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
+                      : realEstateTab === "mls"
+                      ? (mlsTab === "upload"
+                        ? <FileUploaderView session={session} isMobile={false} />
+                        : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} />)
                       : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} />
                     }
                   </div>
                 </div>
               : activeNav === "contacts"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={setContactsTab} />
+                  <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={setContactsTab} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {contactsTab === "investors"
                       ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} />
@@ -8307,15 +8322,12 @@ export default function ReapApp() {
                   </div>
                 </div>
               : activeNav === "research"
-              ? <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} />
-              : activeNav === "mls"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "feed", label: "Feed" }, { id: "upload", label: "Upload" }]} active={mlsTab} onChange={setMlsTab} />
+                  <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "16px 20px", flexShrink: 0 }}>
+                    <h1 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Research</h1>
+                  </div>
                   <div style={{ flex: 1, overflow: "auto" }}>
-                    {mlsTab === "upload"
-                      ? <FileUploaderView session={session} isMobile={false} />
-                      : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} />
-                    }
+                    <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} />
                   </div>
                 </div>
               : <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
