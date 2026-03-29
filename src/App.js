@@ -1367,11 +1367,531 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   );
 }
 
-function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDeal, updateHash, pendingDealTab, onClearPendingDealTab }) {
+// ── PRIORITY CONFIG for Tasks ──
+const PRIORITY_CONFIG = {
+  urgent: { label: "Urgent", color: "#dc2626", bg: "#fef2f2", border: "#fecaca", icon: "🔴", rank: 0 },
+  high:   { label: "High",   color: "#f59e0b", bg: "#fffbeb", border: "#fde68a", icon: "🟠", rank: 1 },
+  normal: { label: "Normal", color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe", icon: "🔵", rank: 2 },
+  low:    { label: "Low",    color: "#6b7280", bg: "#f9fafb", border: "#e5e7eb", icon: "⚪", rank: 3 },
+  none:   { label: "No priority", color: "#94a3b8", bg: "#f8fafc", border: "#e2e8f0", icon: "—", rank: 4 },
+};
+
+const TASK_STATUS_CONFIG = {
+  todo:        { label: "To Do",        color: "#64748b", bg: "#f8fafc" },
+  in_progress: { label: "In Progress",  color: "#f59e0b", bg: "#fffbeb" },
+  done:        { label: "Done",         color: "#16a34a", bg: "#f0fdf4" },
+};
+
+// ── Reusable TasksTab Component ──
+function TasksTab({ entityType, entityId, orgId, userEmail, orgMembers, isMobile }) {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [form, setForm] = useState({ title: "", description: "", start_date: "", due_date: "", assignee_email: userEmail || "", priority: "normal", status: "todo" });
+  const [saving, setSaving] = useState(false);
+
+  const fetchTasks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const q = supabase.from("tasks").select("*").eq("entity_type", entityType).eq("entity_id", String(entityId)).order("due_date", { ascending: true, nullsFirst: false });
+      const { data } = await q;
+      setTasks(data || []);
+    } catch (e) { console.error("Fetch tasks error:", e); }
+    finally { setLoading(false); }
+  }, [entityType, entityId]);
+
+  useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+  const resetForm = () => {
+    setForm({ title: "", description: "", start_date: "", due_date: "", assignee_email: userEmail || "", priority: "normal", status: "todo" });
+    setEditingTask(null);
+    setShowForm(false);
+  };
+
+  const handleSave = async () => {
+    if (!form.title.trim()) { alert("Please enter a task title."); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        start_date: form.start_date || null,
+        due_date: form.due_date || null,
+        assignee_email: form.assignee_email || null,
+        priority: form.priority || "normal",
+        status: form.status || "todo",
+        entity_type: entityType,
+        entity_id: String(entityId),
+        org_id: orgId || null,
+        created_by: userEmail,
+      };
+      if (editingTask) {
+        await supabase.from("tasks").update(payload).eq("id", editingTask.id);
+      } else {
+        await supabase.from("tasks").insert(payload);
+      }
+      await fetchTasks();
+      resetForm();
+    } catch (e) { alert("Error saving task: " + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (taskId) => {
+    if (!window.confirm("Delete this task?")) return;
+    try {
+      await supabase.from("tasks").delete().eq("id", taskId);
+      await fetchTasks();
+    } catch (e) { alert("Error deleting task: " + e.message); }
+  };
+
+  const handleToggleStatus = async (task) => {
+    const next = task.status === "todo" ? "in_progress" : task.status === "in_progress" ? "done" : "todo";
+    try {
+      await supabase.from("tasks").update({ status: next }).eq("id", task.id);
+      await fetchTasks();
+    } catch (e) { console.error("Toggle status error:", e); }
+  };
+
+  const startEdit = (task) => {
+    setForm({
+      title: task.title || "",
+      description: task.description || "",
+      start_date: task.start_date || "",
+      due_date: task.due_date || "",
+      assignee_email: task.assignee_email || "",
+      priority: task.priority || "normal",
+      status: task.status || "todo",
+    });
+    setEditingTask(task);
+    setShowForm(true);
+  };
+
+  const activeMembers = (orgMembers || []).filter(m => m.status === "active");
+
+  const isOverdue = (task) => task.due_date && new Date(task.due_date) < new Date(new Date().toDateString()) && task.status !== "done";
+
+  const inputStyle = { width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", outline: "none", background: "#fff", boxSizing: "border-box" };
+  const labelStyle = { fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4, display: "block" };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
+          Tasks ({tasks.filter(t => t.status !== "done").length} active) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+        </div>
+        <button onClick={() => { resetForm(); setShowForm(true); }} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}>+ Add Task</button>
+      </div>
+
+      {/* Task Form */}
+      {showForm && (
+        <div style={{ background: "#f8fafc", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 20, marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 14 }}>{editingTask ? "Edit Task" : "New Task"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+            <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
+              <label style={labelStyle}>Title *</label>
+              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Task title..." style={inputStyle} />
+            </div>
+            <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
+              <label style={labelStyle}>Description</label>
+              <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional details..." rows={2} style={{ ...inputStyle, resize: "vertical" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Start Date</label>
+              <input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Due Date</label>
+              <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Assignee</label>
+              <select value={form.assignee_email} onChange={e => setForm(f => ({ ...f, assignee_email: e.target.value }))} style={inputStyle}>
+                <option value="">Unassigned</option>
+                {activeMembers.map(m => <option key={m.user_email} value={m.user_email}>{m.user_email}</option>)}
+                {activeMembers.length === 0 && <option value={userEmail}>{userEmail}</option>}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Priority</label>
+              <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} style={inputStyle}>
+                {Object.entries(PRIORITY_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Status</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inputStyle}>
+                {Object.entries(TASK_STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+            <button onClick={resetForm} style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: saving ? "#94a3b8" : "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: saving ? "default" : "pointer", fontFamily: "'DM Sans', sans-serif" }}>{saving ? "Saving..." : editingTask ? "Update Task" : "Create Task"}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Task List */}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading tasks...</div>
+      ) : tasks.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+          <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} style={{ margin: "0 auto 8px", display: "block", opacity: 0.5 }}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <div style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No tasks yet</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {tasks.map(task => {
+            const pri = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.normal;
+            const st = TASK_STATUS_CONFIG[task.status] || TASK_STATUS_CONFIG.todo;
+            const overdue = isOverdue(task);
+            return (
+              <div key={task.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 16px", borderRadius: 12, border: "1px solid " + (overdue ? "#fecaca" : "#e2e8f0"), background: task.status === "done" ? "#f8faf9" : "#fff", opacity: task.status === "done" ? 0.7 : 1, transition: "all 0.15s" }}>
+                {/* Status checkbox */}
+                <button onClick={() => handleToggleStatus(task)} style={{ width: 22, height: 22, borderRadius: 6, border: "2px solid " + (task.status === "done" ? "#16a34a" : "#d1d5db"), background: task.status === "done" ? "#16a34a" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1, transition: "all 0.15s" }}>
+                  {task.status === "done" && <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}><path d="M20 6L9 17l-5-5"/></svg>}
+                  {task.status === "in_progress" && <div style={{ width: 8, height: 8, borderRadius: 2, background: "#f59e0b" }} />}
+                </button>
+                {/* Task content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: task.status === "done" ? "#94a3b8" : "#0f172a", fontFamily: "'DM Sans', sans-serif", textDecoration: task.status === "done" ? "line-through" : "none" }}>{task.title}</span>
+                    <span style={{ padding: "2px 8px", borderRadius: 8, fontSize: 10, fontWeight: 700, background: pri.bg, color: pri.color, border: "1px solid " + pri.border }}>{pri.label}</span>
+                    {overdue && <span style={{ padding: "2px 8px", borderRadius: 8, fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>Overdue</span>}
+                  </div>
+                  {task.description && <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>{task.description}</div>}
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                    {task.assignee_email && <span>👤 {task.assignee_email.split("@")[0]}</span>}
+                    {task.start_date && <span>📅 Start: {task.start_date}</span>}
+                    {task.due_date && <span style={{ color: overdue ? "#dc2626" : "#94a3b8" }}>⏰ Due: {task.due_date}</span>}
+                    <span style={{ color: st.color }}>● {st.label}</span>
+                  </div>
+                </div>
+                {/* Actions */}
+                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <button onClick={() => startEdit(task)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }} title="Edit">
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <button onClick={() => handleDelete(task.id)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#dc2626" }} title="Delete">
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Assignments View (universal rollup) ──
+function AssignmentsView({ session, isMobile, orgData, orgMembers, teamEmails }) {
+  const userEmail = (session?.user?.email || "").toLowerCase();
+  const isOwner = orgData?.owner_email?.toLowerCase() === userEmail || userEmail === PLATFORM_ADMIN_EMAIL;
+  const activeMembers = (orgMembers || []).filter(m => m.status === "active");
+
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedPerson, setSelectedPerson] = useState(userEmail);
+  const [viewMode, setViewMode] = useState("person"); // "person" or "org"
+  const [statusFilter, setStatusFilter] = useState("active"); // "active", "done", "all"
+  const [showForm, setShowForm] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [form, setForm] = useState({ title: "", description: "", start_date: "", due_date: "", assignee_email: userEmail, priority: "normal", status: "todo", entity_type: "", entity_id: "" });
+  const [saving, setSaving] = useState(false);
+
+  const fetchTasks = useCallback(async () => {
+    setLoading(true);
+    try {
+      let q = supabase.from("tasks").select("*").order("due_date", { ascending: true, nullsFirst: false });
+      if (orgData?.id) q = q.eq("org_id", orgData.id);
+      const { data } = await q;
+      setTasks(data || []);
+    } catch (e) { console.error("Fetch tasks error:", e); }
+    finally { setLoading(false); }
+  }, [orgData?.id]);
+
+  useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+  const resetForm = () => {
+    setForm({ title: "", description: "", start_date: "", due_date: "", assignee_email: userEmail, priority: "normal", status: "todo", entity_type: "", entity_id: "" });
+    setEditingTask(null);
+    setShowForm(false);
+  };
+
+  const handleSave = async () => {
+    if (!form.title.trim()) { alert("Please enter a task title."); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        start_date: form.start_date || null,
+        due_date: form.due_date || null,
+        assignee_email: form.assignee_email || null,
+        priority: form.priority || "normal",
+        status: form.status || "todo",
+        entity_type: form.entity_type || null,
+        entity_id: form.entity_id || null,
+        org_id: orgData?.id || null,
+        created_by: userEmail,
+      };
+      if (editingTask) {
+        await supabase.from("tasks").update(payload).eq("id", editingTask.id);
+      } else {
+        await supabase.from("tasks").insert(payload);
+      }
+      await fetchTasks();
+      resetForm();
+    } catch (e) { alert("Error saving task: " + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (taskId) => {
+    if (!window.confirm("Delete this task?")) return;
+    try {
+      await supabase.from("tasks").delete().eq("id", taskId);
+      await fetchTasks();
+    } catch (e) { alert("Error deleting task: " + e.message); }
+  };
+
+  const handleToggleStatus = async (task) => {
+    const next = task.status === "todo" ? "in_progress" : task.status === "in_progress" ? "done" : "todo";
+    try {
+      await supabase.from("tasks").update({ status: next }).eq("id", task.id);
+      await fetchTasks();
+    } catch (e) { console.error("Toggle status error:", e); }
+  };
+
+  const startEdit = (task) => {
+    setForm({
+      title: task.title || "",
+      description: task.description || "",
+      start_date: task.start_date || "",
+      due_date: task.due_date || "",
+      assignee_email: task.assignee_email || "",
+      priority: task.priority || "normal",
+      status: task.status || "todo",
+      entity_type: task.entity_type || "",
+      entity_id: task.entity_id || "",
+    });
+    setEditingTask(task);
+    setShowForm(true);
+  };
+
+  // Filter tasks
+  let filtered = tasks;
+  if (viewMode === "person") {
+    filtered = filtered.filter(t => (t.assignee_email || "").toLowerCase() === selectedPerson.toLowerCase());
+  }
+  if (statusFilter === "active") {
+    filtered = filtered.filter(t => t.status !== "done");
+  } else if (statusFilter === "done") {
+    filtered = filtered.filter(t => t.status === "done");
+  }
+
+  // Group by priority
+  const groups = {};
+  Object.keys(PRIORITY_CONFIG).forEach(k => { groups[k] = []; });
+  filtered.forEach(t => {
+    const p = t.priority || "normal";
+    if (!groups[p]) groups[p] = [];
+    groups[p].push(t);
+  });
+
+  // Sort within each group by due date: overdue first, then soonest, then no date
+  const today = new Date(new Date().toDateString());
+  const sortByDueDate = (a, b) => {
+    const aDate = a.due_date ? new Date(a.due_date) : null;
+    const bDate = b.due_date ? new Date(b.due_date) : null;
+    if (!aDate && !bDate) return 0;
+    if (!aDate) return 1;
+    if (!bDate) return -1;
+    return aDate - bDate;
+  };
+  Object.keys(groups).forEach(k => { groups[k].sort(sortByDueDate); });
+
+  const isOverdue = (task) => task.due_date && new Date(task.due_date) < today && task.status !== "done";
+
+  const totalActive = tasks.filter(t => t.status !== "done" && (viewMode === "org" || (t.assignee_email || "").toLowerCase() === selectedPerson.toLowerCase())).length;
+  const totalOverdue = tasks.filter(t => isOverdue(t) && (viewMode === "org" || (t.assignee_email || "").toLowerCase() === selectedPerson.toLowerCase())).length;
+
+  const inputStyle = { width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", outline: "none", background: "#fff", boxSizing: "border-box" };
+  const labelStyle = { fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4, display: "block" };
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", padding: isMobile ? "16px 16px 80px" : "28px 36px" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Assignments</h1>
+        <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "4px 0 0" }}>
+          {totalActive} active task{totalActive !== 1 ? "s" : ""}{totalOverdue > 0 ? ` · ${totalOverdue} overdue` : ""}
+        </p>
+      </div>
+
+      {/* Controls bar */}
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: isMobile ? "stretch" : "center" }}>
+        {/* View mode toggle */}
+        <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+          <button onClick={() => setViewMode("person")} style={{ padding: "8px 16px", border: "none", background: viewMode === "person" ? "#f0fdf4" : "transparent", color: viewMode === "person" ? "#16a34a" : "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>My Tasks</button>
+          {(isOwner || activeMembers.length > 1) && <button onClick={() => setViewMode("org")} style={{ padding: "8px 16px", border: "none", borderLeft: "1px solid #e2e8f0", background: viewMode === "org" ? "#f0fdf4" : "transparent", color: viewMode === "org" ? "#16a34a" : "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Organization</button>}
+        </div>
+
+        {/* Person chips (only in person mode) */}
+        {viewMode === "person" && activeMembers.length > 1 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            {activeMembers.map(m => (
+              <button key={m.user_email} onClick={() => setSelectedPerson(m.user_email.toLowerCase())} style={{
+                padding: "6px 14px", borderRadius: 20, border: "1px solid " + (selectedPerson === m.user_email.toLowerCase() ? "#bbf7d0" : "#e2e8f0"),
+                background: selectedPerson === m.user_email.toLowerCase() ? "#f0fdf4" : "#fff",
+                color: selectedPerson === m.user_email.toLowerCase() ? "#16a34a" : "#64748b",
+                fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap",
+              }}>{m.user_email.split("@")[0]}{m.user_email.toLowerCase() === userEmail ? " (me)" : ""}</button>
+            ))}
+          </div>
+        )}
+
+        {/* Person dropdown (for many members) */}
+        {viewMode === "person" && activeMembers.length > 5 && (
+          <select value={selectedPerson} onChange={e => setSelectedPerson(e.target.value)} style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", background: "#fff" }}>
+            {activeMembers.map(m => <option key={m.user_email} value={m.user_email.toLowerCase()}>{m.user_email}{m.user_email.toLowerCase() === userEmail ? " (me)" : ""}</option>)}
+          </select>
+        )}
+
+        {/* Status filter */}
+        <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", overflow: "hidden", marginLeft: isMobile ? 0 : "auto" }}>
+          <button onClick={() => setStatusFilter("active")} style={{ padding: "8px 14px", border: "none", background: statusFilter === "active" ? "#f0fdf4" : "transparent", color: statusFilter === "active" ? "#16a34a" : "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Active</button>
+          <button onClick={() => setStatusFilter("done")} style={{ padding: "8px 14px", border: "none", borderLeft: "1px solid #e2e8f0", background: statusFilter === "done" ? "#f0fdf4" : "transparent", color: statusFilter === "done" ? "#16a34a" : "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Done</button>
+          <button onClick={() => setStatusFilter("all")} style={{ padding: "8px 14px", border: "none", borderLeft: "1px solid #e2e8f0", background: statusFilter === "all" ? "#f0fdf4" : "transparent", color: statusFilter === "all" ? "#16a34a" : "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>All</button>
+        </div>
+
+        {/* Add task button */}
+        <button onClick={() => { resetForm(); setShowForm(true); }} style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)", whiteSpace: "nowrap" }}>+ Add Task</button>
+      </div>
+
+      {/* Quick-add form */}
+      {showForm && (
+        <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 20, marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 14 }}>{editingTask ? "Edit Task" : "New Task"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+            <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
+              <label style={labelStyle}>Title *</label>
+              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Task title..." style={inputStyle} />
+            </div>
+            <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
+              <label style={labelStyle}>Description</label>
+              <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional details..." rows={2} style={{ ...inputStyle, resize: "vertical" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Start Date</label>
+              <input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Due Date</label>
+              <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Assignee</label>
+              <select value={form.assignee_email} onChange={e => setForm(f => ({ ...f, assignee_email: e.target.value }))} style={inputStyle}>
+                <option value="">Unassigned</option>
+                {activeMembers.map(m => <option key={m.user_email} value={m.user_email}>{m.user_email}</option>)}
+                {activeMembers.length === 0 && <option value={userEmail}>{userEmail}</option>}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Priority</label>
+              <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} style={inputStyle}>
+                {Object.entries(PRIORITY_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Status</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inputStyle}>
+                {Object.entries(TASK_STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+            <button onClick={resetForm} style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: saving ? "#94a3b8" : "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: saving ? "default" : "pointer", fontFamily: "'DM Sans', sans-serif" }}>{saving ? "Saving..." : editingTask ? "Update Task" : "Create Task"}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Priority groups */}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 48, color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading assignments...</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 48 }}>
+          <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5} style={{ margin: "0 auto 12px", display: "block", opacity: 0.4 }}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <div style={{ fontSize: 14, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>No tasks found</div>
+          <div style={{ fontSize: 12, color: "#cbd5e1", fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>Create a task to get started</div>
+        </div>
+      ) : (
+        Object.entries(PRIORITY_CONFIG).map(([key, config]) => {
+          const groupTasks = groups[key] || [];
+          if (groupTasks.length === 0) return null;
+          return (
+            <div key={key} style={{ marginBottom: 20 }}>
+              {/* Priority header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "0 4px" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: config.color, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{config.icon} {config.label}</span>
+                <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: config.bg, color: config.color, border: "1px solid " + config.border }}>{groupTasks.length}</span>
+                <span style={{ flex: 1, height: 1, background: config.border }} />
+              </div>
+              {/* Tasks */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {groupTasks.map(task => {
+                  const st = TASK_STATUS_CONFIG[task.status] || TASK_STATUS_CONFIG.todo;
+                  const overdue = isOverdue(task);
+                  return (
+                    <div key={task.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 16px", borderRadius: 12, border: "1px solid " + (overdue ? "#fecaca" : "#e2e8f0"), background: task.status === "done" ? "#f8faf9" : "#fff", opacity: task.status === "done" ? 0.65 : 1 }}>
+                      <button onClick={() => handleToggleStatus(task)} style={{ width: 22, height: 22, borderRadius: 6, border: "2px solid " + (task.status === "done" ? "#16a34a" : "#d1d5db"), background: task.status === "done" ? "#16a34a" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1, transition: "all 0.15s" }}>
+                        {task.status === "done" && <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}><path d="M20 6L9 17l-5-5"/></svg>}
+                        {task.status === "in_progress" && <div style={{ width: 8, height: 8, borderRadius: 2, background: "#f59e0b" }} />}
+                      </button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: task.status === "done" ? "#94a3b8" : "#0f172a", fontFamily: "'DM Sans', sans-serif", textDecoration: task.status === "done" ? "line-through" : "none" }}>{task.title}</span>
+                          {task.entity_type && <span style={{ padding: "2px 8px", borderRadius: 8, fontSize: 10, fontWeight: 600, background: task.entity_type === "deal" ? "#eff6ff" : task.entity_type === "contact" ? "#f0fdf4" : "#faf5ff", color: task.entity_type === "deal" ? "#3b82f6" : task.entity_type === "contact" ? "#16a34a" : "#7c3aed", border: "1px solid " + (task.entity_type === "deal" ? "#bfdbfe" : task.entity_type === "contact" ? "#bbf7d0" : "#e9d5ff") }}>{task.entity_type}</span>}
+                          {overdue && <span style={{ padding: "2px 8px", borderRadius: 8, fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>Overdue</span>}
+                        </div>
+                        {task.description && <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginBottom: 3 }}>{task.description}</div>}
+                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                          {viewMode === "org" && task.assignee_email && <span>👤 {task.assignee_email.split("@")[0]}</span>}
+                          {task.start_date && <span>📅 {task.start_date}</span>}
+                          {task.due_date && <span style={{ color: overdue ? "#dc2626" : "#94a3b8" }}>⏰ {task.due_date}</span>}
+                          <span style={{ color: st.color }}>● {st.label}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                        <button onClick={() => startEdit(task)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }} title="Edit">
+                          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button onClick={() => handleDelete(task.id)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#dc2626" }} title="Delete">
+                          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDeal, updateHash, pendingDealTab, onClearPendingDealTab, orgData, orgMembers }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
-  const tabs = ["overview", "financials", "cash flow", "financing", "improvements", "units", "ai underwriting", "ai summary", "notes", "documents", "shared deal", "activity", "investor updates"];
+  const tabs = ["overview", "financials", "cash flow", "financing", "improvements", "units", "ai underwriting", "ai summary", "notes", "tasks", "documents", "shared deal", "activity", "investor updates"];
 
   // Resolve pending deal tab from URL
   useEffect(() => {
@@ -2916,6 +3436,11 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 </div>
               );
             })()}
+          </div>
+        )}
+        {activeTab === "tasks" && (
+          <div style={{ padding: isMobile ? "16px 12px" : "24px 28px" }}>
+            <TasksTab entityType="deal" entityId={deal.id || deal.rowId} orgId={orgData?.id} userEmail={userEmail} orgMembers={orgMembers || []} isMobile={isMobile} />
           </div>
         )}
         {activeTab === "documents" && (
@@ -5932,7 +6457,7 @@ function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
   );
 }
 
-function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp, deals, updateHash, refreshKey }) {
+function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp, deals, updateHash, refreshKey, orgData, orgMembers }) {
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -6028,6 +6553,8 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
         contacts={buyers}
         userEmail={session?.user?.email || ""}
         onRefresh={() => { fetchBuyers(); fetchContactFundsData(); }}
+        orgData={orgData}
+        orgMembers={orgMembers}
       />
       <BuyerModal isOpen={showBuyerModal} onClose={() => { onCloseBuyerModal(); }} onSave={async (form) => { await onSaveBuyer(form); }} saving={savingBuyer} isMobile={isMobile} buyer={editingBuyer} />
     </>;
@@ -8742,12 +9269,12 @@ function ContactsTab({ investor, contacts, investorContacts, isMobile }) {
   );
 }
 
-function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, investorFunds, contacts, userEmail, onRefresh }) {
+function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, investorFunds, contacts, userEmail, onRefresh, orgData, orgMembers }) {
   const [activeTab, setActiveTab] = useState("overview");
   const isInvestor = (contact.contactType || "").toLowerCase().includes("investor");
-  const baseTabs = ["overview", "companies", "linked deals", "communications", "documents", "portal access"];
+  const baseTabs = ["overview", "companies", "linked deals", "tasks", "communications", "documents", "portal access"];
   const investorTabs = ["funds", "capital"];
-  const tabs = isInvestor ? ["overview", "companies", ...investorTabs, "linked deals", "communications", "documents", "portal access"] : baseTabs;
+  const tabs = isInvestor ? ["overview", "companies", ...investorTabs, "linked deals", "tasks", "communications", "documents", "portal access"] : baseTabs;
   const initials = (contact.name || "??").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
   const linkedDeals = (deals || []).filter(d => (contact.linkedDealAddresses || []).includes(d.address));
 
@@ -9221,6 +9748,10 @@ function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, in
           </>
         )}
 
+        {activeTab === "tasks" && (
+          <TasksTab entityType="contact" entityId={contact.rowId} orgId={orgData?.id} userEmail={userEmail} orgMembers={orgMembers || []} isMobile={isMobile} />
+        )}
+
         {activeTab === "communications" && (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
@@ -9416,9 +9947,9 @@ function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, in
   );
 }
 
-function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivity, onLinkDeal, deals, isMobile, contacts, investorFunds, funds }) {
+function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivity, onLinkDeal, deals, isMobile, contacts, investorFunds, funds, orgData, orgMembers, userEmail }) {
   const [activeTab, setActiveTab] = useState("overview");
-  const tabs = ["overview", "funds", "contacts", "capital", "linked deals", "communications", "documents"];
+  const tabs = ["overview", "funds", "contacts", "capital", "linked deals", "tasks", "communications", "documents"];
   const [portalEmail, setPortalEmail] = useState(investor.portalEmail || "");
   const [portalSaving, setPortalSaving] = useState(false);
   const [portalSuccess, setPortalSuccess] = useState("");
@@ -9709,6 +10240,10 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
           </>
         )}
 
+        {activeTab === "tasks" && (
+          <TasksTab entityType="investor" entityId={investor.id} orgId={orgData?.id} userEmail={userEmail || ""} orgMembers={orgMembers || []} isMobile={isMobile} />
+        )}
+
         {activeTab === "communications" && (
           <>
             {/* Auto-logged communications */}
@@ -9886,7 +10421,7 @@ function LinkDealModal({ isOpen, onClose, deals, linkedAddresses, onLink, isMobi
   );
 }
 
-function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, deals, pendingInvestorId, onInvestorSelected, updateHash }) {
+function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, deals, pendingInvestorId, onInvestorSelected, updateHash, orgData, orgMembers }) {
   const [investors, setInvestors] = useState([]);
   const [activities, setActivities] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -10172,6 +10707,9 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
           onEdit={() => { setEditingInvestor(selectedInvestor); setShowModal(true); }}
           onLogActivity={() => setShowActivityModal(true)}
           onLinkDeal={() => setShowLinkDealModal(true)}
+          orgData={orgData}
+          orgMembers={orgMembers}
+          userEmail={session?.user?.email || ""}
         />
         <InvestorModal isOpen={showModal} onClose={() => { setShowModal(false); setEditingInvestor(null); }} onSave={handleSaveInvestor} saving={saving} isMobile={isMobile} investor={editingInvestor} />
         <ActivityModal isOpen={showActivityModal} onClose={() => setShowActivityModal(false)} onSave={handleLogActivity} saving={saving} isMobile={isMobile} />
@@ -11413,10 +11951,11 @@ export default function ReapApp() {
     command: "dashboard", realestate: "pipeline", contacts: "contacts", research: "market_intel"
   };
   const allNavItems = [
-    { id: "command", label: "Command Center", mobileLabel: "Dashboard", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-    { id: "realestate", label: "Real Estate", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-    { id: "contacts", label: "Contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
-    { id: "research", label: "Research", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
+    { id: "realestate", label: "Real Estate", mobileOrder: 0, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
+    { id: "research", label: "Research", mobileOrder: 1, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
+    { id: "command", label: "Command Center", mobileLabel: "Dashboard", featured: true, mobileOrder: 2, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+    { id: "contacts", label: "Contacts", mobileOrder: 3, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+    { id: "assignments", label: "Assignments", mobileOrder: 4, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
   ];
   // Filter nav items by feature flags (fallback: show all if features haven't loaded yet)
   const navItems = Object.keys(features).length === 0
@@ -11572,8 +12111,8 @@ export default function ReapApp() {
                 <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "investors" ? "contacts/investors" : "contacts"); }} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {contactsTab === "investors"
-                    ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} />
-                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} />
+                    ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} />
+                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} />
                   }
                 </div>
               </div>
@@ -11590,7 +12129,7 @@ export default function ReapApp() {
             <>
               {selectedDeal ? (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                  <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} />
+                  <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} />
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -11610,6 +12149,8 @@ export default function ReapApp() {
                 </div>
               )}
             </>
+            ) : activeNav === "assignments" ? (
+              <AssignmentsView session={session} isMobile={true} orgData={orgData} orgMembers={orgMembers} teamEmails={teamEmails} />
             ) : null
           ) : (
             showProfile
@@ -11617,7 +12158,7 @@ export default function ReapApp() {
               : activeNav === "command"
               ? <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} teamEmails={teamEmails} />
               : activeNav === "realestate" && selectedDeal
-              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} />
+              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} />
               : activeNav === "realestate"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                   <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
@@ -11639,8 +12180,8 @@ export default function ReapApp() {
                   <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "investors" ? "contacts/investors" : "contacts"); }} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {contactsTab === "investors"
-                      ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} />
-                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} />
+                      ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} />
+                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} />
                     }
                   </div>
                 </div>
@@ -11653,6 +12194,8 @@ export default function ReapApp() {
                     <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} />
                   </div>
                 </div>
+              : activeNav === "assignments"
+              ? <AssignmentsView session={session} isMobile={false} orgData={orgData} orgMembers={orgMembers} teamEmails={teamEmails} />
               : <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
           )}
         </div>
@@ -11666,7 +12209,7 @@ export default function ReapApp() {
             padding: "0 4px 6px", zIndex: 100,
             boxShadow: "0 -2px 12px rgba(0,0,0,0.06)",
           }}>
-            {(() => { const bottomItems = navItems.filter(item => item.mobileBottom !== false); const nonFeatured = bottomItems.filter(i => !i.featured); const featured = bottomItems.find(i => i.featured); const mid = Math.floor(nonFeatured.length / 2); const mobileOrder = [...nonFeatured.slice(0, mid), ...(featured ? [featured] : []), ...nonFeatured.slice(mid)]; return mobileOrder; })().map(item => {
+            {(() => { const bottomItems = [...navItems.filter(item => item.mobileBottom !== false)].sort((a, b) => (a.mobileOrder ?? 99) - (b.mobileOrder ?? 99)); return bottomItems; })().map(item => {
               const isActive = activeNav === item.id && !showProfile;
               if (item.featured) {
                 return (
