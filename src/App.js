@@ -2854,6 +2854,14 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                     });
                     if (notifRecords.length > 0) {
                       await supabase.from("investor_notifications").insert(notifRecords);
+                      // 3. Invoke Edge Function to actually deliver notifications
+                      try {
+                        await supabase.functions.invoke("send-investor-notifications", {
+                          body: { updateId },
+                        });
+                      } catch (fnErr) {
+                        console.log("[REAP] Edge Function not deployed yet, notifications queued as pending:", fnErr);
+                      }
                     }
                   }
 
@@ -2946,12 +2954,30 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [readUpdates, setReadUpdates] = useState(new Set());
   const [typeFilter, setTypeFilter] = useState(null);
+  const [notifPrefs, setNotifPrefs] = useState({ email: true, sms: true });
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
 
   useEffect(() => {
     const handle = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handle);
     return () => window.removeEventListener("resize", handle);
   }, []);
+
+  // Fetch notification preferences
+  useEffect(() => {
+    if (!investorProfile?.id) return;
+    async function fetchPrefs() {
+      try {
+        const { data } = await supabase.from("investors").select("notification_prefs").eq("id", investorProfile.id).limit(1);
+        if (data && data[0] && data[0].notification_prefs) {
+          try { setNotifPrefs(JSON.parse(data[0].notification_prefs)); } catch {}
+        }
+      } catch {}
+      setPrefsLoaded(true);
+    }
+    fetchPrefs();
+  }, [investorProfile?.id]);
 
   // Fetch investor's linked deals
   useEffect(() => {
@@ -3047,7 +3073,7 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
         <div style={{ display: "flex", gap: 0 }}>
           {(() => {
             const unreadCount = updates.filter(u => !readUpdates.has(u.id)).length;
-            return [{ id: "dashboard", label: "Dashboard" }, { id: "updates", label: "Updates" }, { id: "deals", label: "My Deals" }].map(t => (
+            return [{ id: "dashboard", label: "Dashboard" }, { id: "updates", label: "Updates" }, { id: "deals", label: "My Deals" }, { id: "settings", label: "Settings" }].map(t => (
               <button key={t.id} onClick={() => { setActiveSection(t.id); setSelectedDeal(null); }} style={{
                 background: "transparent", border: "none", borderBottom: activeSection === t.id ? "2px solid #16a34a" : "2px solid transparent",
                 padding: "12px 20px", color: activeSection === t.id ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600,
@@ -3271,6 +3297,94 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                 ))}
               </div>
             )}
+          </div>
+        ) : activeSection === "settings" ? (
+          /* ── Settings ── */
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 20px" }}>Settings</h1>
+
+            {/* Notification Preferences */}
+            <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 18 : 24, marginBottom: 16 }}>
+              <h2 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
+                Notification Preferences <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              </h2>
+              <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, margin: "0 0 20px" }}>
+                Choose how you'd like to be notified when new investment updates are posted.
+              </p>
+
+              {/* Email toggle */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: 10, background: notifPrefs.email ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (notifPrefs.email ? "#86efac" : "#e2e8f0"), marginBottom: 10, transition: "all 0.2s" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 8, background: notifPrefs.email ? "rgba(22,163,74,0.08)" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={notifPrefs.email ? "#16a34a" : "#94a3b8"} strokeWidth={1.5}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4l-10 8L2 4"/></svg>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>Email Notifications</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Receive updates via email</div>
+                  </div>
+                </div>
+                <button onClick={() => setNotifPrefs(p => ({ ...p, email: !p.email }))} style={{
+                  width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                  background: notifPrefs.email ? "#16a34a" : "#cbd5e1", position: "relative", transition: "background 0.2s",
+                }}>
+                  <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: notifPrefs.email ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                </button>
+              </div>
+
+              {/* SMS toggle */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: 10, background: notifPrefs.sms ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (notifPrefs.sms ? "#86efac" : "#e2e8f0"), marginBottom: 20, transition: "all 0.2s" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 8, background: notifPrefs.sms ? "rgba(22,163,74,0.08)" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={notifPrefs.sms ? "#16a34a" : "#94a3b8"} strokeWidth={1.5}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>Text Message (SMS)</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Receive updates via text</div>
+                  </div>
+                </div>
+                <button onClick={() => setNotifPrefs(p => ({ ...p, sms: !p.sms }))} style={{
+                  width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                  background: notifPrefs.sms ? "#16a34a" : "#cbd5e1", position: "relative", transition: "background 0.2s",
+                }}>
+                  <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: notifPrefs.sms ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                </button>
+              </div>
+
+              <button onClick={async () => {
+                setPrefsSaving(true);
+                try {
+                  const { error } = await supabase.from("investors").update({ notification_prefs: JSON.stringify(notifPrefs) }).eq("id", investorProfile.id);
+                  if (error) throw error;
+                  alert("Notification preferences saved!");
+                } catch (err) { alert("Error saving preferences: " + err.message); } finally { setPrefsSaving(false); }
+              }} disabled={prefsSaving} style={{
+                padding: "10px 24px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff",
+                boxShadow: "0 2px 10px rgba(22,163,74,0.3)", opacity: prefsSaving ? 0.7 : 1, transition: "all 0.2s",
+              }}>
+                {prefsSaving ? "Saving..." : "Save Preferences"}
+              </button>
+            </div>
+
+            {/* Account Info */}
+            <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 18 : 24 }}>
+              <h2 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
+                Account Information <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              </h2>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "12px 24px" }}>
+                {[
+                  ["Name", investorProfile?.investorName || "—"],
+                  ["Company", investorProfile?.company || "—"],
+                  ["Email", investorProfile?.email || "—"],
+                  ["Investor type", investorProfile?.investorType || "—"],
+                ].map(([label, value], i) => (
+                  <div key={i}>
+                    <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginBottom: 2 }}>{label}</div>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : null}
       </div>
@@ -7675,6 +7789,30 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
                 </div>
               )}
 
+              {/* Notification preferences (read-only from admin) */}
+              {investor.portalEmail && (
+                <div style={{ marginTop: 20 }}>
+                  <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
+                    Notification Preferences <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                  </h2>
+                  {(() => {
+                    let prefs = { email: true, sms: true };
+                    try { if (investor.notificationPrefs) prefs = JSON.parse(investor.notificationPrefs); } catch {}
+                    return (
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <span style={{ padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", background: prefs.email ? "#f0fdf4" : "#fef2f2", color: prefs.email ? "#16a34a" : "#ef4444", border: "1px solid " + (prefs.email ? "#86efac" : "#fecaca") }}>
+                          Email: {prefs.email ? "On" : "Off"}
+                        </span>
+                        <span style={{ padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", background: prefs.sms ? "#f0fdf4" : "#fef2f2", color: prefs.sms ? "#16a34a" : "#ef4444", border: "1px solid " + (prefs.sms ? "#86efac" : "#fecaca") }}>
+                          SMS: {prefs.sms ? "On" : "Off"}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginTop: 8, margin: "8px 0 0" }}>Investors manage these preferences from their portal Settings tab.</p>
+                </div>
+              )}
+
               <div style={{ marginTop: 20, padding: "14px 16px", borderRadius: 10, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
                 <p style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, margin: 0 }}>
                   <strong style={{ color: "#0f172a" }}>How it works:</strong> Once you set a portal email, the investor can sign up at <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#16a34a" }}>app.getreap.ai</span> using that email address and a password. They'll automatically be routed to their investor portal where they can see their deals and any updates you've posted.
@@ -7760,7 +7898,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
         linkedDealAddresses: r.linked_deal_addresses ? r.linked_deal_addresses.split("|||").filter(Boolean) : [],
         notes: r.notes || "", dateAdded: r.date_added || "",
         dateLastContact: r.date_last_contact || "", nextFollowUp: r.next_follow_up || "",
-        company: r.company || "", portalEmail: r.portal_email || "",
+        company: r.company || "", portalEmail: r.portal_email || "", notificationPrefs: r.notification_prefs || "",
       })).filter(inv => inv.investorName && inv.investorName.trim() !== "");
       const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
       const filtered = teamList.length > 0
