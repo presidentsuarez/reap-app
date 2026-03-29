@@ -1074,6 +1074,9 @@ function DealOfferingsTab({ deal, isMobile, userEmail, onUpdateDeal }) {
   const [hoveredRow, setHoveredRow] = useState(null);
   const [dealPublished, setDealPublished] = useState(!!deal.marketplace_published);
   const [publishSaving, setPublishSaving] = useState(false);
+  const [marketplacePrice, setMarketplacePrice] = useState(deal.marketplace_price || "");
+  const [priceSaving, setPriceSaving] = useState(false);
+  const [showPublishForm, setShowPublishForm] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", minimum_investment: "", target_raise: "", preferred_return: "", profit_share_pct: "", status: "Draft" });
 
   // Fetch offerings for this deal
@@ -1086,17 +1089,49 @@ function DealOfferingsTab({ deal, isMobile, userEmail, onUpdateDeal }) {
     })();
   }, [deal._id, deal.id]);
 
-  // Toggle deal marketplace visibility
-  const toggleDealPublish = async () => {
+  // Publish deal to marketplace with optional override price
+  const handlePublish = async () => {
     setPublishSaving(true);
-    const newVal = !dealPublished;
     try {
-      await supabase.from("deals").update({ marketplace_published: newVal }).eq("id", deal._id || deal.id);
-      setDealPublished(newVal);
-      deal.marketplace_published = newVal;
+      const updates = { marketplace_published: true };
+      const priceVal = parseFloat(String(marketplacePrice).replace(/[$,]/g, ""));
+      if (!isNaN(priceVal) && priceVal > 0) updates.marketplace_price = priceVal;
+      else updates.marketplace_price = null;
+      await supabase.from("deals").update(updates).eq("id", deal._id || deal.id);
+      setDealPublished(true);
+      deal.marketplace_published = true;
+      deal.marketplace_price = updates.marketplace_price;
+      setShowPublishForm(false);
       if (onUpdateDeal) onUpdateDeal();
     } catch (e) { console.error(e); }
     finally { setPublishSaving(false); }
+  };
+
+  // Unpublish deal
+  const handleUnpublish = async () => {
+    setPublishSaving(true);
+    try {
+      await supabase.from("deals").update({ marketplace_published: false, marketplace_price: null }).eq("id", deal._id || deal.id);
+      setDealPublished(false);
+      deal.marketplace_published = false;
+      deal.marketplace_price = null;
+      setMarketplacePrice("");
+      if (onUpdateDeal) onUpdateDeal();
+    } catch (e) { console.error(e); }
+    finally { setPublishSaving(false); }
+  };
+
+  // Save override price on already-published deal
+  const handleSavePrice = async () => {
+    setPriceSaving(true);
+    try {
+      const priceVal = parseFloat(String(marketplacePrice).replace(/[$,]/g, ""));
+      const mp = (!isNaN(priceVal) && priceVal > 0) ? priceVal : null;
+      await supabase.from("deals").update({ marketplace_price: mp }).eq("id", deal._id || deal.id);
+      deal.marketplace_price = mp;
+      if (onUpdateDeal) onUpdateDeal();
+    } catch (e) { console.error(e); }
+    finally { setPriceSaving(false); }
   };
 
   const handleSave = async () => {
@@ -1142,26 +1177,93 @@ function DealOfferingsTab({ deal, isMobile, userEmail, onUpdateDeal }) {
 
   return (
     <div>
-      {/* Marketplace Publish Toggle */}
-      <div style={{ background: dealPublished ? "#f0fdf4" : "#fff", borderRadius: 14, border: `1px solid ${dealPublished ? "#16a34a33" : "#e2e8f0"}`, padding: isMobile ? 16 : 20, marginBottom: 20, display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexDirection: isMobile ? "column" : "row", gap: 12 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={dealPublished ? "#16a34a" : "#94a3b8"} strokeWidth={2}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Marketplace Visibility</h3>
+      {/* Marketplace Publish Section */}
+      <div style={{ background: dealPublished ? "#f0fdf4" : "#fff", borderRadius: 14, border: `1px solid ${dealPublished ? "#16a34a33" : "#e2e8f0"}`, padding: isMobile ? 16 : 20, marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexDirection: isMobile ? "column" : "row", gap: 12 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={dealPublished ? "#16a34a" : "#94a3b8"} strokeWidth={2}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <h3 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Marketplace Visibility</h3>
+              {dealPublished && <span style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", background: "#dcfce7", padding: "2px 8px", borderRadius: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>Live</span>}
+            </div>
+            <p style={{ fontSize: 12, color: "#64748b", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>
+              {dealPublished ? "This deal is live on the Marketplace. Clients and investors can see it." : "Publish this deal to make it visible on the Marketplace for clients and investors."}
+            </p>
           </div>
-          <p style={{ fontSize: 12, color: "#64748b", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>
-            {dealPublished ? "This deal is live on the Marketplace. Clients and investors can see it." : "Publish this deal to make it visible on the Marketplace for clients and investors."}
-          </p>
+          {dealPublished ? (
+            <button onClick={handleUnpublish} disabled={publishSaving} style={{
+              padding: "10px 20px", borderRadius: 8, border: "none", flexShrink: 0,
+              background: "#dc2626", color: "#fff", fontSize: 12, fontWeight: 700,
+              cursor: publishSaving ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif",
+              boxShadow: "0 2px 8px rgba(220,38,38,0.25)", opacity: publishSaving ? 0.7 : 1,
+            }}>
+              {publishSaving ? "Saving..." : "Unpublish"}
+            </button>
+          ) : (
+            <button onClick={() => setShowPublishForm(!showPublishForm)} style={{
+              padding: "10px 20px", borderRadius: 8, border: "none", flexShrink: 0,
+              background: showPublishForm ? "#f1f5f9" : "linear-gradient(135deg, #16a34a, #15803d)",
+              color: showPublishForm ? "#64748b" : "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+              fontFamily: "'DM Sans', sans-serif", boxShadow: showPublishForm ? "none" : "0 2px 10px rgba(22,163,74,0.35)",
+            }}>
+              {showPublishForm ? "Cancel" : "Publish to Marketplace"}
+            </button>
+          )}
         </div>
-        <button onClick={toggleDealPublish} disabled={publishSaving} style={{
-          padding: "10px 20px", borderRadius: 8, border: "none", flexShrink: 0,
-          background: dealPublished ? "#dc2626" : "linear-gradient(135deg, #16a34a, #15803d)",
-          color: "#fff", fontSize: 12, fontWeight: 700, cursor: publishSaving ? "not-allowed" : "pointer",
-          fontFamily: "'DM Sans', sans-serif", boxShadow: dealPublished ? "0 2px 8px rgba(220,38,38,0.25)" : "0 2px 10px rgba(22,163,74,0.35)",
-          opacity: publishSaving ? 0.7 : 1, transition: "all 0.15s",
-        }}>
-          {publishSaving ? "Saving..." : dealPublished ? "Unpublish from Marketplace" : "Publish to Marketplace"}
-        </button>
+
+        {/* Publish Form (shown when not yet published and user clicks Publish) */}
+        {!dealPublished && showPublishForm && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #e2e8f0" }}>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 16, alignItems: isMobile ? "stretch" : "flex-end" }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 6, display: "block" }}>Deal Price (from pipeline)</label>
+                <div style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc", fontSize: 14, fontWeight: 700, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{fmt(deal.offer)}</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 6, display: "block" }}>Marketplace Price Override <span style={{ color: "#cbd5e1", fontWeight: 500, textTransform: "none" }}>(optional)</span></label>
+                <input value={marketplacePrice} onChange={e => setMarketplacePrice(e.target.value)} placeholder="Leave blank to use deal price" type="number" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Mono', monospace", color: "#0f172a", outline: "none", background: "#fff", boxSizing: "border-box" }} />
+              </div>
+              <button onClick={handlePublish} disabled={publishSaving} style={{
+                padding: "10px 24px", borderRadius: 8, border: "none", flexShrink: 0, height: 42,
+                background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700,
+                cursor: publishSaving ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif",
+                boxShadow: "0 2px 10px rgba(22,163,74,0.35)", opacity: publishSaving ? 0.7 : 1, whiteSpace: "nowrap",
+              }}>
+                {publishSaving ? "Publishing..." : "Confirm & Publish"}
+              </button>
+            </div>
+            <p style={{ fontSize: 11, color: "#94a3b8", margin: "10px 0 0", fontFamily: "'DM Sans', sans-serif" }}>
+              If you set an override price, that's what buyers/investors will see on the Marketplace instead of the deal pipeline price. All other deal data (address, type, sq ft, etc.) is pulled directly from the deal.
+            </p>
+          </div>
+        )}
+
+        {/* Price Override (shown when already published) */}
+        {dealPublished && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #16a34a22" }}>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 16, alignItems: isMobile ? "stretch" : "flex-end" }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 6, display: "block" }}>Deal Price (pipeline)</label>
+                <div style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc", fontSize: 14, fontWeight: 700, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{fmt(deal.offer)}</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 6, display: "block" }}>Marketplace Price Override</label>
+                <input value={marketplacePrice} onChange={e => setMarketplacePrice(e.target.value)} placeholder="Using deal price" type="number" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #16a34a44", fontSize: 14, fontFamily: "'DM Mono', monospace", color: "#0f172a", outline: "none", background: "#fff", boxSizing: "border-box" }} />
+              </div>
+              <button onClick={handleSavePrice} disabled={priceSaving} style={{
+                padding: "10px 20px", borderRadius: 8, border: "1px solid #16a34a33", flexShrink: 0, height: 42,
+                background: "rgba(22,163,74,0.08)", color: "#16a34a", fontSize: 12, fontWeight: 700,
+                cursor: priceSaving ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif",
+                opacity: priceSaving ? 0.7 : 1, whiteSpace: "nowrap",
+              }}>
+                {priceSaving ? "Saving..." : "Update Price"}
+              </button>
+            </div>
+            <p style={{ fontSize: 11, color: "#64748b", margin: "8px 0 0", fontFamily: "'DM Sans', sans-serif" }}>
+              {marketplacePrice ? `Marketplace shows: ${fmt(marketplacePrice)}` : "No override set — Marketplace shows the pipeline deal price."}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Header */}
@@ -10292,6 +10394,9 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
   const mapRef = useRef(null);
+
+  // Use marketplace_price override if set, otherwise fall back to deal offer price
+  const mktPrice = (d) => d.marketplace_price || d.offer;
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const [mapLoading, setMapLoading] = useState(false);
@@ -10385,7 +10490,7 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
                     </div>
                   </div>
                   <div style={{ flex: 1, padding: "18px 20px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                    <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", fontFamily: "'DM Mono', monospace", marginBottom: 8 }}>{fmt(deal.offer)}</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", fontFamily: "'DM Mono', monospace", marginBottom: 8 }}>{fmt(mktPrice(deal))}</div>
                     <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
                       {deal.type && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>{deal.type}</strong></span>}
                       {deal.sqft && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>{fmtNum(deal.sqft)}</strong> SqFt</span>}
@@ -10488,7 +10593,7 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
                   <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 3px", fontFamily: "'DM Sans', sans-serif" }}>{deal.address || "—"}</h3>
                   <p style={{ fontSize: 11, color: "#64748b", margin: "0 0 8px", fontFamily: "'DM Sans', sans-serif" }}>{[deal.city, deal.state, deal.zip].filter(Boolean).join(", ")}</p>
                   <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-                    {deal.offer && <span style={{ fontSize: 14, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>{fmt(deal.offer)}</span>}
+                    {mktPrice(deal) && <span style={{ fontSize: 14, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>{fmt(mktPrice(deal))}</span>}
                     {deal.type && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{deal.type}</span>}
                     {deal.sqft && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)} SF</span>}
                   </div>
@@ -10519,7 +10624,7 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
                     <td style={{ padding: "13px 16px", fontSize: 13, fontWeight: 500, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{deal.address || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b" }}>{deal.city || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b" }}>{deal.type || "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmt(deal.offer)}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmt(mktPrice(deal))}</td>
                     <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.sqft ? fmtNum(deal.sqft) : "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.netSqft ? "$" + deal.netSqft : "—"}</td>
