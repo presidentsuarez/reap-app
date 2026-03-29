@@ -36,19 +36,23 @@ const loadGoogleMaps = () => new Promise((resolve, reject) => {
 // Geocode an address and store lat/lng back to Supabase
 const geocodeAndStore = async (dealId, address, city, state, zip) => {
   if (!window.google || !window.google.maps) return null;
-  const geocoder = new window.google.maps.Geocoder();
   const fullAddress = [address, city, state, zip].filter(Boolean).join(", ");
+  if (!fullAddress || fullAddress.trim().length < 3) return null;
+  const geocoder = new window.google.maps.Geocoder();
   try {
-    const result = await new Promise((resolve, reject) => {
-      geocoder.geocode({ address: fullAddress }, (results, status) => {
-        if (status === "OK" && results[0]) resolve(results[0].geometry.location);
-        else reject(status);
-      });
-    });
+    const result = await Promise.race([
+      new Promise((resolve, reject) => {
+        geocoder.geocode({ address: fullAddress }, (results, status) => {
+          if (status === "OK" && results[0]) resolve(results[0].geometry.location);
+          else reject(status);
+        });
+      }),
+      new Promise((_, reject) => setTimeout(() => reject("TIMEOUT"), 8000)),
+    ]);
     const lat = result.lat();
     const lng = result.lng();
     if (dealId) {
-      await supabase.from("deals").update({ latitude: lat, longitude: lng }).eq("id", dealId);
+      supabase.from("deals").update({ latitude: lat, longitude: lng }).eq("id", dealId).then(() => {});
     }
     return { lat, lng };
   } catch (e) { console.warn("Geocode failed for:", fullAddress, e); return null; }
@@ -1173,41 +1177,42 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
         }
       }
 
-      // Geocode deals without coordinates (batch with delay to respect rate limits)
-      if (needsGeocode.length > 0) {
-        setGeocodingProgress(`Mapping ${needsGeocode.length} addresses...`);
-        for (let j = 0; j < needsGeocode.length; j++) {
-          const { deal, index } = needsGeocode[j];
-          setGeocodingProgress(`Geocoding ${j + 1}/${needsGeocode.length}: ${(deal.address || "").substring(0, 30)}...`);
-          const result = await geocodeAndStore(deal._id, deal.address, deal.city, deal.state, deal.zip);
-          if (result) {
-            const pos = { lat: result.lat, lng: result.lng };
-            addMarker(map, pos, deal, index);
-            bounds.extend(pos);
-            hasMarkers = true;
-            // Update the local deal object too
-            deal.latitude = result.lat;
-            deal.longitude = result.lng;
-          }
-          // Small delay to avoid hitting geocoding rate limits (50 req/sec)
-          if (j < needsGeocode.length - 1) await new Promise(r => setTimeout(r, 200));
-        }
-        setGeocodingProgress("");
-      }
-
+      // Fit bounds for deals that already have coordinates
       if (hasMarkers) {
         map.fitBounds(bounds);
-        // Don't zoom in too far for a single marker
         const listener = window.google.maps.event.addListener(map, "idle", () => {
           if (map.getZoom() > 16) map.setZoom(16);
           window.google.maps.event.removeListener(listener);
         });
       }
 
+      // Show map as ready immediately, then geocode remaining in background
       setMapReady(true);
+      setMapLoading(false);
+
+      // Geocode deals without coordinates (batch with delay to respect rate limits)
+      if (needsGeocode.length > 0) {
+        setGeocodingProgress(`Mapping ${needsGeocode.length} remaining...`);
+        for (let j = 0; j < needsGeocode.length; j++) {
+          const { deal, index } = needsGeocode[j];
+          if (!deal.address && !deal.city) { continue; }
+          setGeocodingProgress(`Geocoding ${j + 1}/${needsGeocode.length}: ${(deal.address || "").substring(0, 30)}...`);
+          try {
+            const result = await geocodeAndStore(deal._id, deal.address, deal.city, deal.state, deal.zip);
+            if (result) {
+              const pos = { lat: result.lat, lng: result.lng };
+              addMarker(map, pos, deal, index);
+              bounds.extend(pos);
+              deal.latitude = result.lat;
+              deal.longitude = result.lng;
+            }
+          } catch (_) { /* skip */ }
+          if (j < needsGeocode.length - 1) await new Promise(r => setTimeout(r, 250));
+        }
+        setGeocodingProgress("");
+      }
     } catch (e) {
       console.error("Map init error:", e);
-    } finally {
       setMapLoading(false);
     }
   }, []);
