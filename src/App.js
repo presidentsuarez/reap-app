@@ -1394,7 +1394,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [updates, setUpdates] = useState([]);
   const [updatesLoading, setUpdatesLoading] = useState(false);
   const [updateSaving, setUpdateSaving] = useState(false);
-  const [updateForm, setUpdateForm] = useState({ title: "", content: "", type: "General Announcement" });
+  const [updateForm, setUpdateForm] = useState({ title: "", content: "", type: "General Announcement", isPublic: true });
   const [notifyInvestors, setNotifyInvestors] = useState(true);
   const [linkedInvestors, setLinkedInvestors] = useState([]);
   const [notificationsSent, setNotificationsSent] = useState({});
@@ -2770,8 +2770,26 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 rows={4} style={{ width: "100%", padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 10, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", resize: "vertical", lineHeight: 1.6, marginBottom: 14 }}
                 onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
 
+              {/* Public / Private toggle */}
+              <div style={{ marginBottom: 14, padding: "12px 16px", borderRadius: 10, background: updateForm.isPublic ? "#f0fdf4" : "#fef9c3", border: "1px solid " + (updateForm.isPublic ? "#86efac" : "#fde68a"), transition: "all 0.2s" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <button onClick={() => setUpdateForm(prev => ({ ...prev, isPublic: !prev.isPublic }))} style={{
+                      width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
+                      background: updateForm.isPublic ? "#16a34a" : "#eab308", position: "relative", transition: "background 0.2s",
+                    }}>
+                      <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: updateForm.isPublic ? 21 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                    </button>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: updateForm.isPublic ? "#16a34a" : "#a16207", fontFamily: "'DM Sans', sans-serif" }}>
+                      {updateForm.isPublic ? "Public — visible to investors" : "Private — internal team only"}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 20 }}>{updateForm.isPublic ? "🌐" : "🔒"}</span>
+                </div>
+              </div>
+
               {/* Notify investors toggle */}
-              {linkedInvestors.length > 0 && (
+              {linkedInvestors.length > 0 && updateForm.isPublic && (
                 <div style={{ marginBottom: 14, padding: "12px 16px", borderRadius: 10, background: notifyInvestors ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (notifyInvestors ? "#86efac" : "#e2e8f0"), transition: "all 0.2s" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: notifyInvestors ? 10 : 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -2810,13 +2828,13 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                   const { data: insertedRows, error } = await supabase.from("investor_updates").insert({
                     deal_id: deal._id, update_type: updateForm.type,
                     title: updateForm.title.trim(), body: updateForm.content.trim(),
-                    posted_by: userEmail,
+                    posted_by: userEmail, is_public: updateForm.isPublic,
                   }).select();
                   if (error) throw error;
                   const updateId = insertedRows && insertedRows[0] ? insertedRows[0].id : null;
 
-                  // 2. Create notification records for each investor
-                  if (notifyInvestors && updateId && linkedInvestors.length > 0) {
+                  // 2. Create notification records for each investor (only if public)
+                  if (updateForm.isPublic && notifyInvestors && updateId && linkedInvestors.length > 0) {
                     const notifRecords = [];
                     linkedInvestors.forEach(inv => {
                       inv.allEmails.forEach(email => {
@@ -2839,7 +2857,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                     }
                   }
 
-                  setUpdateForm({ title: "", content: "", type: "General Announcement" });
+                  setUpdateForm({ title: "", content: "", type: "General Announcement", isPublic: true });
                   fetchInvestorUpdates();
                 } catch (err) { alert("Error posting update: " + err.message); } finally { setUpdateSaving(false); }
               }} disabled={updateSaving || !updateForm.title.trim() || !updateForm.content.trim()} style={{
@@ -2850,7 +2868,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 boxShadow: updateForm.title.trim() && updateForm.content.trim() ? "0 2px 10px rgba(22,163,74,0.3)" : "none",
                 opacity: updateSaving ? 0.7 : 1, transition: "all 0.2s",
               }}>
-                {updateSaving ? "Posting..." : (notifyInvestors && linkedInvestors.length > 0 ? "Post & Notify" : "Post Update")}
+                {updateSaving ? "Posting..." : (updateForm.isPublic && notifyInvestors && linkedInvestors.length > 0 ? "Post & Notify" : "Post Update")}
               </button>
             </div>
 
@@ -2885,6 +2903,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
                         <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", background: typeConfig.bg, color: typeConfig.color, border: "1px solid " + typeConfig.border }}>{u.update_type}</span>
                         <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                        <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", background: u.is_public !== false ? "#f0fdf4" : "#fef9c3", color: u.is_public !== false ? "#16a34a" : "#a16207", border: "1px solid " + (u.is_public !== false ? "#86efac" : "#fde68a") }}>{u.is_public !== false ? "Public" : "Private"}</span>
                         <span style={{ fontSize: 11, color: "#cbd5e1", fontFamily: "'DM Mono', monospace" }}>{u.posted_by}</span>
                         {notificationsSent[u.id] && notificationsSent[u.id].length > 0 && (
                           <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: "#f0fdf4", color: "#16a34a", border: "1px solid #86efac", fontFamily: "'DM Sans', sans-serif" }}>
@@ -2956,7 +2975,7 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
         // Fetch updates for all linked deals
         const dealIds = parsed.map(d => d._id).filter(Boolean);
         if (dealIds.length > 0) {
-          const { data: updatesData } = await supabase.from("investor_updates").select("*").in("deal_id", dealIds).order("created_at", { ascending: false });
+          const { data: updatesData } = await supabase.from("investor_updates").select("*").in("deal_id", dealIds).eq("is_public", true).order("created_at", { ascending: false });
           setUpdates(updatesData || []);
 
           // Fetch read receipts for this investor
@@ -7300,6 +7319,117 @@ function ActivityModal({ isOpen, onClose, onSave, saving, isMobile }) {
   );
 }
 
+function ContactsTab({ investor, contacts, investorContacts, isMobile }) {
+  const [showLinkUI, setShowLinkUI] = useState(false);
+  const [contactSearch, setContactSearch] = useState("");
+  const [linking, setLinking] = useState(false);
+  const searchRef = useRef(null);
+
+  useEffect(() => { if (showLinkUI && searchRef.current) searchRef.current.focus(); }, [showLinkUI]);
+
+  const linkedIds = new Set((investor.contactIds || []).filter(Boolean));
+  const availableContacts = contacts.filter(c => !linkedIds.has(c.rowId));
+  const searchFiltered = availableContacts.filter(c =>
+    (c.name || "").toLowerCase().includes(contactSearch.toLowerCase()) ||
+    (c.email || "").toLowerCase().includes(contactSearch.toLowerCase()) ||
+    (c.company || "").toLowerCase().includes(contactSearch.toLowerCase())
+  );
+
+  const linkContact = async (contactId) => {
+    setLinking(true);
+    try {
+      const newIds = [...(investor.contactIds || []).filter(Boolean), contactId];
+      const { error } = await supabase.from("investors").update({ contact_ids: newIds.join("|||") }).eq("id", investor.id);
+      if (error) throw error;
+      investor.contactIds = newIds;
+      setContactSearch("");
+      setShowLinkUI(false);
+    } catch (err) { alert("Error linking contact: " + err.message); } finally { setLinking(false); }
+  };
+
+  const unlinkContact = async (contactId) => {
+    if (!window.confirm("Remove this contact from the investor?")) return;
+    try {
+      const newIds = (investor.contactIds || []).filter(id => id !== contactId);
+      const { error } = await supabase.from("investors").update({ contact_ids: newIds.length > 0 ? newIds.join("|||") : null }).eq("id", investor.id);
+      if (error) throw error;
+      investor.contactIds = newIds;
+    } catch (err) { alert("Error unlinking contact: " + err.message); }
+  };
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Linked Contacts ({investorContacts.length})</div>
+        <button onClick={() => setShowLinkUI(!showLinkUI)} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: showLinkUI ? "#f1f5f9" : "linear-gradient(135deg, #16a34a, #15803d)", color: showLinkUI ? "#64748b" : "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{showLinkUI ? "Cancel" : "+ Link contact"}</button>
+      </div>
+
+      {showLinkUI && (
+        <div style={{ marginBottom: 16, padding: 14, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+          <input ref={searchRef} value={contactSearch} onChange={e => setContactSearch(e.target.value)} placeholder="Search contacts by name, email, or company..."
+            style={{ width: "100%", background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box", marginBottom: 10 }}
+            onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+          <div style={{ maxHeight: 200, overflow: "auto" }}>
+            {searchFiltered.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 16, color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>{availableContacts.length === 0 ? "All contacts are already linked." : "No contacts match your search."}</div>
+            ) : searchFiltered.slice(0, 10).map(c => {
+              const ci = (c.name || "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+              return (
+                <button key={c.rowId} onClick={() => linkContact(c.rowId)} disabled={linking}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "1px solid #f1f5f9", borderRadius: 8, marginBottom: 4, background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "'DM Sans', sans-serif", transition: "background 0.15s" }}>
+                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(22,163,74,0.08)", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{ci}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[c.email, c.phone, c.company].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {investorContacts.length === 0 && !showLinkUI ? (
+        <div style={{ textAlign: "center", padding: "32px 16px" }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>No contacts linked yet</p>
+          <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px" }}>Link people from your Contacts to this investor entity.</p>
+          <button onClick={() => setShowLinkUI(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}>+ Link your first contact</button>
+        </div>
+      ) : investorContacts.map((c, i) => {
+        const ci = (c.name || "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+        return (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", border: "1px solid #f1f5f9", borderRadius: 10, marginBottom: 8, background: "#fff" }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(59,130,246,0.08)", color: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{ci}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{c.name}</div>
+              <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                {c.email && <span>{c.email}</span>}
+                {c.phone && <span>{c.email ? " · " : ""}{c.phone}</span>}
+                {c.company && <span>{(c.email || c.phone) ? " · " : ""}{c.company}</span>}
+              </div>
+            </div>
+            <button onClick={() => unlinkContact(c.rowId)} title="Remove contact" style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        );
+      })}
+
+      {investorContacts.length > 0 && (
+        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
+          <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0, lineHeight: 1.5 }}>
+            Contacts linked here represent the people associated with this investor entity. Their email and phone info is used for portal access and notifications.
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
 function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivity, onLinkDeal, deals, isMobile, contacts }) {
   const [activeTab, setActiveTab] = useState("overview");
   const tabs = ["overview", "contacts", "capital", "linked deals", "communications", "documents", "portal access"];
@@ -7405,27 +7535,7 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
         )}
 
         {activeTab === "contacts" && (
-          <>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Contacts ({investorContacts.length})</div>
-            </div>
-            {investorContacts.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
-                No contacts linked yet. Link contacts from the Contacts module.
-              </div>
-            ) : investorContacts.map((c, i) => {
-              const ci = (c.name || "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
-              return (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", border: "1px solid #f1f5f9", borderRadius: 10, marginBottom: 8 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(59,130,246,0.08)", color: "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{ci}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{c.name}</div>
-                    <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{[c.email, c.phone, c.company].filter(Boolean).join(" · ")}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </>
+          <ContactsTab investor={investor} contacts={contacts} investorContacts={investorContacts} isMobile={isMobile} />
         )}
 
         {activeTab === "capital" && (
