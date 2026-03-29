@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { loadStripe } from "@stripe/stripe-js";
+import Papa from "papaparse";
 
 // All data fetched from Supabase (migrated from Google Sheets)
 
@@ -7501,7 +7502,7 @@ function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
   );
 }
 
-function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp, deals, updateHash, refreshKey, orgData, orgMembers }) {
+function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp, deals, updateHash, refreshKey, orgData, orgMembers, contactTypeFilter }) {
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -7556,9 +7557,13 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
         portalEmail: r.portal_email || "",
       })).filter(c => c.name && c.name.trim() !== "");
       const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
-      const filtered = teamList.length > 0
+      let filtered = teamList.length > 0
         ? parsed.filter(c => { const contactUser = (c.user || "").toLowerCase().trim(); return contactUser && teamList.includes(contactUser); })
         : parsed;
+      // Filter by contact type if prop is set
+      if (contactTypeFilter) {
+        filtered = filtered.filter(c => (c.contactType || "").toLowerCase().includes(contactTypeFilter.toLowerCase()));
+      }
       setBuyers(filtered);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [teamEmailsProp]);
@@ -10798,125 +10803,229 @@ function OfferingsView({ deals, isMobile, session, userEmail, updateHash }) {
    FILE UPLOADER VIEW
    ═══════════════════════════════════════════════════════════ */
 
-function FileUploaderView({ session, isMobile }) {
+function FileUploaderView({ session, isMobile, onProcessed }) {
   const [uploads, setUploads] = useState([]);
   const [uploadsLoading, setUploadsLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [parsedRows, setParsedRows] = useState(null);
+  const [results, setResults] = useState(null);
+  const [progress, setProgress] = useState(null);
   const fileInputRef = useRef(null);
 
   const fetchUploads = useCallback(async () => {
     setUploadsLoading(true);
     try {
-      const { data: rows, error: fetchErr } = await supabase.from("file_uploads").select("*").order("uploaded_at", { ascending: false });
-      if (fetchErr) { setUploads([]); return; }
-      const parsed = (rows || []).map(r => ({
-        rowIndex: r.id,
-        filename: r.filename || "",
-        link: r.file_link || "",
-        date: r.uploaded_at || "",
-        user: r.user_email || "",
-        status: r.status || "Uploaded",
-      })).filter(u => u.filename || u.link);
-      setUploads(parsed);
-    } catch (err) { console.error("Error fetching uploads:", err); setUploads([]); } finally { setUploadsLoading(false); }
+      const { data: rows } = await supabase.from("file_uploads").select("*").order("uploaded_at", { ascending: false }).limit(20);
+      setUploads((rows || []).map(r => ({
+        rowIndex: r.id, filename: r.filename || "", date: r.uploaded_at || "",
+        user: r.user_email || "", status: r.status || "Uploaded",
+        newCount: r.new_count || 0, updatedCount: r.updated_count || 0, skippedCount: r.skipped_count || 0,
+      })));
+    } catch (err) { console.error(err); setUploads([]); } finally { setUploadsLoading(false); }
   }, []);
 
   useEffect(() => { fetchUploads(); }, [fetchUploads]);
 
-  const handleUpload = async (file) => {
+  // CSV Column → Supabase column mapping
+  const COL_MAP = {
+    "ML Number": "mls_number", "Status": "status", "ADOM": "adom", "CDOM": "cdom",
+    "Current Price": "price", "Address": "address", "City": "city", "County": "county",
+    "Ownership": "ownership", "Prop Type": "prop_type", "Property Style": "style",
+    "Total Units": "units", "Heated Area": "heated_area", "Lot Size Acres": "lot_acres",
+    "Beds": "beds", "Bathrooms Total": "baths", "Year Built": "year_built",
+    "$/SqFt": "ppsf", "List Agent": "agent", "Public Remarks": "public_remarks",
+    "Realtor Only Remarks": "realtor_remarks", "Zip": "zip", "SqFt Total": "sqft_total",
+  };
+
+  const cleanNum = (v) => { if (!v) return null; const n = parseFloat(String(v).replace(/[$,]/g, "")); return isNaN(n) ? null : n; };
+  const cleanStr = (v) => v ? String(v).trim() : null;
+  const cleanInt = (v) => { if (!v) return null; const n = parseInt(String(v).replace(/[,]/g, "")); return isNaN(n) ? null : n; };
+
+  const mapRow = (csvRow) => {
+    const r = {};
+    Object.entries(COL_MAP).forEach(([csvCol, dbCol]) => { r[dbCol] = cleanStr(csvRow[csvCol]); });
+    // Numeric cleaning
+    r.price = cleanNum(csvRow["Current Price"]);
+    r.adom = cleanInt(csvRow["ADOM"]);
+    r.cdom = cleanInt(csvRow["CDOM"]);
+    r.units = cleanInt(csvRow["Total Units"]);
+    r.heated_area = cleanInt(csvRow["Heated Area"]);
+    r.lot_acres = cleanNum(csvRow["Lot Size Acres"]);
+    r.beds = cleanInt(csvRow["Beds"]);
+    r.baths = cleanInt(csvRow["Bathrooms Total"]);
+    r.year_built = cleanInt(csvRow["Year Built"]);
+    r.ppsf = cleanNum(csvRow["$/SqFt"]);
+    r.sqft_total = cleanInt(csvRow["SqFt Total"]);
+    r.state = "FL"; // Stellar MLS = Florida
+    return r;
+  };
+
+  const handleFileSelected = (file) => {
     if (!file) return;
-    setUploading(true);
+    setSelectedFile(file);
+    setResults(null);
+    // Parse CSV immediately for preview
+    Papa.parse(file, {
+      header: true, skipEmptyLines: true, encoding: "UTF-8",
+      complete: (result) => {
+        const valid = result.data.filter(row => row["ML Number"] && row["ML Number"].trim());
+        setParsedRows(valid);
+      },
+      error: () => { alert("Error parsing CSV file."); setParsedRows(null); },
+    });
+  };
+
+  const handleProcess = async () => {
+    if (!parsedRows || parsedRows.length === 0) return;
+    setProcessing(true); setResults(null); setProgress({ current: 0, total: parsedRows.length, phase: "Checking existing listings..." });
     try {
-      // Read file as base64
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+      // Map all CSV rows to DB format
+      const mapped = parsedRows.map(mapRow).filter(r => r.mls_number);
+      const mlsNumbers = mapped.map(r => r.mls_number);
+
+      // Fetch all existing MLS numbers in one query
+      setProgress(p => ({ ...p, phase: "Fetching existing MLS data..." }));
+      const { data: existing } = await supabase.from("mls_listings").select("id, mls_number, status").in("mls_number", mlsNumbers);
+      const existingMap = {};
+      (existing || []).forEach(e => { existingMap[e.mls_number] = e; });
+
+      const toInsert = [];
+      const toUpdate = [];
+      let skipped = 0;
+
+      mapped.forEach(row => {
+        const ex = existingMap[row.mls_number];
+        if (!ex) {
+          // New listing
+          toInsert.push({ ...row, user_email: session?.user?.email || "", created_at: new Date().toISOString() });
+        } else if (ex.status !== row.status || true) {
+          // Existing - update all fields (status changes, price changes, etc.)
+          toUpdate.push({ id: ex.id, ...row });
+        } else {
+          skipped++;
+        }
       });
 
-      const { error: insertErr } = await supabase.from("file_uploads").insert({
-        user_email: session?.user?.email || "",
-        filename: file.name,
-        mime_type: file.type || "text/csv",
-        status: "Uploaded",
-      });
-      if (insertErr) throw new Error(insertErr.message);
+      // Batch insert new listings
+      let insertedCount = 0;
+      if (toInsert.length > 0) {
+        setProgress(p => ({ ...p, phase: `Inserting ${toInsert.length} new listings...`, current: 0 }));
+        // Insert in batches of 50
+        for (let i = 0; i < toInsert.length; i += 50) {
+          const batch = toInsert.slice(i, i + 50);
+          const { error } = await supabase.from("mls_listings").insert(batch);
+          if (error) console.error("Insert batch error:", error);
+          else insertedCount += batch.length;
+          setProgress(p => ({ ...p, current: Math.min(i + 50, toInsert.length) }));
+        }
+      }
 
-      setSelectedFile(null);
+      // Batch update existing listings
+      let updatedCount = 0;
+      if (toUpdate.length > 0) {
+        setProgress(p => ({ ...p, phase: `Updating ${toUpdate.length} existing listings...`, current: 0, total: toUpdate.length }));
+        for (let i = 0; i < toUpdate.length; i += 50) {
+          const batch = toUpdate.slice(i, i + 50);
+          for (const row of batch) {
+            const { id, ...updates } = row;
+            const { error } = await supabase.from("mls_listings").update(updates).eq("id", id);
+            if (!error) updatedCount++;
+          }
+          setProgress(p => ({ ...p, current: Math.min(i + 50, toUpdate.length) }));
+        }
+      }
+
+      // Log to file_uploads
+      await supabase.from("file_uploads").insert({
+        user_email: session?.user?.email || "", filename: selectedFile.name,
+        mime_type: selectedFile.type || "text/csv", status: "Processed",
+        new_count: insertedCount, updated_count: updatedCount, skipped_count: skipped,
+      });
+
+      setResults({ inserted: insertedCount, updated: updatedCount, skipped, total: mapped.length });
+      setSelectedFile(null); setParsedRows(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       fetchUploads();
+      if (onProcessed) onProcessed();
     } catch (err) {
-      alert("Upload error: " + err.message);
+      alert("Processing error: " + err.message);
     } finally {
-      setUploading(false);
+      setProcessing(false); setProgress(null);
     }
   };
 
   const onDrop = (e) => {
     e.preventDefault(); setDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file && (file.name.endsWith(".csv") || file.name.endsWith(".xlsx") || file.name.endsWith(".xls"))) {
-      setSelectedFile(file);
-    } else {
-      alert("Please upload a CSV or Excel file.");
-    }
+    if (file && file.name.endsWith(".csv")) handleFileSelected(file);
+    else alert("Please upload a CSV file from Stellar MLS.");
   };
 
-  const onFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) setSelectedFile(file);
-  };
+  const onFileSelect = (e) => { const file = e.target.files[0]; if (file) handleFileSelected(file); };
+
+  const statBox = (label, value, color) => (
+    <div style={{ flex: 1, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 16px", textAlign: "center" }}>
+      <div style={{ fontSize: 22, fontWeight: 800, color, fontFamily: "'DM Mono', monospace" }}>{value}</div>
+      <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{label}</div>
+    </div>
+  );
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#f8fafc", overflow: "hidden" }}>
-      {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px 16px 14px" : "20px 28px 18px" }}>
-        <h1 style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>File Uploader</h1>
-        <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "4px 0 0" }}>Upload CSV files to populate MLS Feed data</p>
-      </div>
-
       <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 16 : 24 }}>
         {/* Upload Zone */}
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
-          onClick={() => !selectedFile && fileInputRef.current?.click()}
+          onClick={() => !selectedFile && !processing && fileInputRef.current?.click()}
           style={{
             background: dragOver ? "#f0fdf4" : "#fff",
             border: `2px dashed ${dragOver ? "#16a34a" : selectedFile ? "#16a34a" : "#e2e8f0"}`,
-            borderRadius: 16, padding: isMobile ? "32px 20px" : "48px 40px",
-            textAlign: "center", cursor: selectedFile ? "default" : "pointer",
-            transition: "all 0.2s", marginBottom: 24,
+            borderRadius: 16, padding: isMobile ? "28px 16px" : "40px 40px",
+            textAlign: "center", cursor: selectedFile || processing ? "default" : "pointer",
+            transition: "all 0.2s", marginBottom: 20,
           }}
         >
-          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={onFileSelect} style={{ display: "none" }} />
-          {selectedFile ? (
+          <input ref={fileInputRef} type="file" accept=".csv" onChange={onFileSelect} style={{ display: "none" }} />
+
+          {processing && progress ? (
+            <div>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                <svg width={22} height={22} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle cx={12} cy={12} r={10} fill="none" stroke="#bbf7d0" strokeWidth={3} /><path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="#16a34a" strokeWidth={3} strokeLinecap="round" /></svg>
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 6px" }}>{progress.phase}</p>
+              <div style={{ width: "100%", maxWidth: 300, height: 6, background: "#e2e8f0", borderRadius: 3, margin: "0 auto 8px", overflow: "hidden" }}>
+                <div style={{ height: "100%", background: "linear-gradient(135deg, #16a34a, #15803d)", borderRadius: 3, width: progress.total > 0 ? ((progress.current / progress.total) * 100) + "%" : "50%", transition: "width 0.3s" }} />
+              </div>
+              <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace", margin: 0 }}>{progress.current} / {progress.total}</p>
+            </div>
+          ) : selectedFile && parsedRows ? (
             <div>
               <div style={{ width: 48, height: 48, borderRadius: 14, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
                 <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               </div>
               <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>{selectedFile.name}</p>
-              <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 16px" }}>{(selectedFile.size / 1024).toFixed(1)} KB</p>
+              <p style={{ fontSize: 13, color: "#16a34a", fontFamily: "'DM Mono', monospace", fontWeight: 600, margin: "0 0 4px" }}>{parsedRows.length} listings found</p>
+              <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 16px" }}>{(selectedFile.size / 1024).toFixed(1)} KB · CSV from Stellar MLS</p>
               <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                <button onClick={(e) => { e.stopPropagation(); setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} style={{
+                <button onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setParsedRows(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} style={{
                   padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0",
                   background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600,
                   cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
                 }}>Cancel</button>
-                <button onClick={(e) => { e.stopPropagation(); handleUpload(selectedFile); }} disabled={uploading} style={{
+                <button onClick={(e) => { e.stopPropagation(); handleProcess(); }} style={{
                   padding: "10px 24px", borderRadius: 10, border: "none",
-                  background: uploading ? "#86efac" : "linear-gradient(135deg, #16a34a, #15803d)",
+                  background: "linear-gradient(135deg, #16a34a, #15803d)",
                   color: "#fff", fontSize: 13, fontWeight: 700,
-                  cursor: uploading ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif",
+                  cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
                   boxShadow: "0 2px 10px rgba(22,163,74,0.3)",
                   display: "flex", alignItems: "center", gap: 8,
                 }}>
-                  {uploading && <svg width={16} height={16} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle cx={12} cy={12} r={10} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={3} /><path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round" /></svg>}
-                  {uploading ? "Uploading..." : "Upload File"}
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                  Process &amp; Import
                 </button>
               </div>
             </div>
@@ -10925,16 +11034,31 @@ function FileUploaderView({ session, isMobile }) {
               <div style={{ width: 56, height: 56, borderRadius: 16, background: "#f8fafc", border: "1px solid #e2e8f0", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
                 <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.8}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               </div>
-              <p style={{ fontSize: 15, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Drop a file here or click to browse</p>
-              <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Accepts CSV and Excel files</p>
+              <p style={{ fontSize: 15, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Drop your Stellar MLS export here</p>
+              <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Accepts CSV files · Deduplicates by MLS number · Updates existing listings</p>
             </div>
           )}
         </div>
 
+        {/* Results */}
+        {results && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 14, padding: "16px 20px", marginBottom: 12, display: "flex", alignItems: "center", gap: 12 }}>
+              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#15803d", fontFamily: "'DM Sans', sans-serif" }}>Import complete — {results.total} listings processed</span>
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+              {statBox("New", results.inserted, "#16a34a")}
+              {statBox("Updated", results.updated, "#3b82f6")}
+              {statBox("Unchanged", results.skipped, "#94a3b8")}
+            </div>
+          </div>
+        )}
+
         {/* Upload History */}
         <div>
           <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
-            Upload History <span style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+            Import History <span style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
           </h3>
           {uploadsLoading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -10947,27 +11071,25 @@ function FileUploaderView({ session, isMobile }) {
             </div>
           ) : uploads.length === 0 ? (
             <div style={{ background: "#fff", borderRadius: 14, border: "1px dashed #e2e8f0", padding: "32px 20px", textAlign: "center" }}>
-              <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>No files uploaded yet. Upload your first CSV above.</p>
+              <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>No imports yet. Upload your first MLS CSV above.</p>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {uploads.map(u => (
                 <div key={u.rowIndex} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: u.status === "Processed" ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (u.status === "Processed" ? "#bbf7d0" : "#e2e8f0"), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={u.status === "Processed" ? "#16a34a" : "#94a3b8"} strokeWidth={2}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                   </div>
                   <div style={{ flex: 1, overflow: "hidden" }}>
                     <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.filename || "Untitled"}</p>
-                    <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>{u.date ? fmtDate(u.date) : "—"} · {u.user ? fmtUserName(u.user) : "—"}</p>
+                    <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>
+                      {u.date ? fmtDate(u.date) : "—"} · {u.user ? fmtUserName(u.user) : "—"}
+                      {u.status === "Processed" && <span style={{ marginLeft: 8 }}>{u.newCount} new · {u.updatedCount} updated · {u.skippedCount} skipped</span>}
+                    </p>
                   </div>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 20, background: u.status === "Processed" ? "rgba(22,163,74,0.08)" : u.status === "Error" ? "rgba(220,38,38,0.08)" : "rgba(100,116,139,0.08)", color: u.status === "Processed" ? "#16a34a" : u.status === "Error" ? "#dc2626" : "#64748b", fontSize: 10, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 20, background: u.status === "Processed" ? "rgba(22,163,74,0.08)" : "rgba(100,116,139,0.08)", color: u.status === "Processed" ? "#16a34a" : "#64748b", fontSize: 10, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>
                     {u.status}
                   </span>
-                  {u.link && (
-                    <a href={u.link} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, background: "#f8fafc", border: "1px solid #e2e8f0", flexShrink: 0 }}>
-                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                    </a>
-                  )}
                 </div>
               ))}
             </div>
@@ -13461,6 +13583,10 @@ export default function ReapApp() {
       setShowProfile(true);
     } else if (hash === "contacts/investors") {
       setActiveNav("contacts"); setContactsTab("investors");
+    } else if (hash === "contacts/lenders") {
+      setActiveNav("contacts"); setContactsTab("lenders");
+    } else if (hash === "contacts/buyers") {
+      setActiveNav("contacts"); setContactsTab("buyers");
     } else if (hash.startsWith("contacts/investor/")) {
       const id = decodeURIComponent(hash.replace("contacts/investor/", ""));
       setActiveNav("contacts"); setContactsTab("investors");
@@ -13558,6 +13684,10 @@ export default function ReapApp() {
         setShowProfile(true);
       } else if (hash === "contacts/investors") {
         setActiveNav("contacts"); setContactsTab("investors"); setShowProfile(false);
+      } else if (hash === "contacts/lenders") {
+        setActiveNav("contacts"); setContactsTab("lenders"); setShowProfile(false);
+      } else if (hash === "contacts/buyers") {
+        setActiveNav("contacts"); setContactsTab("buyers"); setShowProfile(false);
       } else if (hash.startsWith("contacts/investor/")) {
         const id = decodeURIComponent(hash.replace("contacts/investor/", ""));
         setActiveNav("contacts"); setContactsTab("investors"); setShowProfile(false);
@@ -14523,11 +14653,11 @@ export default function ReapApp() {
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "investors" ? "contacts/investors" : "contacts"); }} title="Contacts" />
+                <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {contactsTab === "investors"
                     ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} />
-                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} />
+                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : null} />
                   }
                 </div>
               </div>
@@ -14563,7 +14693,7 @@ export default function ReapApp() {
                       ? <PortfolioView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setRealEstateTab("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
                       : realEstateTab === "mls"
                       ? (mlsTab === "upload"
-                        ? <FileUploaderView session={session} isMobile={true} />
+                        ? <FileUploaderView session={session} isMobile={true} onProcessed={() => setMlsTab("feed")} />
                         : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} />)
                       : realEstateTab === "offerings"
                       ? <OfferingsView deals={deals} isMobile={true} session={session} userEmail={userEmail} updateHash={updateHash} />
@@ -14595,7 +14725,7 @@ export default function ReapApp() {
                       ? <PortfolioView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setRealEstateTab("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
                       : realEstateTab === "mls"
                       ? (mlsTab === "upload"
-                        ? <FileUploaderView session={session} isMobile={false} />
+                        ? <FileUploaderView session={session} isMobile={false} onProcessed={() => setMlsTab("feed")} />
                         : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} />)
                       : realEstateTab === "offerings"
                       ? <OfferingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} />
@@ -14605,11 +14735,11 @@ export default function ReapApp() {
                 </div>
               : activeNav === "contacts"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "investors" ? "contacts/investors" : "contacts"); }} title="Contacts" />
+                  <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {contactsTab === "investors"
                       ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} />
-                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} />
+                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : null} />
                     }
                   </div>
                 </div>
