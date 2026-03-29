@@ -1097,13 +1097,14 @@ function DealOfferingsTab({ deal, isMobile, userEmail, onUpdateDeal }) {
       const priceVal = parseFloat(String(marketplacePrice).replace(/[$,]/g, ""));
       if (!isNaN(priceVal) && priceVal > 0) updates.marketplace_price = priceVal;
       else updates.marketplace_price = null;
-      await supabase.from("deals").update(updates).eq("id", deal._id || deal.id);
+      const { error } = await supabase.from("deals").update(updates).eq("id", deal._id || deal.id);
+      if (error) { alert("Failed to publish: " + error.message); return; }
       setDealPublished(true);
       deal.marketplace_published = true;
       deal.marketplace_price = updates.marketplace_price;
       setShowPublishForm(false);
       if (onUpdateDeal) onUpdateDeal();
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); alert("Failed to publish: " + e.message); }
     finally { setPublishSaving(false); }
   };
 
@@ -1111,7 +1112,8 @@ function DealOfferingsTab({ deal, isMobile, userEmail, onUpdateDeal }) {
   const handleUnpublish = async () => {
     setPublishSaving(true);
     try {
-      await supabase.from("deals").update({ marketplace_published: false, marketplace_price: null }).eq("id", deal._id || deal.id);
+      const { error } = await supabase.from("deals").update({ marketplace_published: false, marketplace_price: null }).eq("id", deal._id || deal.id);
+      if (error) { alert("Failed to unpublish: " + error.message); return; }
       setDealPublished(false);
       deal.marketplace_published = false;
       deal.marketplace_price = null;
@@ -1127,10 +1129,11 @@ function DealOfferingsTab({ deal, isMobile, userEmail, onUpdateDeal }) {
     try {
       const priceVal = parseFloat(String(marketplacePrice).replace(/[$,]/g, ""));
       const mp = (!isNaN(priceVal) && priceVal > 0) ? priceVal : null;
-      await supabase.from("deals").update({ marketplace_price: mp }).eq("id", deal._id || deal.id);
+      const { error } = await supabase.from("deals").update({ marketplace_price: mp }).eq("id", deal._id || deal.id);
+      if (error) { alert("Failed to save price: " + error.message); return; }
       deal.marketplace_price = mp;
       if (onUpdateDeal) onUpdateDeal();
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); alert("Failed to save price: " + e.message); }
     finally { setPriceSaving(false); }
   };
 
@@ -13995,6 +13998,8 @@ export default function ReapApp() {
         metadata: r.metadata || {},
         latitude: r.latitude || null,
         longitude: r.longitude || null,
+        marketplace_published: !!r.marketplace_published,
+        marketplace_price: r.marketplace_price || null,
       })).filter(d => d.address);
 
       const userDeals = parsed.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
