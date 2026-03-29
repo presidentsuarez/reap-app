@@ -4234,6 +4234,7 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
   const [deals, setDeals] = useState([]);
   const [updates, setUpdates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [contactInvestments, setContactInvestments] = useState([]);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [readUpdates, setReadUpdates] = useState(new Set());
@@ -4327,6 +4328,14 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
             setFunds(relevantFunds);
           }
         } catch (e) { console.log("[REAP] Funds table may not exist yet:", e); }
+
+        // Fetch contact-level investments (for contact-source portal users)
+        if (investorProfile?.source === "contact" && investorProfile?.contactId) {
+          try {
+            const { data: invData } = await supabase.from("contact_investments").select("*").eq("contact_id", investorProfile.contactId).order("investment_date", { ascending: false });
+            setContactInvestments(invData || []);
+          } catch (e) { console.log("[REAP] contact_investments fetch:", e); }
+        }
 
         // Fetch updates for all linked deals
         const dealIds = parsed.map(d => d._id).filter(Boolean);
@@ -4605,8 +4614,14 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
               </div>
               {!isMobile && (
                 <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 18 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Capital Committed</div>
-                  <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a" }}>{fmt(investorProfile?.capitalCommitted)}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Total Invested</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a" }}>{fmt(contactInvestments.length > 0 ? contactInvestments.reduce((s, i) => s + (parseFloat(i.amount_committed) || 0), 0) : investorProfile?.capitalCommitted)}</div>
+                </div>
+              )}
+              {!isMobile && contactInvestments.length > 0 && (
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 18 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Total Funded</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#16a34a" }}>{fmt(contactInvestments.reduce((s, i) => s + (parseFloat(i.amount_funded) || 0), 0))}</div>
                 </div>
               )}
             </div>
@@ -4653,6 +4668,54 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                   <button onClick={() => setActiveSection("updates")} style={{ padding: "10px 0", background: "none", border: "none", color: "#16a34a", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>View all {updates.length} updates →</button>
                 )}
               </div>
+            )}
+
+            {/* My Investments (contact-based) */}
+            {contactInvestments.length > 0 && (
+              <>
+                <h2 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "28px 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                  My Investments ({contactInvestments.length}) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                </h2>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {contactInvestments.map(inv => {
+                    const deal = deals.find(d => d.address === inv.deal_address || d._id === inv.deal_id);
+                    const committed = parseFloat(inv.amount_committed) || 0;
+                    const funded = parseFloat(inv.amount_funded) || 0;
+                    const pct = committed > 0 ? Math.round((funded / committed) * 100) : 0;
+                    return (
+                      <div key={inv.id} onClick={() => { if (deal) { setSelectedDeal(deal); setActiveSection("deals"); } }} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 20, cursor: deal ? "pointer" : "default", transition: "box-shadow 0.2s" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                          <div>
+                            <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 2px" }}>{deal?.dealName || inv.deal_address || "Investment"}</h3>
+                            {inv.investment_date && <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>Invested {new Date(inv.investment_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>}
+                          </div>
+                          {deal && <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: "#f0fdf4", color: "#16a34a", border: "1px solid #86efac" }}>{deal.status || "Active"}</span>}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: committed > 0 ? 10 : 0 }}>
+                          <div>
+                            <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Committed</div>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>{fmt(committed)}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Funded</div>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: "#16a34a" }}>{fmt(funded)}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>% Called</div>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>{pct}%</div>
+                          </div>
+                        </div>
+                        {committed > 0 && (
+                          <div style={{ height: 6, borderRadius: 3, background: "#e2e8f0", overflow: "hidden" }}>
+                            <div style={{ height: "100%", borderRadius: 3, background: "linear-gradient(90deg, #16a34a, #22c55e)", width: Math.min(100, pct) + "%", transition: "width 0.5s ease" }} />
+                          </div>
+                        )}
+                        {inv.notes && <div style={{ fontSize: 12, color: "#64748b", marginTop: 8, fontStyle: "italic" }}>{inv.notes}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
 
             {/* Deals overview */}
@@ -9269,11 +9332,205 @@ function ContactsTab({ investor, contacts, investorContacts, isMobile }) {
   );
 }
 
+// ── Contact Investments Tab (log individual investments per deal) ──
+function ContactInvestmentsTab({ contactId, deals, orgId, userEmail, isMobile }) {
+  const [investments, setInvestments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingInv, setEditingInv] = useState(null);
+  const [form, setForm] = useState({ deal_address: "", amount_committed: "", amount_funded: "", investment_date: "", notes: "" });
+  const [saving, setSaving] = useState(false);
+
+  const fetchInvestments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await supabase.from("contact_investments").select("*").eq("contact_id", contactId).order("investment_date", { ascending: false, nullsFirst: false });
+      setInvestments(data || []);
+    } catch (e) { console.error("Fetch investments error:", e); }
+    finally { setLoading(false); }
+  }, [contactId]);
+
+  useEffect(() => { fetchInvestments(); }, [fetchInvestments]);
+
+  const resetForm = () => { setForm({ deal_address: "", amount_committed: "", amount_funded: "", investment_date: "", notes: "" }); setEditingInv(null); setShowForm(false); };
+
+  const handleSave = async () => {
+    if (!form.deal_address && !form.amount_committed) { alert("Please select a deal or enter an amount."); return; }
+    setSaving(true);
+    try {
+      const matchedDeal = deals.find(d => d.address === form.deal_address || d.property_address === form.deal_address);
+      const payload = {
+        contact_id: contactId,
+        deal_id: matchedDeal?.id || matchedDeal?._id || null,
+        deal_address: form.deal_address || null,
+        amount_committed: parseFloat(form.amount_committed) || 0,
+        amount_funded: parseFloat(form.amount_funded) || 0,
+        investment_date: form.investment_date || null,
+        notes: form.notes.trim(),
+        org_id: orgId || null,
+        created_by: userEmail,
+      };
+      if (editingInv) {
+        await supabase.from("contact_investments").update(payload).eq("id", editingInv.id);
+      } else {
+        await supabase.from("contact_investments").insert(payload);
+      }
+      await fetchInvestments();
+      resetForm();
+    } catch (e) { alert("Error: " + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Delete this investment record?")) return;
+    await supabase.from("contact_investments").delete().eq("id", id);
+    await fetchInvestments();
+  };
+
+  const startEdit = (inv) => {
+    setForm({ deal_address: inv.deal_address || "", amount_committed: String(inv.amount_committed || ""), amount_funded: String(inv.amount_funded || ""), investment_date: inv.investment_date || "", notes: inv.notes || "" });
+    setEditingInv(inv);
+    setShowForm(true);
+  };
+
+  const fmt = (v) => { const n = parseFloat(v); return isNaN(n) || n === 0 ? "—" : "$" + n.toLocaleString(); };
+  const totalCommitted = investments.reduce((s, i) => s + (parseFloat(i.amount_committed) || 0), 0);
+  const totalFunded = investments.reduce((s, i) => s + (parseFloat(i.amount_funded) || 0), 0);
+
+  const inputStyle = { width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", outline: "none", background: "#fff", boxSizing: "border-box" };
+  const labelStyle = { fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4, display: "block" };
+
+  return (
+    <div>
+      {/* Summary cards */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
+        <div style={{ padding: "14px 18px", borderRadius: 14, background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)", border: "1px solid #86efac" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Total Committed</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{fmt(totalCommitted)}</div>
+        </div>
+        <div style={{ padding: "14px 18px", borderRadius: 14, background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)", border: "1px solid #86efac" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Total Funded</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#16a34a", fontFamily: "'Playfair Display', serif" }}>{fmt(totalFunded)}</div>
+        </div>
+        {!isMobile && (
+          <div style={{ padding: "14px 18px", borderRadius: 14, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Investments</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{investments.length}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Header + Add */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
+          Investment Records ({investments.length}) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+        </div>
+        <button onClick={() => { resetForm(); setShowForm(true); }} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}>+ Log Investment</button>
+      </div>
+
+      {/* Form */}
+      {showForm && (
+        <div style={{ background: "#f8fafc", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 20, marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 14 }}>{editingInv ? "Edit Investment" : "Log New Investment"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+            <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
+              <label style={labelStyle}>Deal / Property</label>
+              <select value={form.deal_address} onChange={e => setForm(f => ({ ...f, deal_address: e.target.value }))} style={inputStyle}>
+                <option value="">— Select a deal —</option>
+                {(deals || []).map(d => <option key={d._id || d.id || d.address} value={d.address || d.property_address}>{d.address || d.property_address}{d.dealName ? " (" + d.dealName + ")" : ""}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Amount Committed ($)</label>
+              <input type="number" value={form.amount_committed} onChange={e => setForm(f => ({ ...f, amount_committed: e.target.value }))} placeholder="0" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Amount Funded ($)</label>
+              <input type="number" value={form.amount_funded} onChange={e => setForm(f => ({ ...f, amount_funded: e.target.value }))} placeholder="0" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Investment Date</label>
+              <input type="date" value={form.investment_date} onChange={e => setForm(f => ({ ...f, investment_date: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Notes</label>
+              <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." style={inputStyle} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+            <button onClick={resetForm} style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: saving ? "#94a3b8" : "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: saving ? "default" : "pointer", fontFamily: "'DM Sans', sans-serif" }}>{saving ? "Saving..." : editingInv ? "Update" : "Log Investment"}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Investment list */}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13 }}>Loading investments...</div>
+      ) : investments.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
+          <div style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No investments logged yet</div>
+          <div style={{ fontSize: 12, color: "#cbd5e1", marginTop: 4 }}>Click "Log Investment" to record this investor's first investment.</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {investments.map(inv => {
+            const deal = deals.find(d => d.address === inv.deal_address || d.property_address === inv.deal_address);
+            const committed = parseFloat(inv.amount_committed) || 0;
+            const funded = parseFloat(inv.amount_funded) || 0;
+            const pct = committed > 0 ? Math.round((funded / committed) * 100) : 0;
+            return (
+              <div key={inv.id} style={{ padding: "16px 18px", borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{deal?.dealName || inv.deal_address || "General Investment"}</div>
+                    {inv.deal_address && deal?.dealName && <div style={{ fontSize: 12, color: "#94a3b8" }}>{inv.deal_address}</div>}
+                    {inv.investment_date && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Invested: {new Date(inv.investment_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</div>}
+                  </div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button onClick={() => startEdit(inv)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }} title="Edit">
+                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <button onClick={() => handleDelete(inv.id)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#dc2626" }} title="Delete">
+                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Committed</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{fmt(committed)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Funded</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#16a34a" }}>{fmt(funded)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>% Called</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{pct}%</div>
+                  </div>
+                </div>
+                {committed > 0 && (
+                  <div style={{ height: 6, borderRadius: 3, background: "#e2e8f0", marginTop: 10, overflow: "hidden" }}>
+                    <div style={{ height: "100%", borderRadius: 3, background: "linear-gradient(90deg, #16a34a, #22c55e)", width: Math.min(100, pct) + "%", transition: "width 0.3s" }} />
+                  </div>
+                )}
+                {inv.notes && <div style={{ fontSize: 12, color: "#64748b", marginTop: 8, fontStyle: "italic" }}>{inv.notes}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, investorFunds, contacts, userEmail, onRefresh, orgData, orgMembers }) {
   const [activeTab, setActiveTab] = useState("overview");
   const isInvestor = (contact.contactType || "").toLowerCase().includes("investor");
   const baseTabs = ["overview", "companies", "linked deals", "tasks", "communications", "documents", "portal access"];
-  const investorTabs = ["funds", "capital"];
+  const investorTabs = ["funds", "capital", "investments"];
   const tabs = isInvestor ? ["overview", "companies", ...investorTabs, "linked deals", "tasks", "communications", "documents", "portal access"] : baseTabs;
   const initials = (contact.name || "??").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
   const linkedDeals = (deals || []).filter(d => (contact.linkedDealAddresses || []).includes(d.address));
@@ -9701,6 +9958,10 @@ function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, in
             </>
           );
         })()}
+
+        {activeTab === "investments" && (
+          <ContactInvestmentsTab contactId={contact.rowId} deals={deals || []} orgId={orgData?.id} userEmail={userEmail} isMobile={isMobile} />
+        )}
 
         {activeTab === "linked deals" && (
           <>
@@ -11302,38 +11563,58 @@ export default function ReapApp() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ── Investor portal detection ──
+  // ── Investor portal detection (checks both investors AND contacts tables) ──
   useEffect(() => {
     if (!session?.user?.email) { setIsInvestorPortal(false); setInvestorProfile(null); return; }
     const email = session.user.email.toLowerCase();
     async function checkInvestorPortal() {
       try {
-        // First check if portal_email column exists by doing a safe query
+        // 1) Check investors table (Company entities) first
         const { data: testRow, error: testErr } = await supabase.from("investors").select("id").limit(1);
-        if (testErr) { setIsInvestorPortal(false); setInvestorProfile(null); return; }
+        if (!testErr) {
+          const { data, error } = await supabase.from("investors").select("*").eq("portal_email", email).limit(1);
+          if (!error && data && data.length > 0) {
+            const inv = data[0];
+            setIsInvestorPortal(true);
+            setInvestorProfile({
+              id: inv.id, investorName: inv.investor_name || "",
+              company: inv.company || "", investorType: inv.investor_type || "",
+              linkedDealAddresses: inv.linked_deal_addresses ? inv.linked_deal_addresses.split("|||").filter(Boolean) : [],
+              capitalCommitted: inv.capital_committed || 0,
+              email: inv.portal_email || email,
+              source: "investor",
+            });
+            return;
+          }
+        }
 
-        const { data, error } = await supabase.from("investors").select("*").eq("portal_email", email).limit(1);
-        if (error) {
-          // Column likely doesn't exist yet — fail silently
-          console.log("[REAP] portal_email column not found yet, skipping investor portal check");
-          setIsInvestorPortal(false);
-          setInvestorProfile(null);
-          return;
-        }
-        if (data && data.length > 0) {
-          const inv = data[0];
-          setIsInvestorPortal(true);
-          setInvestorProfile({
-            id: inv.id, investorName: inv.investor_name || "",
-            company: inv.company || "", investorType: inv.investor_type || "",
-            linkedDealAddresses: inv.linked_deal_addresses ? inv.linked_deal_addresses.split("|||").filter(Boolean) : [],
-            capitalCommitted: inv.capital_committed || 0,
-            email: inv.portal_email || email,
-          });
-        } else {
-          setIsInvestorPortal(false);
-          setInvestorProfile(null);
-        }
+        // 2) Check contacts table (individual contacts tagged as investor)
+        try {
+          const { data: contactData, error: contactErr } = await supabase.from("contacts").select("*").eq("portal_email", email).limit(1);
+          if (!contactErr && contactData && contactData.length > 0) {
+            const c = contactData[0];
+            // Fetch this contact's investments from contact_investments
+            let totalCommitted = 0;
+            try {
+              const { data: investments } = await supabase.from("contact_investments").select("amount_committed").eq("contact_id", c.id);
+              totalCommitted = (investments || []).reduce((sum, inv) => sum + (parseFloat(inv.amount_committed) || 0), 0);
+            } catch {}
+            setIsInvestorPortal(true);
+            setInvestorProfile({
+              id: c.id, contactId: c.id, investorName: c.name || "",
+              company: c.company || "", investorType: c.contact_type || "",
+              linkedDealAddresses: c.linked_deal_addresses ? c.linked_deal_addresses.split("|||").filter(Boolean) : [],
+              capitalCommitted: totalCommitted,
+              email: c.portal_email || email,
+              source: "contact",
+            });
+            return;
+          }
+        } catch (e) { console.log("[REAP] contacts portal_email check failed:", e); }
+
+        // No match in either table
+        setIsInvestorPortal(false);
+        setInvestorProfile(null);
       } catch (err) {
         console.log("[REAP] Not an investor portal user");
         setIsInvestorPortal(false);
