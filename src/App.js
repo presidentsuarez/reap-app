@@ -1062,6 +1062,178 @@ function AIUnderwritingTab({ deal, isMobile }) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════
+   DEAL OFFERINGS TAB
+   ═══════════════════════════════════════════════════════════ */
+
+function DealOfferingsTab({ deal, isMobile, userEmail }) {
+  const [offerings, setOfferings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [hoveredRow, setHoveredRow] = useState(null);
+  const [form, setForm] = useState({ name: "", description: "", minimum_investment: "", target_raise: "", preferred_return: "", profit_share_pct: "", status: "Draft" });
+
+  // Fetch offerings for this deal
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase.from("deal_offerings").select("*").eq("deal_id", deal._id || deal.id).order("created_at", { ascending: false });
+      setOfferings(data || []);
+      setLoading(false);
+    })();
+  }, [deal._id, deal.id]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        deal_id: deal._id || deal.id,
+        org_id: deal.org_id,
+        name: form.name || `${deal.address} Offering`,
+        description: form.description,
+        minimum_investment: parseFloat(form.minimum_investment) || 0,
+        target_raise: parseFloat(form.target_raise) || 0,
+        preferred_return: parseFloat(form.preferred_return) || 0,
+        profit_share_pct: parseFloat(form.profit_share_pct) || 0,
+        status: form.status,
+        created_by: userEmail,
+        marketplace_published: false,
+      };
+      const { data, error } = await supabase.from("deal_offerings").insert(payload).select().single();
+      if (data) setOfferings(prev => [data, ...prev]);
+      if (error) console.error("Error creating offering:", error);
+      setShowCreate(false);
+      setForm({ name: "", description: "", minimum_investment: "", target_raise: "", preferred_return: "", profit_share_pct: "", status: "Draft" });
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  };
+
+  const togglePublish = async (offering) => {
+    const newVal = !offering.marketplace_published;
+    await supabase.from("deal_offerings").update({ marketplace_published: newVal }).eq("id", offering.id);
+    setOfferings(prev => prev.map(o => o.id === offering.id ? { ...o, marketplace_published: newVal } : o));
+  };
+
+  const OFFERING_STATUS_COLORS = {
+    "Draft": { color: "#64748b", bg: "#f8fafc" },
+    "Active": { color: "#16a34a", bg: "#f0fdf4" },
+    "Closed": { color: "#0891b2", bg: "#ecfeff" },
+    "Cancelled": { color: "#dc2626", bg: "#fef2f2" },
+  };
+
+  const inputStyle = { width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", outline: "none", background: "#fff" };
+  const labelStyle = { fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 6, display: "block" };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Investment Offerings</h3>
+          <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>Create and manage investment offerings for this deal</p>
+        </div>
+        <button onClick={() => setShowCreate(!showCreate)} style={{ background: showCreate ? "#f1f5f9" : "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "9px 18px", color: showCreate ? "#64748b" : "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: showCreate ? "none" : "0 2px 10px rgba(22,163,74,0.35)" }}>
+          {showCreate ? "Cancel" : (<><svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg> New Offering</>)}
+        </button>
+      </div>
+
+      {/* Create Form */}
+      {showCreate && (
+        <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            <div>
+              <label style={labelStyle}>Offering Name</label>
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder={`${deal.address} Offering`} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Status</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inputStyle}>
+                {["Draft", "Active", "Closed", "Cancelled"].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Target Raise ($)</label>
+              <input value={form.target_raise} onChange={e => setForm(f => ({ ...f, target_raise: e.target.value }))} placeholder="1000000" type="number" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Minimum Investment ($)</label>
+              <input value={form.minimum_investment} onChange={e => setForm(f => ({ ...f, minimum_investment: e.target.value }))} placeholder="50000" type="number" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Preferred Return (%)</label>
+              <input value={form.preferred_return} onChange={e => setForm(f => ({ ...f, preferred_return: e.target.value }))} placeholder="8" type="number" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Profit Share (%)</label>
+              <input value={form.profit_share_pct} onChange={e => setForm(f => ({ ...f, profit_share_pct: e.target.value }))} placeholder="70" type="number" style={inputStyle} />
+            </div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Description</label>
+            <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe the investment opportunity..." rows={3} style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+          <button onClick={handleSave} disabled={saving} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "10px 24px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", opacity: saving ? 0.7 : 1 }}>
+            {saving ? "Saving..." : "Create Offering"}
+          </button>
+        </div>
+      )}
+
+      {/* Offerings List */}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>Loading offerings...</div>
+      ) : offerings.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+          <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 16 }}><path d="M12 2v20M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6"/></svg>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>No offerings yet</p>
+          <p style={{ fontSize: 12, margin: 0 }}>Create an offering to raise capital for this deal</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {offerings.map((offering, i) => {
+            const sc = OFFERING_STATUS_COLORS[offering.status] || OFFERING_STATUS_COLORS["Draft"];
+            return (
+              <div key={offering.id} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 20, boxShadow: hoveredRow === i ? "0 4px 16px rgba(0,0,0,0.06)" : "0 1px 4px rgba(0,0,0,0.03)", transition: "box-shadow 0.2s" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                  <div>
+                    <h4 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>{offering.name}</h4>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: sc.color, background: sc.bg, padding: "3px 10px", borderRadius: 6, textTransform: "uppercase", border: `1px solid ${sc.color}22` }}>{offering.status}</span>
+                      {offering.marketplace_published && <span style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", background: "#f0fdf4", padding: "3px 10px", borderRadius: 6, textTransform: "uppercase", border: "1px solid #16a34a22" }}>Published</span>}
+                    </div>
+                  </div>
+                  <button onClick={() => togglePublish(offering)} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #e2e8f0", background: offering.marketplace_published ? "#fef2f2" : "#f0fdf4", color: offering.marketplace_published ? "#dc2626" : "#16a34a", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    {offering.marketplace_published ? "Unpublish" : "Publish to Marketplace"}
+                  </button>
+                </div>
+                {offering.description && <p style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", lineHeight: 1.5 }}>{offering.description}</p>}
+                <div style={{ display: "flex", gap: isMobile ? 16 : 28, flexWrap: "wrap" }}>
+                  <div>
+                    <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: "'DM Sans', sans-serif" }}>Target Raise</span>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{fmt(offering.target_raise)}</p>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: "'DM Sans', sans-serif" }}>Min Investment</span>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{fmt(offering.minimum_investment)}</p>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: "'DM Sans', sans-serif" }}>Pref Return</span>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{offering.preferred_return || 0}%</p>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: "'DM Sans', sans-serif" }}>Profit Share</span>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{offering.profit_share_pct || 0}%</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DealCard({ deal, onSelect }) {
   const [pressed, setPressed] = useState(false);
   const streetViewSrc = deal.address ? `https://maps.googleapis.com/maps/api/streetview?size=640x240&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}` : null;
@@ -2481,7 +2653,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
-  const tabs = ["overview", "cash flow", "financing", "improvements", "units", "ai underwriting", "ai summary", "notes", "tasks", "documents", "shared deal", "activity", "investor updates"];
+  const tabs = ["overview", "cash flow", "financing", "improvements", "units", "offerings", "ai underwriting", "ai summary", "notes", "tasks", "documents", "shared deal", "activity", "investor updates"];
 
   // Resolve pending deal tab from URL
   useEffect(() => {
@@ -3913,6 +4085,10 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
             </div>
           );
         })()}
+
+        {activeTab === "offerings" && (
+          <DealOfferingsTab deal={deal} isMobile={isMobile} userEmail={userEmail} />
+        )}
 
         {activeTab === "ai underwriting" && (
           <AIUnderwritingTab deal={deal} isMobile={isMobile} />
