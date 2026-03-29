@@ -19,6 +19,7 @@ const getTierRank = (tier) => TIER_RANK[(tier || "starter").toLowerCase()] || 1;
 
 // ── Google Maps loader ──
 const GOOGLE_MAPS_KEY = "AIzaSyCsxeRs8DmPGdyt8DLHbDVjEdr0hF6MTVE";
+const STREET_VIEW_KEY = "AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU";
 let googleMapsLoading = false;
 let googleMapsLoaded = false;
 const loadGoogleMaps = () => new Promise((resolve, reject) => {
@@ -1063,6 +1064,7 @@ function AIUnderwritingTab({ deal, isMobile }) {
 
 function DealCard({ deal, onSelect }) {
   const [pressed, setPressed] = useState(false);
+  const streetViewSrc = deal.address ? `https://maps.googleapis.com/maps/api/streetview?size=640x240&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}` : null;
   return (
     <div
       onClick={() => onSelect(deal)}
@@ -1075,35 +1077,44 @@ function DealCard({ deal, onSelect }) {
       style={{
         background: pressed ? "#f8fafc" : "#fff",
         borderRadius: 12, border: "1px solid " + (pressed ? "#d1d5db" : "#e2e8f0"),
-        padding: "14px 16px", cursor: "pointer",
-        boxShadow: pressed ? "none" : "0 1px 4px rgba(0,0,0,0.03)",
+        overflow: "hidden", cursor: "pointer",
+        boxShadow: pressed ? "none" : "0 1px 6px rgba(0,0,0,0.04)",
         transform: pressed ? "scale(0.985)" : "scale(1)",
         transition: "all 0.15s cubic-bezier(0.25, 1, 0.5, 1)",
         WebkitTapHighlightColor: "transparent",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.address || "—"}</p>
-          <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{deal.type || "—"} · {fmtDate(deal.date)}</p>
+      {/* Street View Image */}
+      <div style={{ width: "100%", height: 140, background: "#f1f5f9", position: "relative", overflow: "hidden" }}>
+        {streetViewSrc ? (
+          <img src={streetViewSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+        ) : null}
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
+          <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </div>
-        <div style={{ flexShrink: 0, marginLeft: 10 }}><StatusBadge status={deal.status} /></div>
+        <div style={{ position: "absolute", top: 8, right: 8, zIndex: 2 }}><StatusBadge status={deal.status} /></div>
       </div>
-      <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-        <div>
-          <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Offer</span>
-          <p style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{fmt(deal.offer)}</p>
+      <div style={{ padding: "12px 14px" }}>
+        <div style={{ marginBottom: 8 }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.address || "—"}</p>
+          <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{[deal.city, deal.state, deal.zip].filter(Boolean).join(", ") || (deal.type || "—")} · {fmtDate(deal.date)}</p>
         </div>
-        <div>
-          <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>$/sqft</span>
-          <p style={{ fontSize: 14, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{deal.netSqft ? "$" + deal.netSqft : "—"}</p>
-        </div>
-        <div>
-          <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Sq Ft</span>
-          <p style={{ fontSize: 14, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{fmtNum(deal.sqft)}</p>
-        </div>
-        <div style={{ marginLeft: "auto" }}>
-          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2}><path d="M9 18l6-6-6-6"/></svg>
+        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+          <div>
+            <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Offer</span>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{fmt(deal.offer)}</p>
+          </div>
+          <div>
+            <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>$/sqft</span>
+            <p style={{ fontSize: 14, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{deal.netSqft ? "$" + deal.netSqft : "—"}</p>
+          </div>
+          <div>
+            <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Sq Ft</span>
+            <p style={{ fontSize: 14, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{fmtNum(deal.sqft)}</p>
+          </div>
+          <div style={{ marginLeft: "auto" }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2}><path d="M9 18l6-6-6-6"/></svg>
+          </div>
         </div>
       </div>
     </div>
@@ -1517,7 +1528,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                     <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
                       <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
                         {deal.address ? (
-                          <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                          <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
                         ) : null}
                         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
                           <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -9529,7 +9540,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                 {/* Street View Image */}
                 <div style={{ height: 140, background: "linear-gradient(135deg, #f1f5f9, #e2e8f0)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
                   {listing.address ? (
-                    <img src={`https://maps.googleapis.com/maps/api/streetview?size=400x160&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "absolute", top: 0, left: 0, zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                    <img src={`https://maps.googleapis.com/maps/api/streetview?size=400x160&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "absolute", top: 0, left: 0, zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
                   ) : null}
                   <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ zIndex: 0 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                   <div style={{ position: "absolute", top: 10, left: 10 }}><MLSStatusBadge status={listing.status} /></div>
@@ -9598,7 +9609,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                     <td style={{ padding: "8px 4px 8px 10px", width: 52 }}>
                       <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
                         {listing.address ? (
-                          <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                          <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
                         ) : null}
                         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
                           <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -9825,7 +9836,7 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
   };
 
   const zillowUrl = buildZillowUrl(listing.address, listing.city, listing.state, listing.zip);
-  const streetViewUrl = listing.address ? `https://maps.googleapis.com/maps/api/streetview?size=1200x220&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}` : null;
+  const streetViewUrl = listing.address ? `https://maps.googleapis.com/maps/api/streetview?size=1200x220&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}` : null;
 
   const price = listing.price ? parseFloat(String(listing.price).replace(/[$,]/g, "")) : null;
   const sqft = listing.heatedArea || listing.sqftTotal ? parseFloat(String(listing.heatedArea || listing.sqftTotal).replace(/,/g, "")) : null;
@@ -10114,7 +10125,7 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
                 {/* Street View Image */}
                 <div style={{ height: 160, background: "#f1f5f9", position: "relative", overflow: "hidden" }}>
                   {deal.address ? (
-                    <img src={`https://maps.googleapis.com/maps/api/streetview?size=640x320&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                    <img src={`https://maps.googleapis.com/maps/api/streetview?size=640x320&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
                   ) : null}
                   <div style={{ position: "absolute", bottom: 8, left: 8 }}>
                     <StatusBadge status={deal.status} />
@@ -10214,7 +10225,7 @@ function OfferingsView({ deals, isMobile, session, userEmail, updateHash }) {
                   <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
                     <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
                       {deal.address ? (
-                        <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                        <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
                       ) : null}
                       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
                         <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
