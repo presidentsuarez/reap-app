@@ -3055,8 +3055,8 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
           </div>
           <div>
-            <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>Suarez Global</span>
-            <span style={{ fontSize: 11, color: "#94a3b8", display: "block", marginTop: -2 }}>Investor Portal</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{investorProfile?.company || "Investor Portal"}</span>
+            <span style={{ fontSize: 10, color: "#94a3b8", display: "block", marginTop: -1 }}>Powered by <span style={{ color: "#16a34a", fontWeight: 700 }}>Reap</span></span>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
