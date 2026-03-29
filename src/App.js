@@ -3131,6 +3131,7 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  const [funds, setFunds] = useState([]);
 
   useEffect(() => {
     const handle = () => setIsMobile(window.innerWidth < 768);
@@ -3176,6 +3177,27 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
           city: r.city || "", state: r.state || "", dealName: r.deal_name || "",
         }));
         setDeals(parsed);
+
+        // Fetch funds this investor is linked to
+        try {
+          const { data: fundsData } = await supabase.from("funds").select("*").order("created_at", { ascending: false });
+          if (fundsData) {
+            // Filter funds that include any of this investor's deals
+            const investorAddresses = new Set(investorProfile.linkedDealAddresses || []);
+            const relevantFunds = fundsData.filter(f => {
+              const fundAddresses = f.deal_addresses ? f.deal_addresses.split("|||").filter(Boolean) : [];
+              return fundAddresses.some(addr => investorAddresses.has(addr));
+            }).map(f => ({
+              ...f,
+              dealAddresses: f.deal_addresses ? f.deal_addresses.split("|||").filter(Boolean) : [],
+              fundDeals: parsed.filter(d => {
+                const fAddrs = f.deal_addresses ? f.deal_addresses.split("|||").filter(Boolean) : [];
+                return fAddrs.includes(d.address);
+              }),
+            }));
+            setFunds(relevantFunds);
+          }
+        } catch (e) { console.log("[REAP] Funds table may not exist yet:", e); }
 
         // Fetch updates for all linked deals
         const dealIds = parsed.map(d => d._id).filter(Boolean);
@@ -3367,7 +3389,10 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
         <div style={{ display: "flex", gap: 0 }}>
           {(() => {
             const unreadCount = updates.filter(u => !readUpdates.has(u.id)).length;
-            return [{ id: "dashboard", label: "Dashboard" }, { id: "updates", label: "Updates" }, { id: "deals", label: "My Deals" }, { id: "settings", label: "Settings" }].map(t => (
+            const navTabs = [{ id: "dashboard", label: "Dashboard" }, { id: "updates", label: "Updates" }];
+            if (funds.length > 0) navTabs.push({ id: "funds", label: "Funds" });
+            navTabs.push({ id: "deals", label: "My Deals" }, { id: "settings", label: "Settings" });
+            return navTabs.map(t => (
               <button key={t.id} onClick={() => { setActiveSection(t.id); setSelectedDeal(null); }} style={{
                 background: "transparent", border: "none", borderBottom: activeSection === t.id ? "2px solid #16a34a" : "2px solid transparent",
                 padding: "12px 20px", color: activeSection === t.id ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600,
@@ -3580,6 +3605,137 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                 </div>
               );
             })()}
+          </div>
+        ) : activeSection === "funds" ? (
+          /* ── Funds ── */
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 20px" }}>Investment Funds</h1>
+            {funds.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0" }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: "0 0 4px" }}>No funds yet</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>Funds will appear here once your investment team creates them.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {funds.map(fund => {
+                  const fundDeals = fund.fundDeals || [];
+                  const totalValue = fundDeals.reduce((s, d) => s + (parseFloat(d.purchasePrice) || 0), 0);
+                  const totalARV = fundDeals.reduce((s, d) => s + (parseFloat(d.arv) || 0), 0);
+                  const avgROI = (() => { const rois = fundDeals.map(d => parseFloat(d.roi)).filter(v => !isNaN(v)); return rois.length > 0 ? (rois.reduce((s, v) => s + v, 0) / rois.length).toFixed(1) : null; })();
+                  const fundUpdates = updates.filter(u => fundDeals.some(d => d._id === u.deal_id));
+                  const targetRaise = parseFloat(fund.target_raise) || 0;
+                  const capitalRaised = parseFloat(fund.capital_raised) || 0;
+                  const pctRaised = targetRaise > 0 ? Math.min(100, Math.round((capitalRaised / targetRaise) * 100)) : 0;
+                  return (
+                    <div key={fund.id} style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+                      {/* Fund Header */}
+                      <div style={{ padding: isMobile ? 18 : 24, borderBottom: "1px solid #f1f5f9" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+                          <div>
+                            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>{fund.name}</h2>
+                            {fund.description && <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>{fund.description}</p>}
+                          </div>
+                          <span style={{ padding: "4px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: fund.status === "Active" ? "#f0fdf4" : fund.status === "Closed" ? "#fef2f2" : "#f8fafc", color: fund.status === "Active" ? "#16a34a" : fund.status === "Closed" ? "#dc2626" : "#64748b", border: "1px solid " + (fund.status === "Active" ? "#86efac" : fund.status === "Closed" ? "#fca5a5" : "#e2e8f0") }}>{fund.status || "Active"}</span>
+                        </div>
+
+                        {/* Capital Progress Bar */}
+                        {targetRaise > 0 && (
+                          <div style={{ marginBottom: 16 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>Capital Raised</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "#16a34a" }}>{pctRaised}%</span>
+                            </div>
+                            <div style={{ height: 8, borderRadius: 4, background: "#f1f5f9", overflow: "hidden" }}>
+                              <div style={{ height: "100%", borderRadius: 4, background: "linear-gradient(90deg, #16a34a, #22c55e)", width: pctRaised + "%", transition: "width 0.5s ease" }} />
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                              <span style={{ fontSize: 12, color: "#64748b" }}>{fmt(capitalRaised)} raised</span>
+                              <span style={{ fontSize: 12, color: "#94a3b8" }}>Target: {fmt(targetRaise)}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Fund Metrics */}
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 12 }}>
+                          <div style={{ padding: 14, borderRadius: 10, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Properties</div>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>{fundDeals.length}</div>
+                          </div>
+                          <div style={{ padding: 14, borderRadius: 10, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Total Value</div>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>{fmt(totalValue)}</div>
+                          </div>
+                          <div style={{ padding: 14, borderRadius: 10, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Total ARV</div>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>{fmt(totalARV)}</div>
+                          </div>
+                          <div style={{ padding: 14, borderRadius: 10, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Avg ROI</div>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: avgROI ? "#16a34a" : "#0f172a" }}>{avgROI ? avgROI + "%" : "—"}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Fund Deals */}
+                      <div style={{ padding: isMobile ? 18 : 24 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                          Properties in Fund <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          {fundDeals.map(d => {
+                            const dealUpdates = updates.filter(u => u.deal_id === d._id).length;
+                            return (
+                              <div key={d._id} onClick={() => { setSelectedDeal(d); setActiveSection("deals"); }} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 14px", borderRadius: 10, background: "#f8fafc", border: "1px solid #f1f5f9", cursor: "pointer", transition: "all 0.15s" }}>
+                                <div style={{ width: 40, height: 40, borderRadius: 8, background: "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.dealName || d.address}</div>
+                                  <div style={{ fontSize: 11, color: "#94a3b8" }}>{d.city}{d.state ? ", " + d.state : ""}</div>
+                                </div>
+                                <div style={{ display: "flex", gap: 16, flexShrink: 0 }}>
+                                  <div style={{ textAlign: "right" }}><div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>{fmt(d.purchasePrice)}</div><div style={{ fontSize: 9, color: "#94a3b8", textTransform: "uppercase" }}>Value</div></div>
+                                  {dealUpdates > 0 && <div style={{ textAlign: "right" }}><div style={{ fontSize: 12, fontWeight: 700, color: "#16a34a" }}>{dealUpdates}</div><div style={{ fontSize: 9, color: "#94a3b8", textTransform: "uppercase" }}>Updates</div></div>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {fundUpdates.length > 0 && (
+                          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #f1f5f9" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Recent Fund Updates</div>
+                            {fundUpdates.slice(0, 3).map(u => {
+                              const tc = typeConfig(u.update_type);
+                              const deal = deals.find(dd => dd._id === u.deal_id);
+                              return (
+                                <div key={u.id} style={{ padding: "10px 14px", borderRadius: 10, background: "#f8fafc", border: "1px solid #f1f5f9", marginBottom: 6 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                                    <span style={{ padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 700, background: tc.bg, color: tc.color }}>{u.update_type}</span>
+                                    {deal && <span style={{ fontSize: 11, color: "#64748b" }}>{deal.dealName || deal.address}</span>}
+                                    <span style={{ fontSize: 11, color: "#cbd5e1", marginLeft: "auto" }}>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                                  </div>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{u.title}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Fund Details Footer */}
+                      {(fund.target_irr || fund.preferred_return || fund.hold_period) && (
+                        <div style={{ padding: "14px 24px", borderTop: "1px solid #f1f5f9", background: "#fafbfc", display: "flex", gap: 20, flexWrap: "wrap" }}>
+                          {fund.target_irr && <div><span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Target IRR</span><div style={{ fontSize: 13, fontWeight: 700, color: "#16a34a" }}>{fund.target_irr}%</div></div>}
+                          {fund.preferred_return && <div><span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Pref Return</span><div style={{ fontSize: 13, fontWeight: 700, color: "#2563eb" }}>{fund.preferred_return}%</div></div>}
+                          {fund.hold_period && <div><span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Hold Period</span><div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{fund.hold_period}</div></div>}
+                          {fund.vintage_year && <div><span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Vintage</span><div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{fund.vintage_year}</div></div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : activeSection === "deals" ? (
           /* ── My Deals ── */
@@ -8184,6 +8340,12 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
   const [saving, setSaving] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [showLinkDealModal, setShowLinkDealModal] = useState(false);
+  const [funds, setFunds] = useState([]);
+  const [showFundsPanel, setShowFundsPanel] = useState(false);
+  const [showFundModal, setShowFundModal] = useState(false);
+  const [editingFund, setEditingFund] = useState(null);
+  const [fundForm, setFundForm] = useState({ name: "", description: "", status: "Active", targetRaise: "", capitalRaised: "", targetIrr: "", preferredReturn: "", holdPeriod: "", vintageYear: "", dealAddresses: [] });
+  const [fundSaving, setFundSaving] = useState(false);
   const searchRef = useRef(null);
 
   useEffect(() => { if (searchOpen && searchRef.current) searchRef.current.focus(); }, [searchOpen]);
@@ -8246,7 +8408,40 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
     } catch { setContacts([]); }
   }, []);
 
-  useEffect(() => { if (session) { fetchInvestors(); fetchActivities(); fetchContacts(); } }, [session, fetchInvestors, fetchActivities, fetchContacts]);
+  const fetchFunds = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from("funds").select("*").order("created_at", { ascending: false });
+      if (!error && data) {
+        setFunds(data.map(f => ({ ...f, dealAddresses: f.deal_addresses ? f.deal_addresses.split("|||").filter(Boolean) : [] })));
+      }
+    } catch (e) { console.log("[REAP] Funds table may not exist yet:", e); }
+  }, []);
+
+  const handleSaveFund = async () => {
+    setFundSaving(true);
+    try {
+      const payload = {
+        name: fundForm.name.trim(), description: fundForm.description.trim(),
+        status: fundForm.status, target_raise: fundForm.targetRaise || null,
+        capital_raised: fundForm.capitalRaised || null, target_irr: fundForm.targetIrr || null,
+        preferred_return: fundForm.preferredReturn || null, hold_period: fundForm.holdPeriod || null,
+        vintage_year: fundForm.vintageYear || null,
+        deal_addresses: fundForm.dealAddresses.length > 0 ? fundForm.dealAddresses.join("|||") : null,
+        user_email: userEmail,
+      };
+      if (editingFund) {
+        await supabase.from("funds").update(payload).eq("id", editingFund.id);
+      } else {
+        await supabase.from("funds").insert(payload);
+      }
+      setShowFundModal(false);
+      setEditingFund(null);
+      setFundForm({ name: "", description: "", status: "Active", targetRaise: "", capitalRaised: "", targetIrr: "", preferredReturn: "", holdPeriod: "", vintageYear: "", dealAddresses: [] });
+      fetchFunds();
+    } catch (err) { alert("Error saving fund: " + err.message); } finally { setFundSaving(false); }
+  };
+
+  useEffect(() => { if (session) { fetchInvestors(); fetchActivities(); fetchContacts(); fetchFunds(); } }, [session, fetchInvestors, fetchActivities, fetchContacts, fetchFunds]);
 
   const handleSaveInvestor = async (form) => {
     setSaving(true);
@@ -8404,6 +8599,10 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
                 <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search investors..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px 10px 34px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 240, transition: "border 0.15s" }} />
               </div>
+              <button onClick={() => setShowFundsPanel(!showFundsPanel)} style={{ padding: "10px 16px", borderRadius: 10, border: "1px solid " + (showFundsPanel ? "#16a34a" : "#e2e8f0"), background: showFundsPanel ? "#f0fdf4" : "#fff", color: showFundsPanel ? "#16a34a" : "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                Funds {funds.length > 0 ? "(" + funds.length + ")" : ""}
+              </button>
               <button onClick={() => { setEditingInvestor(null); setShowModal(true); }} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 4px 14px rgba(22,163,74,0.25)", display: "flex", alignItems: "center", gap: 6 }}>
                 <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14" /></svg> Add Investor
               </button>
@@ -8431,6 +8630,123 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#7c3aed", borderRadius: "14px 14px 0 0" }} />
               <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Capital funded</div>
               <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{totalFunded ? fmt(totalFunded) : "—"}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Funds Management Panel */}
+      {showFundsPanel && (
+        <div style={{ padding: isMobile ? "0 16px 16px" : "0 36px 16px" }}>
+          <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h2 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Investment Funds</h2>
+              <button onClick={() => { setEditingFund(null); setFundForm({ name: "", description: "", status: "Active", targetRaise: "", capitalRaised: "", targetIrr: "", preferredReturn: "", holdPeriod: "", vintageYear: "", dealAddresses: [] }); setShowFundModal(true); }} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 4 }}>
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14" /></svg> New Fund
+              </button>
+            </div>
+            {funds.length === 0 ? (
+              <div style={{ padding: 30, textAlign: "center" }}>
+                <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No funds created yet. Create your first fund to group deals for investors.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {funds.map(fund => {
+                  const fundDeals = deals.filter(d => fund.dealAddresses.includes(d.address));
+                  const targetRaise = parseFloat(fund.target_raise) || 0;
+                  const capitalRaised = parseFloat(fund.capital_raised) || 0;
+                  const pctRaised = targetRaise > 0 ? Math.min(100, Math.round((capitalRaised / targetRaise) * 100)) : 0;
+                  return (
+                    <div key={fund.id} style={{ padding: "14px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 14 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                        {fund.name ? fund.name.charAt(0).toUpperCase() : "F"}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fund.name}</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>{fundDeals.length} deal{fundDeals.length !== 1 ? "s" : ""}{targetRaise > 0 ? " · " + pctRaised + "% raised" : ""}</div>
+                      </div>
+                      <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: fund.status === "Active" ? "#f0fdf4" : fund.status === "Closed" ? "#fef2f2" : "#f8fafc", color: fund.status === "Active" ? "#16a34a" : fund.status === "Closed" ? "#dc2626" : "#64748b" }}>{fund.status || "Active"}</span>
+                      <button onClick={() => { setEditingFund(fund); setFundForm({ name: fund.name || "", description: fund.description || "", status: fund.status || "Active", targetRaise: fund.target_raise || "", capitalRaised: fund.capital_raised || "", targetIrr: fund.target_irr || "", preferredReturn: fund.preferred_return || "", holdPeriod: fund.hold_period || "", vintageYear: fund.vintage_year || "", dealAddresses: fund.dealAddresses || [] }); setShowFundModal(true); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#64748b" }}>Edit</button>
+                      <button onClick={async () => { if (!window.confirm("Delete fund '" + fund.name + "'?")) return; await supabase.from("funds").delete().eq("id", fund.id); fetchFunds(); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#dc2626" }}>Delete</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Fund Create/Edit Modal */}
+      {showFundModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setShowFundModal(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "85vh", overflow: "auto", padding: 28 }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 20px" }}>{editingFund ? "Edit Fund" : "Create Fund"}</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Fund Name *</label>
+                <input value={fundForm.name} onChange={e => setFundForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Suarez Global Fund I" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Description</label>
+                <textarea value={fundForm.description} onChange={e => setFundForm(f => ({ ...f, description: e.target.value }))} placeholder="Fund strategy, focus area..." rows={2} style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Status</label>
+                  <select value={fundForm.status} onChange={e => setFundForm(f => ({ ...f, status: e.target.value }))} style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }}>
+                    <option>Active</option><option>Raising</option><option>Deployed</option><option>Closed</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Vintage Year</label>
+                  <input value={fundForm.vintageYear} onChange={e => setFundForm(f => ({ ...f, vintageYear: e.target.value }))} placeholder="2026" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Target Raise ($)</label>
+                  <input value={fundForm.targetRaise} onChange={e => setFundForm(f => ({ ...f, targetRaise: e.target.value }))} placeholder="5000000" type="number" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Capital Raised ($)</label>
+                  <input value={fundForm.capitalRaised} onChange={e => setFundForm(f => ({ ...f, capitalRaised: e.target.value }))} placeholder="2500000" type="number" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Target IRR (%)</label>
+                  <input value={fundForm.targetIrr} onChange={e => setFundForm(f => ({ ...f, targetIrr: e.target.value }))} placeholder="18" type="number" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Pref Return (%)</label>
+                  <input value={fundForm.preferredReturn} onChange={e => setFundForm(f => ({ ...f, preferredReturn: e.target.value }))} placeholder="8" type="number" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Hold Period</label>
+                  <input value={fundForm.holdPeriod} onChange={e => setFundForm(f => ({ ...f, holdPeriod: e.target.value }))} placeholder="3-5 years" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+              </div>
+              {/* Deal selector */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 8 }}>Assign Deals to Fund</label>
+                <div style={{ maxHeight: 200, overflow: "auto", border: "1px solid #e2e8f0", borderRadius: 8, padding: 8 }}>
+                  {deals.length === 0 ? (
+                    <p style={{ fontSize: 12, color: "#94a3b8", margin: 0, textAlign: "center", padding: 10 }}>No deals available</p>
+                  ) : deals.map(d => (
+                    <label key={d.address || d._id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, cursor: "pointer", background: fundForm.dealAddresses.includes(d.address) ? "#f0fdf4" : "transparent" }}>
+                      <input type="checkbox" checked={fundForm.dealAddresses.includes(d.address)} onChange={() => setFundForm(f => ({ ...f, dealAddresses: f.dealAddresses.includes(d.address) ? f.dealAddresses.filter(a => a !== d.address) : [...f.dealAddresses, d.address] }))} style={{ accentColor: "#16a34a" }} />
+                      <span style={{ fontSize: 13, color: "#0f172a" }}>{d.dealName || d.address}</span>
+                      <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: "auto" }}>{d.city}</span>
+                    </label>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{fundForm.dealAddresses.length} deal{fundForm.dealAddresses.length !== 1 ? "s" : ""} selected</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+              <button onClick={() => setShowFundModal(false)} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#64748b" }}>Cancel</button>
+              <button onClick={handleSaveFund} disabled={fundSaving || !fundForm.name.trim()} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: fundForm.name.trim() ? "linear-gradient(135deg, #16a34a, #15803d)" : "#e2e8f0", color: fundForm.name.trim() ? "#fff" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: fundForm.name.trim() ? "pointer" : "default", opacity: fundSaving ? 0.7 : 1 }}>{fundSaving ? "Saving..." : (editingFund ? "Update Fund" : "Create Fund")}</button>
             </div>
           </div>
         </div>
