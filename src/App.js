@@ -9465,7 +9465,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
   const [searchOpen, setSearchOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState(null);
   const [addingId, setAddingId] = useState(null);
-  const [activeTab, setActiveTab] = useState("cards");
+  const [activeTab, setActiveTab] = useState("table");
   const [statusFilter, setStatusFilter] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
@@ -10387,7 +10387,7 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
    MARKETPLACE LISTINGS VIEW
    ═══════════════════════════════════════════════════════════ */
 
-function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHash }) {
+function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHash, watchlistOnly }) {
   const [contentMode, setContentMode] = useState("deals"); // "deals" or "investments"
   const [viewMode, setViewMode] = useState("cards"); // "cards", "table", "map"
   const [search, setSearch] = useState("");
@@ -10397,15 +10397,50 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
   const mapRef = useRef(null);
+  const [watchlist, setWatchlist] = useState([]);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
 
   // Use marketplace_price override if set, otherwise fall back to deal offer price
   const mktPrice = (d) => d.marketplace_price || d.offer;
+  // Recalculate $/SF using marketplace price override when set
+  const mktNetSqft = (d) => {
+    const price = parseFloat(String(mktPrice(d)).replace(/[$,]/g, ""));
+    const sf = parseFloat(String(d.sqft).replace(/[$,]/g, ""));
+    if (!isNaN(price) && !isNaN(sf) && sf > 0) return Math.round(price / sf);
+    return d.netSqft ? Math.round(parseFloat(String(d.netSqft).replace(/[$,]/g, ""))) : null;
+  };
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const [mapLoading, setMapLoading] = useState(false);
 
+  // Watchlist: fetch user's watchlist from Supabase
+  useEffect(() => {
+    if (!userEmail) return;
+    (async () => {
+      try {
+        const { data } = await supabase.from("marketplace_watchlist").select("deal_id").eq("user_email", userEmail.toLowerCase());
+        setWatchlist((data || []).map(w => w.deal_id));
+      } catch (e) { console.error("Watchlist fetch error:", e); }
+    })();
+  }, [userEmail]);
+
+  const isWatchlisted = (dealId) => watchlist.includes(dealId);
+
+  const toggleWatchlist = async (e, deal) => {
+    e.stopPropagation();
+    const dealId = deal._id || deal.id;
+    if (isWatchlisted(dealId)) {
+      setWatchlist(prev => prev.filter(id => id !== dealId));
+      await supabase.from("marketplace_watchlist").delete().eq("user_email", userEmail.toLowerCase()).eq("deal_id", dealId);
+    } else {
+      setWatchlist(prev => [...prev, dealId]);
+      await supabase.from("marketplace_watchlist").upsert({ user_email: userEmail.toLowerCase(), deal_id: dealId }, { onConflict: "user_email,deal_id" });
+    }
+  };
+
   const publishedDeals = deals.filter(d => d.marketplace_published);
-  const filtered = publishedDeals.filter(d => {
+  const baseDeals = watchlistOnly ? publishedDeals.filter(d => watchlist.includes(d._id || d.id)) : publishedDeals;
+  const filtered = baseDeals.filter(d => {
     if (!search) return true;
     const s = search.toLowerCase();
     return (d.address || "").toLowerCase().includes(s) || (d.city || "").toLowerCase().includes(s) || (d.type || "").toLowerCase().includes(s);
@@ -10469,6 +10504,10 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
               <div style={{ display: "flex", gap: 8 }}><StatusBadge status={deal.status} /></div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={(e) => toggleWatchlist(e, deal)} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid " + (isWatchlisted(deal._id || deal.id) ? "#ef444444" : "#e2e8f0"), background: isWatchlisted(deal._id || deal.id) ? "rgba(239,68,68,0.06)" : "#fff", color: isWatchlisted(deal._id || deal.id) ? "#ef4444" : "#64748b", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill={isWatchlisted(deal._id || deal.id) ? "#ef4444" : "none"} stroke="currentColor" strokeWidth={2}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                {isWatchlisted(deal._id || deal.id) ? "Saved" : "Save"}
+              </button>
               <button onClick={(e) => { e.stopPropagation(); }} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #16a34a22", background: "rgba(22,163,74,0.06)", color: "#16a34a", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Interested</button>
               <button onClick={(e) => { e.stopPropagation(); }} style={{ padding: "8px 16px", borderRadius: 8, background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}>Make Offer</button>
             </div>
@@ -10497,7 +10536,7 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
                     <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
                       {deal.type && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>{deal.type}</strong></span>}
                       {deal.sqft && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>{fmtNum(deal.sqft)}</strong> SqFt</span>}
-                      {deal.netSqft && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>${deal.netSqft}</strong>/SF</span>}
+                      {mktNetSqft(deal) && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>${mktNetSqft(deal)}</strong>/SF</span>}
                     </div>
                     <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6 }}>
                       <div>{deal.address}</div>
@@ -10547,7 +10586,7 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <div>
           <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Marketplace</h2>
-          <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{filtered.length} listing{filtered.length !== 1 ? "s" : ""} published</p>
+          <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{filtered.length} {watchlistOnly ? "saved" : "published"} listing{filtered.length !== 1 ? "s" : ""}</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {/* Deals / Investments toggle */}
@@ -10576,8 +10615,8 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
         filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
             <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 16 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>No marketplace listings yet</p>
-            <p style={{ fontSize: 12, margin: 0 }}>Publish deals from the Offerings tab in any deal to list them here</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>{watchlistOnly ? "Your watch list is empty" : "No marketplace listings yet"}</p>
+            <p style={{ fontSize: 12, margin: 0 }}>{watchlistOnly ? "Save deals from the Marketplace by clicking the heart icon" : "Publish deals from the Offerings tab in any deal to list them here"}</p>
           </div>
         ) : viewMode === "cards" ? (
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
@@ -10591,6 +10630,9 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
                   {deal.address && <img src={`https://maps.googleapis.com/maps/api/streetview?size=640x280&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />}
                   <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}><svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
                   <div style={{ position: "absolute", bottom: 8, left: 8, zIndex: 2 }}><StatusBadge status={deal.status} /></div>
+                  <button onClick={(e) => toggleWatchlist(e, deal)} style={{ position: "absolute", top: 8, right: 8, zIndex: 2, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}>
+                    <svg width={16} height={16} viewBox="0 0 24 24" fill={isWatchlisted(deal._id || deal.id) ? "#ef4444" : "none"} stroke={isWatchlisted(deal._id || deal.id) ? "#ef4444" : "#64748b"} strokeWidth={2}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                  </button>
                 </div>
                 <div style={{ padding: "12px 14px" }}>
                   <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 3px", fontFamily: "'DM Sans', sans-serif" }}>{deal.address || "—"}</h3>
@@ -10599,6 +10641,7 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
                     {mktPrice(deal) && <span style={{ fontSize: 14, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>{fmt(mktPrice(deal))}</span>}
                     {deal.type && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{deal.type}</span>}
                     {deal.sqft && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)} SF</span>}
+                    {mktNetSqft(deal) && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>${mktNetSqft(deal)}/SF</span>}
                   </div>
                 </div>
               </div>
@@ -10610,13 +10653,14 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                   <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
+                  <th style={{ padding: "11px 8px", width: 36 }} />
                   {[{ k: "address", l: "Address" }, { k: "city", l: "City" }, { k: "type", l: "Type" }, { k: "offer", l: "Price" }, { k: "status", l: "Status" }, { k: "sqft", l: "Sq Ft" }, { k: "netSqft", l: "$/SF" }].map(h => (
                     <th key={h.k} onClick={() => handleSort(h.k)} style={{ padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h.k ? "#16a34a" : "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", whiteSpace: "nowrap", cursor: "pointer" }}>{h.l}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {sorted.length === 0 ? <tr><td colSpan={8} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings</td></tr> : sorted.map((deal, i) => (
+                {sorted.length === 0 ? <tr><td colSpan={9} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings</td></tr> : sorted.map((deal, i) => (
                   <tr key={deal._id || i} onClick={() => setSelectedDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f1f5f9", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
                     <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
                       <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", position: "relative" }}>
@@ -10624,13 +10668,18 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
                         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
                       </div>
                     </td>
+                    <td style={{ padding: "8px 8px", width: 36 }}>
+                      <button onClick={(e) => toggleWatchlist(e, deal)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+                        <svg width={16} height={16} viewBox="0 0 24 24" fill={isWatchlisted(deal._id || deal.id) ? "#ef4444" : "none"} stroke={isWatchlisted(deal._id || deal.id) ? "#ef4444" : "#cbd5e1"} strokeWidth={2}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                      </button>
+                    </td>
                     <td style={{ padding: "13px 16px", fontSize: 13, fontWeight: 500, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{deal.address || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b" }}>{deal.city || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b" }}>{deal.type || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmt(mktPrice(deal))}</td>
                     <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.sqft ? fmtNum(deal.sqft) : "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.netSqft ? "$" + deal.netSqft : "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{mktNetSqft(deal) ? "$" + mktNetSqft(deal) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -13338,7 +13387,7 @@ export default function ReapApp() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [realEstateTab, setRealEstateTab] = useState("dashboard");
   const [contactsTab, setContactsTab] = useState("contacts");
-  const [marketplaceTab, setMarketplaceTab] = useState("intelligence");
+  const [marketplaceTab, setMarketplaceTab] = useState("listings");
   const [mlsTab, setMlsTab] = useState("feed");
   const [selectedMLSListing, setSelectedMLSListing] = useState(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -13419,7 +13468,7 @@ export default function ReapApp() {
     } else if (hash.startsWith("marketplace/")) {
       const sub = hash.replace("marketplace/", "");
       setActiveNav("marketplace");
-      if (["intelligence","listings"].includes(sub)) setMarketplaceTab(sub);
+      if (["intelligence","listings","watchlist"].includes(sub)) setMarketplaceTab(sub);
     } else if (hash.startsWith("realestate/")) {
       const parts = hash.replace("realestate/", "").split("/");
       const tab = parts[0];
@@ -13516,7 +13565,7 @@ export default function ReapApp() {
       } else if (hash.startsWith("marketplace/")) {
         const sub = hash.replace("marketplace/", "");
         setActiveNav("marketplace"); setShowProfile(false);
-        if (["intelligence","listings"].includes(sub)) setMarketplaceTab(sub);
+        if (["intelligence","listings","watchlist"].includes(sub)) setMarketplaceTab(sub);
       } else if (hash.startsWith("realestate/")) {
         const parts = hash.replace("realestate/", "").split("/");
         const tab = parts[0];
@@ -14317,9 +14366,9 @@ export default function ReapApp() {
     command: "dashboard", realestate: "pipeline", contacts: "contacts", marketplace: "market_intel"
   };
   const allNavItems = [
+    { id: "command", label: "Command Center", mobileLabel: "Dashboard", featured: true, mobileOrder: 2, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
     { id: "realestate", label: "Real Estate", mobileOrder: 0, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
     { id: "marketplace", label: "Marketplace", mobileOrder: 1, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
-    { id: "command", label: "Command Center", mobileLabel: "Dashboard", featured: true, mobileOrder: 2, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
     { id: "contacts", label: "Contacts", mobileOrder: 3, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
     { id: "assignments", label: "Assignments", mobileOrder: 4, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
   ];
@@ -14484,10 +14533,12 @@ export default function ReapApp() {
               </div>
             ) : activeNav === "marketplace" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "intelligence", label: "Intelligence" }, { id: "listings", label: "Marketplace" }]} active={marketplaceTab} onChange={(tab) => { setMarketplaceTab(tab); updateHash("marketplace/" + tab); }} title="Marketplace" />
+                <SubTabBar tabs={[{ id: "listings", label: "Marketplace" }, { id: "watchlist", label: "Watch List" }, { id: "intelligence", label: "Intelligence" }]} active={marketplaceTab} onChange={(tab) => { setMarketplaceTab(tab); updateHash("marketplace/" + tab); }} title="Marketplace" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {marketplaceTab === "intelligence"
                     ? <MarketIntelligenceView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} />
+                    : marketplaceTab === "watchlist"
+                    ? <MarketplaceListingsView deals={deals} isMobile={true} session={session} userEmail={userEmail} updateHash={updateHash} watchlistOnly={true} />
                     : <MarketplaceListingsView deals={deals} isMobile={true} session={session} userEmail={userEmail} updateHash={updateHash} />
                   }
                 </div>
@@ -14564,10 +14615,12 @@ export default function ReapApp() {
                 </div>
               : activeNav === "marketplace"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "intelligence", label: "Intelligence" }, { id: "listings", label: "Marketplace" }]} active={marketplaceTab} onChange={(tab) => { setMarketplaceTab(tab); updateHash("marketplace/" + tab); }} title="Marketplace" />
+                  <SubTabBar tabs={[{ id: "listings", label: "Marketplace" }, { id: "watchlist", label: "Watch List" }, { id: "intelligence", label: "Intelligence" }]} active={marketplaceTab} onChange={(tab) => { setMarketplaceTab(tab); updateHash("marketplace/" + tab); }} title="Marketplace" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {marketplaceTab === "intelligence"
                       ? <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} />
+                      : marketplaceTab === "watchlist"
+                      ? <MarketplaceListingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} watchlistOnly={true} />
                       : <MarketplaceListingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} />
                     }
                   </div>
