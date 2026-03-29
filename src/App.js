@@ -1066,6 +1066,10 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   const [statusFilter, setStatusFilter] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
+  const [pipelineView, setPipelineView] = useState("table"); // "table" or "map"
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markersRef = useRef([]);
   const searchRef = useRef(null);
 
   useEffect(() => {
@@ -1162,6 +1166,14 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                 <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
                   <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
                 </button>
+                <div style={{ display: "flex", borderRadius: 10, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+                  <button onClick={() => setPipelineView("table")} style={{ width: 36, height: 36, border: "none", background: pipelineView === "table" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={pipelineView === "table" ? "#fff" : "#64748b"} strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                  </button>
+                  <button onClick={() => setPipelineView("map")} style={{ width: 36, height: 36, border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "map" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={pipelineView === "map" ? "#fff" : "#64748b"} strokeWidth={2}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+                  </button>
+                </div>
                 <button onClick={onNewDeal} style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 10px rgba(22,163,74,0.35)", WebkitTapHighlightColor: "transparent" }}>
                   <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
                 </button>
@@ -1179,6 +1191,17 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
             <div style={{ position: "relative" }}>
               <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search deals..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
+            </div>
+            {/* Table / Map toggle */}
+            <div style={{ display: "flex", borderRadius: 8, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+              <button onClick={() => setPipelineView("table")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", background: pipelineView === "table" ? "#0f172a" : "#fff", color: pipelineView === "table" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                Table
+              </button>
+              <button onClick={() => setPipelineView("map")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "map" ? "#0f172a" : "#fff", color: pipelineView === "map" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+                Map
+              </button>
             </div>
             <button onClick={onNewDeal} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "9px 18px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap" }}>
               <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14"/></svg>
@@ -1212,62 +1235,115 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
         )}
       </div>
 
-      {/* Deals List */}
-      <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px 24px" : "20px 24px 32px" }}>
-        {isMobile ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {filtered.length === 0 ? (
-              <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0" }}>
-                {statusFilter !== null ? "No " + statusFilters[statusFilter].label.toLowerCase() + " deals" : "No deals found"}
-              </div>
-            ) : filtered.map((deal, i) => (
-              <DealCard key={i} deal={deal} onSelect={onSelectDeal} />
-            ))}
-          </div>
-        ) : (
-          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                  {["User", "Date", "Status", "Address", "Type", "Our Offer", "$/sqft", "Sq Ft", "Source"].map(h => (
-                    <th key={h} onClick={() => handleSort(h)} style={{
-                      padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
-                      fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
-                      whiteSpace: "nowrap", cursor: "pointer", userSelect: "none", transition: "color 0.15s",
-                    }}>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        {h}
-                        {sortCol === h && (
-                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} style={{ transition: "transform 0.2s", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }}>
-                            <polyline points="6 9 12 15 18 9"/>
-                          </svg>
-                        )}
-                      </span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan={9} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
-                ) : filtered.map((deal, i) => (
-                  <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
-                    <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", background: "#f1f5f9", padding: "3px 8px", borderRadius: 6, fontWeight: 500 }}>{fmtUserName(deal.user)}</span></td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtDate(deal.date)}</td>
-                    <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
-                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.offer)}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.netSqft ? `$${deal.netSqft}` : "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)}</td>
-                    <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{deal.source || "Manual"}</span></td>
+      {/* Deals List / Map */}
+      {pipelineView === "table" ? (
+        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px 24px" : "20px 24px 32px" }}>
+          {isMobile ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {filtered.length === 0 ? (
+                <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0" }}>
+                  {statusFilter !== null ? "No " + statusFilters[statusFilter].label.toLowerCase() + " deals" : "No deals found"}
+                </div>
+              ) : filtered.map((deal, i) => (
+                <DealCard key={i} deal={deal} onSelect={onSelectDeal} />
+              ))}
+            </div>
+          ) : (
+            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                    {["User", "Date", "Status", "Address", "Type", "Our Offer", "$/sqft", "Sq Ft", "Source"].map(h => (
+                      <th key={h} onClick={() => handleSort(h)} style={{
+                        padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
+                        fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
+                        whiteSpace: "nowrap", cursor: "pointer", userSelect: "none", transition: "color 0.15s",
+                      }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          {h}
+                          {sortCol === h && (
+                            <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} style={{ transition: "transform 0.2s", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }}>
+                              <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                          )}
+                        </span>
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 ? (
+                    <tr><td colSpan={9} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
+                  ) : filtered.map((deal, i) => (
+                    <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
+                      <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", background: "#f1f5f9", padding: "3px 8px", borderRadius: 6, fontWeight: 500 }}>{fmtUserName(deal.user)}</span></td>
+                      <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtDate(deal.date)}</td>
+                      <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
+                      <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
+                      <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</td>
+                      <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.offer)}</td>
+                      <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.netSqft ? `$${deal.netSqft}` : "—"}</td>
+                      <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)}</td>
+                      <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{deal.source || "Manual"}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ── MAP VIEW ── */
+        <div style={{ flex: 1, display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden" }}>
+          {/* Map container */}
+          <div ref={mapContainerRef} id="deals-map" style={{ flex: 1, minHeight: isMobile ? 300 : "100%", background: "#e8ecf0", position: "relative" }}>
+            {/* Google Maps will be initialized here */}
+            {!window.google && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 50%, #f0f9ff 100%)" }}>
+                <div style={{ width: 72, height: 72, borderRadius: 20, background: "#fff", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 6px" }}>Map View</p>
+                  <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "0 0 16px", maxWidth: 320, lineHeight: 1.5 }}>
+                    See all your deals plotted on an interactive map. Connect a Google Maps API key to enable property mapping.
+                  </p>
+                  <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    {filtered.length} deal{filtered.length !== 1 ? "s" : ""} ready to map
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+          {/* Side panel with deal cards */}
+          <div style={{ width: isMobile ? "100%" : 340, flexShrink: 0, overflow: "auto", background: "#fff", borderLeft: isMobile ? "none" : "1px solid #e2e8f0", borderTop: isMobile ? "1px solid #e2e8f0" : "none", maxHeight: isMobile ? 280 : "100%" }}>
+            <div style={{ padding: "12px 14px 8px", borderBottom: "1px solid #f1f5f9" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{filtered.length} Deal{filtered.length !== 1 ? "s" : ""}</div>
+            </div>
+            <div style={{ padding: "8px 10px" }}>
+              {filtered.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>No deals found</div>
+              ) : filtered.map((deal, i) => {
+                const sc = { New: "#3b82f6", Review: "#f59e0b", Underwriting: "#8b5cf6", Offer: "#0ea5e9", "Under Contract": "#16a34a", Closed: "#16a34a", Dead: "#ef4444", "On Hold": "#94a3b8" };
+                return (
+                  <div key={i} onClick={() => onSelectDeal(deal)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #f1f5f9", marginBottom: 6, cursor: "pointer", transition: "all 0.15s", background: "#fff" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0"; }} onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#f1f5f9"; }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.address || "—"}</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: sc[deal.status] || "#94a3b8", background: (sc[deal.status] || "#94a3b8") + "14", padding: "2px 6px", borderRadius: 5, textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap", marginLeft: 8 }}>{deal.status || "—"}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                      {deal.offer && <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmt(deal.offer)}</span>}
+                      {deal.type && <span>{deal.type}</span>}
+                      {deal.sqft && <span>{fmtNum(deal.sqft)} sqft</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
