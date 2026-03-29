@@ -1395,9 +1395,13 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [updatesLoading, setUpdatesLoading] = useState(false);
   const [updateSaving, setUpdateSaving] = useState(false);
   const [updateForm, setUpdateForm] = useState({ title: "", content: "", type: "General Announcement", isPublic: true });
+  const [updatePhotos, setUpdatePhotos] = useState([]);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [notifyInvestors, setNotifyInvestors] = useState(true);
   const [linkedInvestors, setLinkedInvestors] = useState([]);
   const [notificationsSent, setNotificationsSent] = useState({});
+  const [engagementData, setEngagementData] = useState({ reads: [], notifications: [] });
+  const [showEngagement, setShowEngagement] = useState(false);
 
   // ── Fetch documents ──
   const fetchDocuments = useCallback(async () => {
@@ -1500,6 +1504,19 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
     } catch (err) { console.error("Error fetching notification status:", err); }
   }, [updates]);
 
+  // ── Fetch engagement metrics ──
+  const fetchEngagementMetrics = useCallback(async () => {
+    if (updates.length === 0) return;
+    try {
+      const updateIds = updates.map(u => u.id);
+      const [readsRes, notifsRes] = await Promise.all([
+        supabase.from("investor_update_reads").select("*").in("update_id", updateIds),
+        supabase.from("investor_notifications").select("*").in("update_id", updateIds),
+      ]);
+      setEngagementData({ reads: readsRes.data || [], notifications: notifsRes.data || [] });
+    } catch (err) { console.error("Engagement fetch error:", err); }
+  }, [updates]);
+
   // Load docs/activities/investor updates when tab switches
   useEffect(() => {
     if (activeTab === "documents" && documents.length === 0 && !docsLoading) fetchDocuments();
@@ -1507,6 +1524,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
     if (activeTab === "investor updates") {
       if (updates.length === 0 && !updatesLoading) fetchInvestorUpdates();
       fetchLinkedInvestors();
+      fetchEngagementMetrics();
     }
   }, [activeTab, deal?._id, fetchDocuments, fetchActivities, fetchInvestorUpdates, fetchLinkedInvestors]);
 
@@ -2738,6 +2756,104 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
 
         {activeTab === "investor updates" && (
           <div>
+            {/* Engagement Metrics Dashboard */}
+            {updates.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <button onClick={() => { setShowEngagement(!showEngagement); if (!showEngagement) fetchEngagementMetrics(); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderRadius: 12, border: "1px solid #e2e8f0", background: showEngagement ? "#f0fdf4" : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, color: showEngagement ? "#16a34a" : "#64748b", fontFamily: "'DM Sans', sans-serif", width: "100%", marginBottom: showEngagement ? 14 : 0 }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+                  Engagement Metrics
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ marginLeft: "auto", transform: showEngagement ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                {showEngagement && (() => {
+                  const totalUpdates = updates.length;
+                  const publicUpdates = updates.filter(u => u.is_public !== false).length;
+                  const totalReads = engagementData.reads.length;
+                  const uniqueReaders = new Set(engagementData.reads.map(r => r.portal_email)).size;
+                  const totalNotifs = engagementData.notifications.length;
+                  const sentNotifs = engagementData.notifications.filter(n => n.status === "sent").length;
+                  const failedNotifs = engagementData.notifications.filter(n => n.status === "failed").length;
+                  const emailNotifs = engagementData.notifications.filter(n => n.notification_type === "email");
+                  const smsNotifs = engagementData.notifications.filter(n => n.notification_type === "sms");
+
+                  // Per-update engagement
+                  const readsByUpdate = {};
+                  engagementData.reads.forEach(r => { readsByUpdate[r.update_id] = (readsByUpdate[r.update_id] || 0) + 1; });
+                  const notifsByUpdate = {};
+                  engagementData.notifications.forEach(n => { if (!notifsByUpdate[n.update_id]) notifsByUpdate[n.update_id] = []; notifsByUpdate[n.update_id].push(n); });
+
+                  return (
+                    <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+                      {/* Summary Cards */}
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 0, borderBottom: "1px solid #f1f5f9" }}>
+                        {[
+                          { label: "Total Updates", value: totalUpdates, sub: publicUpdates + " public", color: "#0f172a" },
+                          { label: "Read Receipts", value: totalReads, sub: uniqueReaders + " unique investor" + (uniqueReaders !== 1 ? "s" : ""), color: "#16a34a" },
+                          { label: "Notifications Sent", value: sentNotifs, sub: totalNotifs + " total" + (failedNotifs > 0 ? " · " + failedNotifs + " failed" : ""), color: "#2563eb" },
+                          { label: "Delivery Rate", value: totalNotifs > 0 ? Math.round((sentNotifs / totalNotifs) * 100) + "%" : "—", sub: emailNotifs.length + " email · " + smsNotifs.length + " SMS", color: "#7c3aed" },
+                        ].map((card, i) => (
+                          <div key={i} style={{ padding: 18, borderRight: (isMobile ? (i % 2 === 0) : (i < 3)) ? "1px solid #f1f5f9" : "none", borderBottom: isMobile && i < 2 ? "1px solid #f1f5f9" : "none" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontFamily: "'DM Sans', sans-serif" }}>{card.label}</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: card.color, fontFamily: "'DM Sans', sans-serif" }}>{card.value}</div>
+                            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2, fontFamily: "'DM Sans', sans-serif" }}>{card.sub}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Per-update breakdown */}
+                      <div style={{ padding: 18 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12, fontFamily: "'DM Sans', sans-serif" }}>Update Performance</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {updates.slice(0, 5).map(u => {
+                            const reads = readsByUpdate[u.id] || 0;
+                            const notifs = notifsByUpdate[u.id] || [];
+                            const sent = notifs.filter(n => n.status === "sent").length;
+                            const tc = {
+                              "Construction Progress": "#EA580C", "Financial Update": "#2563EB",
+                              "Status Change": "#16A34A", "General Announcement": "#7C3AED",
+                            }[u.update_type] || "#64748b";
+                            return (
+                              <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
+                                <div style={{ width: 4, height: 32, borderRadius: 2, background: tc, flexShrink: 0 }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.title}</div>
+                                  <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+                                </div>
+                                <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
+                                  <div style={{ textAlign: "center" }}>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: "#16a34a" }}>{reads}</div>
+                                    <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Reads</div>
+                                  </div>
+                                  <div style={{ textAlign: "center" }}>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: "#2563eb" }}>{sent}</div>
+                                    <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Sent</div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {uniqueReaders > 0 && (
+                          <div style={{ marginTop: 16 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10, fontFamily: "'DM Sans', sans-serif" }}>Active Investors</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {[...new Set(engagementData.reads.map(r => r.portal_email))].map(email => {
+                                const readCount = engagementData.reads.filter(r => r.portal_email === email).length;
+                                return (
+                                  <span key={email} style={{ padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", fontFamily: "'DM Sans', sans-serif" }}>
+                                    {email.split("@")[0]} · {readCount} read{readCount !== 1 ? "s" : ""}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Post New Update */}
             <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 24, marginBottom: 20 }}>
               <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
@@ -2769,6 +2885,49 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 placeholder="Write your update here... This will be visible to all investors linked to this deal."
                 rows={4} style={{ width: "100%", padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 10, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", resize: "vertical", lineHeight: 1.6, marginBottom: 14 }}
                 onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+
+              {/* Photo Upload */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "6px 14px", borderRadius: 8, border: "1px dashed #cbd5e1", background: "#f8fafc", fontSize: 12, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    {photoUploading ? "Uploading..." : "Add Photos"}
+                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={async (e) => {
+                      const files = Array.from(e.target.files);
+                      if (files.length === 0) return;
+                      setPhotoUploading(true);
+                      const newPhotos = [];
+                      for (const file of files) {
+                        if (file.size > 10 * 1024 * 1024) { alert(file.name + " is too large (max 10MB)"); continue; }
+                        const storagePath = `update-photos/${deal._id}/${Date.now()}_${file.name}`;
+                        const { data, error } = await supabase.storage.from("deal-documents").upload(storagePath, file, { upsert: false });
+                        if (error) { console.error("Photo upload error:", error); continue; }
+                        const { data: urlData } = supabase.storage.from("deal-documents").getPublicUrl(storagePath);
+                        newPhotos.push({ path: storagePath, url: urlData.publicUrl, name: file.name });
+                      }
+                      setUpdatePhotos(prev => [...prev, ...newPhotos]);
+                      setPhotoUploading(false);
+                      e.target.value = "";
+                    }} />
+                  </label>
+                  {updatePhotos.length > 0 && <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{updatePhotos.length} photo{updatePhotos.length !== 1 ? "s" : ""} attached</span>}
+                </div>
+                {updatePhotos.length > 0 && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {updatePhotos.map((p, i) => (
+                      <div key={i} style={{ position: "relative", width: 72, height: 72, borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+                        <img src={p.url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        <button onClick={() => {
+                          supabase.storage.from("deal-documents").remove([p.path]);
+                          setUpdatePhotos(prev => prev.filter((_, idx) => idx !== i));
+                        }} style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%", background: "rgba(0,0,0,0.6)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Public / Private toggle */}
               <div style={{ marginBottom: 14, padding: "12px 16px", borderRadius: 10, background: updateForm.isPublic ? "#f0fdf4" : "#fef9c3", border: "1px solid " + (updateForm.isPublic ? "#86efac" : "#fde68a"), transition: "all 0.2s" }}>
@@ -2825,10 +2984,12 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 setUpdateSaving(true);
                 try {
                   // 1. Post the update
+                  const photoUrls = updatePhotos.length > 0 ? JSON.stringify(updatePhotos.map(p => ({ url: p.url, path: p.path, name: p.name }))) : null;
                   const { data: insertedRows, error } = await supabase.from("investor_updates").insert({
                     deal_id: deal._id, update_type: updateForm.type,
                     title: updateForm.title.trim(), body: updateForm.content.trim(),
                     posted_by: userEmail, is_public: updateForm.isPublic,
+                    photos: photoUrls,
                   }).select();
                   if (error) throw error;
                   const updateId = insertedRows && insertedRows[0] ? insertedRows[0].id : null;
@@ -2866,6 +3027,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                   }
 
                   setUpdateForm({ title: "", content: "", type: "General Announcement", isPublic: true });
+                  setUpdatePhotos([]);
                   fetchInvestorUpdates();
                 } catch (err) { alert("Error posting update: " + err.message); } finally { setUpdateSaving(false); }
               }} disabled={updateSaving || !updateForm.title.trim() || !updateForm.content.trim()} style={{
@@ -2921,9 +3083,19 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                       </div>
                       <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 6px" }}>{u.title}</h3>
                       <p style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif", margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{u.body}</p>
+                      {u.photos && (() => { try { const photos = JSON.parse(u.photos); return photos.length > 0 ? (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                          {photos.map((p, i) => (
+                            <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" style={{ width: 80, height: 80, borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0", display: "block" }}>
+                              <img src={p.url} alt={p.name || "Photo"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            </a>
+                          ))}
+                        </div>
+                      ) : null; } catch { return null; } })()}
                       <button onClick={async () => {
                         if (!window.confirm("Delete this update?")) return;
                         try {
+                          if (u.photos) { try { const photos = JSON.parse(u.photos); await supabase.storage.from("deal-documents").remove(photos.map(p => p.path)); } catch {} }
                           await supabase.from("investor_updates").delete().eq("id", u.id);
                           fetchInvestorUpdates();
                         } catch (err) { alert("Error: " + err.message); }
@@ -2957,6 +3129,8 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
   const [notifPrefs, setNotifPrefs] = useState({ email: true, sms: true });
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
 
   useEffect(() => {
     const handle = () => setIsMobile(window.innerWidth < 768);
@@ -2964,7 +3138,7 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
     return () => window.removeEventListener("resize", handle);
   }, []);
 
-  // Fetch notification preferences
+  // Fetch notification preferences + check onboarding
   useEffect(() => {
     if (!investorProfile?.id) return;
     async function fetchPrefs() {
@@ -2972,6 +3146,11 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
         const { data } = await supabase.from("investors").select("notification_prefs").eq("id", investorProfile.id).limit(1);
         if (data && data[0] && data[0].notification_prefs) {
           try { setNotifPrefs(JSON.parse(data[0].notification_prefs)); } catch {}
+        }
+        // Check if investor has been onboarded (stored in localStorage)
+        const onboardedKey = `reap_onboarded_${investorProfile.id}`;
+        if (!localStorage.getItem(onboardedKey)) {
+          setShowOnboarding(true);
         }
       } catch {}
       setPrefsLoaded(true);
@@ -3038,6 +3217,121 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
   }[type] || { color: "#64748b", bg: "#f8fafc", border: "#e2e8f0", icon: "📝" });
 
   const fmt = (v) => { const n = parseFloat(v); return isNaN(n) ? "—" : "$" + n.toLocaleString(); };
+
+  const completeOnboarding = () => {
+    const onboardedKey = `reap_onboarded_${investorProfile.id}`;
+    localStorage.setItem(onboardedKey, "true");
+    setShowOnboarding(false);
+  };
+
+  // ── Onboarding Welcome Screen ──
+  if (showOnboarding && !loading) {
+    const steps = [
+      { title: "Welcome to Your Investor Portal", subtitle: "We're glad you're here, " + (investorProfile?.investorName?.split(" ")[0] || "Investor") + ".", icon: (
+        <div style={{ width: 80, height: 80, borderRadius: 20, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", boxShadow: "0 8px 30px rgba(22,163,74,0.3)" }}>
+          <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        </div>
+      ), body: (
+        <div style={{ fontSize: 14, color: "#475569", lineHeight: 1.7, maxWidth: 420, margin: "0 auto" }}>
+          <p style={{ marginBottom: 16 }}>This is your personal portal with <strong style={{ color: "#0f172a" }}>{investorProfile?.company || "the team"}</strong>. Here you can track your investments, view property updates, and stay informed on deal progress.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 20 }}>
+            {[{ icon: "📊", label: "Dashboard", desc: "See your portfolio at a glance" }, { icon: "📰", label: "Updates", desc: "Construction & financial news" }, { icon: "🏠", label: "My Deals", desc: "Detailed property info" }, { icon: "⚙️", label: "Settings", desc: "Notification preferences" }].map(f => (
+              <div key={f.label} style={{ padding: 16, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", textAlign: "center" }}>
+                <div style={{ fontSize: 24, marginBottom: 6 }}>{f.icon}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 2 }}>{f.label}</div>
+                <div style={{ fontSize: 11, color: "#94a3b8" }}>{f.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )},
+      { title: "Your Investments", subtitle: deals.length > 0 ? "You're linked to " + deals.length + " active deal" + (deals.length !== 1 ? "s" : "") + "." : "Your deals will appear here once linked.", icon: (
+        <div style={{ width: 80, height: 80, borderRadius: 20, background: "linear-gradient(135deg, #2563eb, #1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", boxShadow: "0 8px 30px rgba(37,99,235,0.3)" }}>
+          <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </div>
+      ), body: (
+        <div style={{ maxWidth: 420, margin: "0 auto" }}>
+          {deals.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {deals.slice(0, 4).map(d => (
+                <div key={d._id} style={{ padding: 16, borderRadius: 12, background: "#fff", border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{d.dealName || d.address}</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>{d.city}{d.state ? ", " + d.state : ""}</div>
+                  </div>
+                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: "#f0fdf4", color: "#16a34a", border: "1px solid #86efac" }}>{d.status || "Active"}</span>
+                </div>
+              ))}
+              {deals.length > 4 && <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center" }}>+{deals.length - 4} more properties</div>}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: 30, background: "#f8fafc", borderRadius: 14, border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>🏗️</div>
+              <p style={{ fontSize: 14, color: "#475569" }}>No deals linked yet. Your investment team will connect your properties here shortly.</p>
+            </div>
+          )}
+        </div>
+      )},
+      { title: "Stay in the Loop", subtitle: "Choose how you'd like to receive updates.", icon: (
+        <div style={{ width: 80, height: 80, borderRadius: 20, background: "linear-gradient(135deg, #7c3aed, #6d28d9)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", boxShadow: "0 8px 30px rgba(124,58,237,0.3)" }}>
+          <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </div>
+      ), body: (
+        <div style={{ maxWidth: 360, margin: "0 auto" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {[{ key: "email", icon: "📧", label: "Email Notifications", desc: "Get updates delivered to your inbox" },
+              { key: "sms", icon: "📱", label: "SMS Notifications", desc: "Instant text alerts for new updates" }].map(ch => (
+              <div key={ch.key} onClick={() => setNotifPrefs(prev => ({ ...prev, [ch.key]: !prev[ch.key] }))} style={{ padding: 18, borderRadius: 14, background: notifPrefs[ch.key] ? "#f0fdf4" : "#fff", border: "1.5px solid " + (notifPrefs[ch.key] ? "#16a34a" : "#e2e8f0"), cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 14 }}>
+                <span style={{ fontSize: 24 }}>{ch.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{ch.label}</div>
+                  <div style={{ fontSize: 12, color: "#94a3b8" }}>{ch.desc}</div>
+                </div>
+                <div style={{ width: 22, height: 22, borderRadius: 6, border: "2px solid " + (notifPrefs[ch.key] ? "#16a34a" : "#cbd5e1"), background: notifPrefs[ch.key] ? "#16a34a" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}>
+                  {notifPrefs[ch.key] && <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}><polyline points="20 6 9 17 4 12"/></svg>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )},
+    ];
+    const step = steps[onboardingStep];
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f8fafc 0%, #f0fdf4 100%)", fontFamily: "'DM Sans', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap');
+          @keyframes fadeSlide { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        `}</style>
+        <div key={onboardingStep} style={{ maxWidth: 520, width: "100%", textAlign: "center", animation: "fadeSlide 0.4s ease" }}>
+          {step.icon}
+          <h1 style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 8px" }}>{step.title}</h1>
+          <p style={{ fontSize: 14, color: "#64748b", marginBottom: 28 }}>{step.subtitle}</p>
+          {step.body}
+        </div>
+        <div style={{ marginTop: 36, display: "flex", gap: 12, alignItems: "center" }}>
+          {onboardingStep > 0 && (
+            <button onClick={() => setOnboardingStep(s => s - 1)} style={{ padding: "10px 24px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Back</button>
+          )}
+          {onboardingStep < steps.length - 1 ? (
+            <button onClick={() => setOnboardingStep(s => s + 1)} style={{ padding: "10px 28px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>Continue</button>
+          ) : (
+            <button onClick={async () => {
+              // Save notification preferences
+              try { await supabase.from("investors").update({ notification_prefs: JSON.stringify(notifPrefs) }).eq("id", investorProfile.id); } catch {}
+              completeOnboarding();
+            }} style={{ padding: "10px 28px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>Enter Portal</button>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+          {steps.map((_, i) => (
+            <div key={i} style={{ width: i === onboardingStep ? 24 : 8, height: 8, borderRadius: 4, background: i === onboardingStep ? "#16a34a" : "#cbd5e1", transition: "all 0.3s" }} />
+          ))}
+        </div>
+        <button onClick={completeOnboarding} style={{ marginTop: 16, background: "none", border: "none", color: "#94a3b8", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Skip for now</button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif" }}>
@@ -3188,6 +3482,16 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                       </div>
                       <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 4px" }}>{u.title}</h3>
                       <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.5, margin: 0, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{u.body}</p>
+                      {u.photos && (() => { try { const photos = JSON.parse(u.photos); return photos.length > 0 ? (
+                        <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                          {photos.slice(0, 4).map((p, i) => (
+                            <div key={i} style={{ width: 56, height: 56, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", position: "relative" }}>
+                              <img src={p.url} alt={p.name || "Photo"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              {i === 3 && photos.length > 4 && <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700 }}>+{photos.length - 4}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null; } catch { return null; } })()}
                     </div>
                   );
                 })}
@@ -3261,6 +3565,15 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                         </div>
                         <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 6px" }}>{u.title}</h3>
                         <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{u.body}</p>
+                        {u.photos && (() => { try { const photos = JSON.parse(u.photos); return photos.length > 0 ? (
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                            {photos.map((p, i) => (
+                              <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0", display: "block" }}>
+                                <img src={p.url} alt={p.name || "Photo"} style={{ width: 120, height: 90, objectFit: "cover", display: "block" }} />
+                              </a>
+                            ))}
+                          </div>
+                        ) : null; } catch { return null; } })()}
                       </div>
                     );
                   })}
