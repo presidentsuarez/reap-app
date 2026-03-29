@@ -1475,6 +1475,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                    <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
                     {["User", "Date", "Status", "Address", "Type", "Our Offer", "$/sqft", "Sq Ft", "Source"].map(h => (
                       <th key={h} onClick={() => handleSort(h)} style={{
                         padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
@@ -1495,9 +1496,19 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
-                    <tr><td colSpan={9} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
+                    <tr><td colSpan={10} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
                   ) : filtered.map((deal, i) => (
                     <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
+                      <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
+                          {deal.address ? (
+                            <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                          ) : null}
+                          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
+                            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                          </div>
+                        </div>
+                      </td>
                       <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", background: "#f1f5f9", padding: "3px 8px", borderRadius: 6, fontWeight: 500 }}>{fmtUserName(deal.user)}</span></td>
                       <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtDate(deal.date)}</td>
                       <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
@@ -9501,9 +9512,12 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340, 1fr))", gap: 14 }}>
             {filtered.map(listing => (
               <div key={listing.rowIndex} onClick={() => onSelectListing && onSelectListing(listing)} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.03)", transition: "box-shadow 0.15s", cursor: "pointer" }}>
-                {/* Image placeholder — future Zillow API */}
-                <div style={{ height: 140, background: "linear-gradient(135deg, #f1f5f9, #e2e8f0)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-                  <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                {/* Street View Image */}
+                <div style={{ height: 140, background: "linear-gradient(135deg, #f1f5f9, #e2e8f0)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+                  {listing.address ? (
+                    <img src={`https://maps.googleapis.com/maps/api/streetview?size=400x160&location=${encodeURIComponent([listing.address, listing.city, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "absolute", top: 0, left: 0, zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                  ) : null}
+                  <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ zIndex: 0 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                   <div style={{ position: "absolute", top: 10, left: 10 }}><MLSStatusBadge status={listing.status} /></div>
                   <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>MLS# {listing.mlsNumber || "—"}</div>
                 </div>
@@ -9549,6 +9563,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
             <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif", minWidth: 1000 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <th style={{ ...thStyle, width: 52, cursor: "default", padding: "10px 8px 10px 14px" }} />
                   <th onClick={() => handleSort("address")} style={thStyle}>Address<SortArrow col="address"/></th>
                   <th onClick={() => handleSort("city")} style={thStyle}>City<SortArrow col="city"/></th>
                   <th onClick={() => handleSort("price")} style={{...thStyle, textAlign: "right"}}>Price<SortArrow col="price"/></th>
@@ -9566,6 +9581,16 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
               <tbody>
                 {sorted.map(listing => (
                   <tr key={listing.rowIndex} onClick={() => onSelectListing && onSelectListing(listing)} onMouseEnter={() => setHoveredRow(listing.rowIndex)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f8fafc", background: hoveredRow === listing.rowIndex ? "#fafffe" : "transparent", transition: "background 0.1s", cursor: "pointer" }}>
+                    <td style={{ padding: "8px 4px 8px 10px", width: 52 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
+                        {listing.address ? (
+                          <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([listing.address, listing.city, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                        ) : null}
+                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
+                          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        </div>
+                      </div>
+                    </td>
                     <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{listing.address || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>{listing.city || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace", textAlign: "right" }}>{listing.price ? fmt(listing.price) : "—"}</td>
@@ -9589,7 +9614,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                     </td>
                   </tr>
                 ))}
-                {sorted.length === 0 && <tr><td colSpan={12} style={{ padding: "40px 14px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match</td></tr>}
+                {sorted.length === 0 && <tr><td colSpan={13} style={{ padding: "40px 14px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match</td></tr>}
               </tbody>
             </table>
           </div>
@@ -9839,22 +9864,40 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
       {/* Content area */}
       <div ref={scrollRef} onScroll={e => setScrolled(e.target.scrollTop > 5)} style={{ flex: 1, overflow: "auto", padding: isMobile ? "20px 16px" : "28px 32px" }}>
 
-        {/* Street View Image */}
-        {streetViewUrl && (
-          <div style={{ width: "100%", height: isMobile ? 160 : 220, borderRadius: 14, overflow: "hidden", marginBottom: isMobile ? 20 : 28, position: "relative", background: "#f1f5f9", border: "1px solid #e2e8f0" }}>
-            <img src={streetViewUrl} alt={listing.address} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-              onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }} />
-            <div style={{ display: "none", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", position: "absolute", top: 0, left: 0 }}>
-              <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            </div>
-          </div>
-        )}
-
         {/* ── OVERVIEW TAB ── */}
         {activeTab === "overview" && (
           <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20 }}>
             {/* Left column */}
             <div style={{ flex: 1, minWidth: 0 }}>
+
+              {/* Property Image + Quick Stats Card */}
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", marginBottom: 16, display: "flex", flexDirection: isMobile ? "column" : "row" }}>
+                {/* Street View Square */}
+                <div style={{ width: isMobile ? "100%" : 200, height: isMobile ? 180 : 200, flexShrink: 0, background: "#f1f5f9", position: "relative" }}>
+                  {streetViewUrl ? (
+                    <img src={streetViewUrl} alt={listing.address} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }} />
+                  ) : null}
+                  <div style={{ display: streetViewUrl ? "none" : "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", position: "absolute", top: 0, left: 0 }}>
+                    <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  </div>
+                </div>
+                {/* Quick highlights next to image */}
+                <div style={{ flex: 1, padding: "18px 20px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", fontFamily: "'DM Mono', monospace", marginBottom: 8, letterSpacing: "-0.02em" }}>{price ? "$" + price.toLocaleString() : "—"}</div>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
+                    {listing.beds && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>{listing.beds}</strong> Beds</span>}
+                    {listing.baths && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>{listing.baths}</strong> Baths</span>}
+                    {sqft && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>{sqft.toLocaleString()}</strong> SqFt</span>}
+                    {listing.lotAcres && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>{listing.lotAcres}</strong> Acres</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6 }}>
+                    <div>{listing.address}</div>
+                    <div>{[listing.city, listing.state, listing.zip].filter(Boolean).join(", ")}</div>
+                  </div>
+                  {listing.yearBuilt && <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginTop: 6 }}>Built {listing.yearBuilt} · {listing.propType || "Property"}</div>}
+                </div>
+              </div>
 
               {/* Review Status Selector */}
               <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
