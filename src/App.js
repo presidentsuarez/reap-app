@@ -9266,12 +9266,21 @@ function ContactsTab({ investor, contacts, investorContacts, isMobile }) {
 
 // ── Contact Investments Tab (log individual investments per deal) ──
 function ContactInvestmentsTab({ contactId, deals, orgId, userEmail, isMobile }) {
+  const [subTab, setSubTab] = useState("dashboard");
   const [investments, setInvestments] = useState([]);
+  const [distributions, setDistributions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [distLoading, setDistLoading] = useState(true);
+  // Investment form
   const [showForm, setShowForm] = useState(false);
   const [editingInv, setEditingInv] = useState(null);
-  const [form, setForm] = useState({ deal_address: "", amount_committed: "", amount_funded: "", investment_date: "", notes: "" });
+  const [form, setForm] = useState({ deal_address: "", amount_committed: "", amount_funded: "", preferred_return: "", profit_share_pct: "", investment_date: "", notes: "" });
   const [saving, setSaving] = useState(false);
+  // Distribution form
+  const [showDistForm, setShowDistForm] = useState(false);
+  const [editingDist, setEditingDist] = useState(null);
+  const [distForm, setDistForm] = useState({ investment_id: "", deal_address: "", distribution_type: "return_of_capital", amount: "", distribution_date: "", status: "paid", notes: "" });
+  const [distSaving, setDistSaving] = useState(false);
 
   const fetchInvestments = useCallback(async () => {
     setLoading(true);
@@ -9282,9 +9291,19 @@ function ContactInvestmentsTab({ contactId, deals, orgId, userEmail, isMobile })
     finally { setLoading(false); }
   }, [contactId]);
 
-  useEffect(() => { fetchInvestments(); }, [fetchInvestments]);
+  const fetchDistributions = useCallback(async () => {
+    setDistLoading(true);
+    try {
+      const { data } = await supabase.from("contact_distributions").select("*").eq("contact_id", contactId).order("distribution_date", { ascending: false, nullsFirst: false });
+      setDistributions(data || []);
+    } catch (e) { console.error("Fetch distributions error:", e); setDistributions([]); }
+    finally { setDistLoading(false); }
+  }, [contactId]);
 
-  const resetForm = () => { setForm({ deal_address: "", amount_committed: "", amount_funded: "", investment_date: "", notes: "" }); setEditingInv(null); setShowForm(false); };
+  useEffect(() => { fetchInvestments(); fetchDistributions(); }, [fetchInvestments, fetchDistributions]);
+
+  const resetForm = () => { setForm({ deal_address: "", amount_committed: "", amount_funded: "", preferred_return: "", profit_share_pct: "", investment_date: "", notes: "" }); setEditingInv(null); setShowForm(false); };
+  const resetDistForm = () => { setDistForm({ investment_id: "", deal_address: "", distribution_type: "return_of_capital", amount: "", distribution_date: "", status: "paid", notes: "" }); setEditingDist(null); setShowDistForm(false); };
 
   const handleSave = async () => {
     if (!form.deal_address && !form.amount_committed) { alert("Please select a deal or enter an amount."); return; }
@@ -9292,166 +9311,330 @@ function ContactInvestmentsTab({ contactId, deals, orgId, userEmail, isMobile })
     try {
       const matchedDeal = deals.find(d => d.address === form.deal_address || d.property_address === form.deal_address);
       const payload = {
-        contact_id: contactId,
-        deal_id: matchedDeal?.id || matchedDeal?._id || null,
-        deal_address: form.deal_address || null,
-        amount_committed: parseFloat(form.amount_committed) || 0,
-        amount_funded: parseFloat(form.amount_funded) || 0,
-        investment_date: form.investment_date || null,
-        notes: form.notes.trim(),
-        org_id: orgId || null,
-        created_by: userEmail,
+        contact_id: contactId, deal_id: matchedDeal?.id || matchedDeal?._id || null, deal_address: form.deal_address || null,
+        amount_committed: parseFloat(form.amount_committed) || 0, amount_funded: parseFloat(form.amount_funded) || 0,
+        preferred_return: parseFloat(form.preferred_return) || 0, profit_share_pct: parseFloat(form.profit_share_pct) || 0,
+        investment_date: form.investment_date || null, notes: form.notes.trim(), org_id: orgId || null, created_by: userEmail,
       };
-      if (editingInv) {
-        await supabase.from("contact_investments").update(payload).eq("id", editingInv.id);
-      } else {
-        await supabase.from("contact_investments").insert(payload);
-      }
-      await fetchInvestments();
-      resetForm();
+      if (editingInv) { await supabase.from("contact_investments").update(payload).eq("id", editingInv.id); }
+      else { await supabase.from("contact_investments").insert(payload); }
+      await fetchInvestments(); resetForm();
     } catch (e) { alert("Error: " + e.message); }
     finally { setSaving(false); }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete this investment record?")) return;
-    await supabase.from("contact_investments").delete().eq("id", id);
-    await fetchInvestments();
+  const handleDeleteInv = async (id) => { if (!window.confirm("Delete this investment?")) return; await supabase.from("contact_investments").delete().eq("id", id); await fetchInvestments(); };
+  const startEditInv = (inv) => { setForm({ deal_address: inv.deal_address || "", amount_committed: String(inv.amount_committed || ""), amount_funded: String(inv.amount_funded || ""), preferred_return: String(inv.preferred_return || ""), profit_share_pct: String(inv.profit_share_pct || ""), investment_date: inv.investment_date || "", notes: inv.notes || "" }); setEditingInv(inv); setShowForm(true); };
+
+  const handleSaveDist = async () => {
+    if (!distForm.amount) { alert("Please enter an amount."); return; }
+    setDistSaving(true);
+    try {
+      const payload = {
+        contact_id: contactId, investment_id: distForm.investment_id || null, deal_address: distForm.deal_address || null,
+        distribution_type: distForm.distribution_type, amount: parseFloat(distForm.amount) || 0,
+        distribution_date: distForm.distribution_date || null, status: distForm.status, notes: distForm.notes.trim(),
+        org_id: orgId || null, created_by: userEmail,
+      };
+      if (editingDist) { await supabase.from("contact_distributions").update(payload).eq("id", editingDist.id); }
+      else { await supabase.from("contact_distributions").insert(payload); }
+      await fetchDistributions(); resetDistForm();
+    } catch (e) { alert("Error: " + e.message); }
+    finally { setDistSaving(false); }
   };
 
-  const startEdit = (inv) => {
-    setForm({ deal_address: inv.deal_address || "", amount_committed: String(inv.amount_committed || ""), amount_funded: String(inv.amount_funded || ""), investment_date: inv.investment_date || "", notes: inv.notes || "" });
-    setEditingInv(inv);
-    setShowForm(true);
-  };
+  const handleDeleteDist = async (id) => { if (!window.confirm("Delete this distribution?")) return; await supabase.from("contact_distributions").delete().eq("id", id); await fetchDistributions(); };
+  const startEditDist = (d) => { setDistForm({ investment_id: d.investment_id || "", deal_address: d.deal_address || "", distribution_type: d.distribution_type || "return_of_capital", amount: String(d.amount || ""), distribution_date: d.distribution_date || "", status: d.status || "paid", notes: d.notes || "" }); setEditingDist(d); setShowDistForm(true); };
 
-  const fmt = (v) => { const n = parseFloat(v); return isNaN(n) || n === 0 ? "—" : "$" + n.toLocaleString(); };
+  const fmt = (v) => { const n = parseFloat(v); return isNaN(n) || n === 0 ? "—" : "$" + n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }); };
+  const fmtPct = (v) => { const n = parseFloat(v); return isNaN(n) || n === 0 ? "—" : n.toFixed(1) + "%"; };
   const totalCommitted = investments.reduce((s, i) => s + (parseFloat(i.amount_committed) || 0), 0);
   const totalFunded = investments.reduce((s, i) => s + (parseFloat(i.amount_funded) || 0), 0);
+  const totalDistributed = distributions.filter(d => d.status === "paid").reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+  const totalPending = distributions.filter(d => d.status === "pending" || d.status === "scheduled").reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+  const netPosition = totalFunded - totalDistributed;
+  const totalReturn = totalFunded > 0 ? ((totalDistributed / totalFunded) * 100) : 0;
 
   const inputStyle = { width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", outline: "none", background: "#fff", boxSizing: "border-box" };
   const labelStyle = { fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4, display: "block" };
+  const subTabs = [
+    { id: "dashboard", label: "Dashboard", icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+    { id: "capital", label: "Capital Invested", icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
+    { id: "distributions", label: "Distributions", icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> },
+  ];
+  const distTypeLabels = { return_of_capital: "Return of Capital", profit_distribution: "Profit Distribution", preferred_return: "Preferred Return", other: "Other" };
+  const distTypeColors = { return_of_capital: { bg: "#eff6ff", color: "#2563eb", border: "#bfdbfe" }, profit_distribution: { bg: "#f0fdf4", color: "#16a34a", border: "#86efac" }, preferred_return: { bg: "#faf5ff", color: "#7c3aed", border: "#c4b5fd" }, other: { bg: "#f8fafc", color: "#64748b", border: "#e2e8f0" } };
+  const statusColors = { paid: { bg: "#f0fdf4", color: "#16a34a" }, pending: { bg: "#fffbeb", color: "#d97706" }, scheduled: { bg: "#eff6ff", color: "#2563eb" } };
 
   return (
     <div>
-      {/* Summary cards */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
-        <div style={{ padding: "14px 18px", borderRadius: 14, background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)", border: "1px solid #86efac" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Total Committed</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{fmt(totalCommitted)}</div>
-        </div>
-        <div style={{ padding: "14px 18px", borderRadius: 14, background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)", border: "1px solid #86efac" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Total Funded</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "#16a34a", fontFamily: "'Playfair Display', serif" }}>{fmt(totalFunded)}</div>
-        </div>
-        {!isMobile && (
-          <div style={{ padding: "14px 18px", borderRadius: 14, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Investments</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{investments.length}</div>
-          </div>
-        )}
+      {/* Sub-tab navigation */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
+        {subTabs.map(st => (
+          <button key={st.id} onClick={() => setSubTab(st.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, border: subTab === st.id ? "1.5px solid #16a34a" : "1px solid #e2e8f0", background: subTab === st.id ? "#f0fdf4" : "#fff", color: subTab === st.id ? "#16a34a" : "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+            {st.icon} {st.label}
+          </button>
+        ))}
       </div>
 
-      {/* Header + Add */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
-          Investment Records ({investments.length}) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-        </div>
-        <button onClick={() => { resetForm(); setShowForm(true); }} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}>+ Log Investment</button>
-      </div>
+      {/* ═══ DASHBOARD SUB-TAB ═══ */}
+      {subTab === "dashboard" && (
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+            <div style={{ padding: "16px 18px", borderRadius: 14, background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)", border: "1px solid #86efac" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Total Invested</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{fmt(totalFunded)}</div>
+            </div>
+            <div style={{ padding: "16px 18px", borderRadius: 14, background: "linear-gradient(135deg, #faf5ff, #f3e8ff)", border: "1px solid #c4b5fd" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Total Distributed</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#7c3aed", fontFamily: "'Playfair Display', serif" }}>{fmt(totalDistributed)}</div>
+            </div>
+            <div style={{ padding: "16px 18px", borderRadius: 14, background: netPosition > 0 ? "#fffbeb" : "#f0fdf4", border: "1px solid " + (netPosition > 0 ? "#fde68a" : "#86efac") }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: netPosition > 0 ? "#d97706" : "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Net Outstanding</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: netPosition > 0 ? "#d97706" : "#16a34a", fontFamily: "'Playfair Display', serif" }}>{fmt(Math.abs(netPosition))}</div>
+            </div>
+            <div style={{ padding: "16px 18px", borderRadius: 14, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Return %</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: totalReturn >= 100 ? "#16a34a" : "#0f172a", fontFamily: "'Playfair Display', serif" }}>{totalFunded > 0 ? totalReturn.toFixed(1) + "%" : "—"}</div>
+            </div>
+          </div>
 
-      {/* Form */}
-      {showForm && (
-        <div style={{ background: "#f8fafc", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 20, marginBottom: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 14 }}>{editingInv ? "Edit Investment" : "Log New Investment"}</div>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
-            <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
-              <label style={labelStyle}>Deal / Property</label>
-              <select value={form.deal_address} onChange={e => setForm(f => ({ ...f, deal_address: e.target.value }))} style={inputStyle}>
-                <option value="">— Select a deal —</option>
-                {(deals || []).map(d => <option key={d._id || d.id || d.address} value={d.address || d.property_address}>{d.address || d.property_address}{d.dealName ? " (" + d.dealName + ")" : ""}</option>)}
-              </select>
+          {totalPending > 0 && (
+            <div style={{ padding: "14px 18px", borderRadius: 12, background: "#fffbeb", border: "1px solid #fde68a", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={2}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#92400e", fontFamily: "'DM Sans', sans-serif" }}>Upcoming / Pending: <strong>{fmt(totalPending)}</strong></span>
             </div>
-            <div>
-              <label style={labelStyle}>Amount Committed ($)</label>
-              <input type="number" value={form.amount_committed} onChange={e => setForm(f => ({ ...f, amount_committed: e.target.value }))} placeholder="0" style={inputStyle} />
+          )}
+
+          {/* Per-deal breakdown */}
+          <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Investment Performance by Deal <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+          {investments.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No investments yet. Add capital in the "Capital Invested" tab.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {investments.map(inv => {
+                const deal = deals.find(d => d.address === inv.deal_address || d.property_address === inv.deal_address);
+                const funded = parseFloat(inv.amount_funded) || 0;
+                const invDistributions = distributions.filter(d => d.investment_id === inv.id || (d.deal_address && d.deal_address === inv.deal_address));
+                const distTotal = invDistributions.filter(d => d.status === "paid").reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+                const invReturn = funded > 0 ? ((distTotal / funded) * 100) : 0;
+                const prefReturn = parseFloat(inv.preferred_return) || 0;
+                const profitPct = parseFloat(inv.profit_share_pct) || 0;
+                return (
+                  <div key={inv.id} style={{ padding: "16px 18px", borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{deal?.dealName || inv.deal_address || "General"}</div>
+                        {inv.investment_date && <div style={{ fontSize: 11, color: "#94a3b8" }}>{new Date(inv.investment_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>}
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: invReturn >= 100 ? "#16a34a" : "#64748b", background: invReturn >= 100 ? "#f0fdf4" : "#f8fafc", padding: "4px 10px", borderRadius: 8 }}>{invReturn.toFixed(1)}% returned</div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: 10 }}>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Invested</div><div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>{fmt(funded)}</div></div>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Distributed</div><div style={{ fontSize: 15, fontWeight: 700, color: "#7c3aed" }}>{fmt(distTotal)}</div></div>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Pref Return</div><div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>{prefReturn > 0 ? prefReturn + "%" : "—"}</div></div>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Profit Share</div><div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>{profitPct > 0 ? profitPct + "%" : "—"}</div></div>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Net</div><div style={{ fontSize: 15, fontWeight: 700, color: (funded - distTotal) > 0 ? "#d97706" : "#16a34a" }}>{fmt(Math.abs(funded - distTotal))}</div></div>
+                    </div>
+                    {funded > 0 && <div style={{ height: 5, borderRadius: 3, background: "#e2e8f0", marginTop: 10, overflow: "hidden" }}><div style={{ height: "100%", borderRadius: 3, background: "linear-gradient(90deg, #7c3aed, #a78bfa)", width: Math.min(100, invReturn) + "%", transition: "width 0.3s" }} /></div>}
+                  </div>
+                );
+              })}
             </div>
-            <div>
-              <label style={labelStyle}>Amount Funded ($)</label>
-              <input type="number" value={form.amount_funded} onChange={e => setForm(f => ({ ...f, amount_funded: e.target.value }))} placeholder="0" style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Investment Date</label>
-              <input type="date" value={form.investment_date} onChange={e => setForm(f => ({ ...f, investment_date: e.target.value }))} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Notes</label>
-              <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." style={inputStyle} />
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
-            <button onClick={resetForm} style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
-            <button onClick={handleSave} disabled={saving} style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: saving ? "#94a3b8" : "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: saving ? "default" : "pointer", fontFamily: "'DM Sans', sans-serif" }}>{saving ? "Saving..." : editingInv ? "Update" : "Log Investment"}</button>
-          </div>
+          )}
         </div>
       )}
 
-      {/* Investment list */}
-      {loading ? (
-        <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13 }}>Loading investments...</div>
-      ) : investments.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
-          <div style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No investments logged yet</div>
-          <div style={{ fontSize: 12, color: "#cbd5e1", marginTop: 4 }}>Click "Log Investment" to record this investor's first investment.</div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {investments.map(inv => {
-            const deal = deals.find(d => d.address === inv.deal_address || d.property_address === inv.deal_address);
-            const committed = parseFloat(inv.amount_committed) || 0;
-            const funded = parseFloat(inv.amount_funded) || 0;
-            const pct = committed > 0 ? Math.round((funded / committed) * 100) : 0;
-            return (
-              <div key={inv.id} style={{ padding: "16px 18px", borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{deal?.dealName || inv.deal_address || "General Investment"}</div>
-                    {inv.deal_address && deal?.dealName && <div style={{ fontSize: 12, color: "#94a3b8" }}>{inv.deal_address}</div>}
-                    {inv.investment_date && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Invested: {new Date(inv.investment_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</div>}
-                  </div>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <button onClick={() => startEdit(inv)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }} title="Edit">
-                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button onClick={() => handleDelete(inv.id)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#dc2626" }} title="Delete">
-                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
-                  </div>
+      {/* ═══ CAPITAL INVESTED SUB-TAB ═══ */}
+      {subTab === "capital" && (
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
+            <div style={{ padding: "14px 18px", borderRadius: 14, background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)", border: "1px solid #86efac" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Total Committed</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{fmt(totalCommitted)}</div>
+            </div>
+            <div style={{ padding: "14px 18px", borderRadius: 14, background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)", border: "1px solid #86efac" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Total Funded</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#16a34a", fontFamily: "'Playfair Display', serif" }}>{fmt(totalFunded)}</div>
+            </div>
+            <div style={{ padding: "14px 18px", borderRadius: 14, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Investments</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{investments.length}</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Capital Records ({investments.length})</div>
+            <button onClick={() => { resetForm(); setShowForm(true); }} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}>+ Add Investment</button>
+          </div>
+
+          {showForm && (
+            <div style={{ background: "#f8fafc", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 14 }}>{editingInv ? "Edit Investment" : "New Investment"}</div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+                <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
+                  <label style={labelStyle}>Deal / Property</label>
+                  <select value={form.deal_address} onChange={e => setForm(f => ({ ...f, deal_address: e.target.value }))} style={inputStyle}>
+                    <option value="">— Select a deal —</option>
+                    {(deals || []).map(d => <option key={d._id || d.id || d.address} value={d.address || d.property_address}>{d.address || d.property_address}{d.dealName ? " (" + d.dealName + ")" : ""}</option>)}
+                  </select>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Committed</div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{fmt(committed)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Funded</div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: "#16a34a" }}>{fmt(funded)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>% Called</div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{pct}%</div>
-                  </div>
-                </div>
-                {committed > 0 && (
-                  <div style={{ height: 6, borderRadius: 3, background: "#e2e8f0", marginTop: 10, overflow: "hidden" }}>
-                    <div style={{ height: "100%", borderRadius: 3, background: "linear-gradient(90deg, #16a34a, #22c55e)", width: Math.min(100, pct) + "%", transition: "width 0.3s" }} />
-                  </div>
-                )}
-                {inv.notes && <div style={{ fontSize: 12, color: "#64748b", marginTop: 8, fontStyle: "italic" }}>{inv.notes}</div>}
+                <div><label style={labelStyle}>Amount Committed ($)</label><input type="number" value={form.amount_committed} onChange={e => setForm(f => ({ ...f, amount_committed: e.target.value }))} placeholder="0" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Amount Funded ($)</label><input type="number" value={form.amount_funded} onChange={e => setForm(f => ({ ...f, amount_funded: e.target.value }))} placeholder="0" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Preferred Return %</label><input type="number" value={form.preferred_return} onChange={e => setForm(f => ({ ...f, preferred_return: e.target.value }))} placeholder="8" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Profit Share %</label><input type="number" value={form.profit_share_pct} onChange={e => setForm(f => ({ ...f, profit_share_pct: e.target.value }))} placeholder="20" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Investment Date</label><input type="date" value={form.investment_date} onChange={e => setForm(f => ({ ...f, investment_date: e.target.value }))} style={inputStyle} /></div>
+                <div><label style={labelStyle}>Notes</label><input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." style={inputStyle} /></div>
               </div>
-            );
-          })}
+              <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+                <button onClick={resetForm} style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                <button onClick={handleSave} disabled={saving} style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: saving ? "#94a3b8" : "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: saving ? "default" : "pointer", fontFamily: "'DM Sans', sans-serif" }}>{saving ? "Saving..." : editingInv ? "Update" : "Add"}</button>
+              </div>
+            </div>
+          )}
+
+          {loading ? <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13 }}>Loading...</div>
+          : investments.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+              <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              <div style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No investments logged yet</div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {investments.map(inv => {
+                const deal = deals.find(d => d.address === inv.deal_address || d.property_address === inv.deal_address);
+                const committed = parseFloat(inv.amount_committed) || 0;
+                const funded = parseFloat(inv.amount_funded) || 0;
+                const pct = committed > 0 ? Math.round((funded / committed) * 100) : 0;
+                return (
+                  <div key={inv.id} style={{ padding: "16px 18px", borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{deal?.dealName || inv.deal_address || "General Investment"}</div>
+                        {inv.investment_date && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{new Date(inv.investment_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button onClick={() => startEditInv(inv)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }} title="Edit"><svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                        <button onClick={() => handleDeleteInv(inv.id)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#dc2626" }} title="Delete"><svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: 10 }}>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Committed</div><div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{fmt(committed)}</div></div>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Funded</div><div style={{ fontSize: 16, fontWeight: 700, color: "#16a34a" }}>{fmt(funded)}</div></div>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Pref Return</div><div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{fmtPct(inv.preferred_return)}</div></div>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Profit Share</div><div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{fmtPct(inv.profit_share_pct)}</div></div>
+                      <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>% Called</div><div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{pct}%</div></div>
+                    </div>
+                    {committed > 0 && <div style={{ height: 5, borderRadius: 3, background: "#e2e8f0", marginTop: 10, overflow: "hidden" }}><div style={{ height: "100%", borderRadius: 3, background: "linear-gradient(90deg, #16a34a, #22c55e)", width: Math.min(100, pct) + "%", transition: "width 0.3s" }} /></div>}
+                    {inv.notes && <div style={{ fontSize: 12, color: "#64748b", marginTop: 8, fontStyle: "italic" }}>{inv.notes}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ DISTRIBUTIONS SUB-TAB ═══ */}
+      {subTab === "distributions" && (
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
+            <div style={{ padding: "14px 18px", borderRadius: 14, background: "linear-gradient(135deg, #faf5ff, #f3e8ff)", border: "1px solid #c4b5fd" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Total Paid Out</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#7c3aed", fontFamily: "'Playfair Display', serif" }}>{fmt(totalDistributed)}</div>
+            </div>
+            <div style={{ padding: "14px 18px", borderRadius: 14, background: "#fffbeb", border: "1px solid #fde68a" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#d97706", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Pending / Scheduled</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#d97706", fontFamily: "'Playfair Display', serif" }}>{fmt(totalPending)}</div>
+            </div>
+            <div style={{ padding: "14px 18px", borderRadius: 14, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Total Records</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{distributions.length}</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Distribution Records ({distributions.length})</div>
+            <button onClick={() => { resetDistForm(); setShowDistForm(true); }} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #7c3aed, #6d28d9)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(124,58,237,0.3)" }}>+ Add Distribution</button>
+          </div>
+
+          {showDistForm && (
+            <div style={{ background: "#faf5ff", borderRadius: 14, border: "1px solid #c4b5fd", padding: isMobile ? 16 : 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 14 }}>{editingDist ? "Edit Distribution" : "New Distribution"}</div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Type</label>
+                  <select value={distForm.distribution_type} onChange={e => setDistForm(f => ({ ...f, distribution_type: e.target.value }))} style={inputStyle}>
+                    <option value="return_of_capital">Return of Capital</option>
+                    <option value="profit_distribution">Profit Distribution</option>
+                    <option value="preferred_return">Preferred Return</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div><label style={labelStyle}>Amount ($)</label><input type="number" value={distForm.amount} onChange={e => setDistForm(f => ({ ...f, amount: e.target.value }))} placeholder="0" style={inputStyle} /></div>
+                <div>
+                  <label style={labelStyle}>Linked Investment</label>
+                  <select value={distForm.investment_id} onChange={e => { const inv = investments.find(i => i.id === e.target.value); setDistForm(f => ({ ...f, investment_id: e.target.value, deal_address: inv?.deal_address || f.deal_address })); }} style={inputStyle}>
+                    <option value="">— Select investment —</option>
+                    {investments.map(inv => <option key={inv.id} value={inv.id}>{inv.deal_address || "General"} ({fmt(inv.amount_funded)})</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Status</label>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {["paid", "pending", "scheduled"].map(s => (
+                      <button key={s} onClick={() => setDistForm(f => ({ ...f, status: s }))} style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: distForm.status === s ? "1.5px solid " + statusColors[s].color : "1px solid #e2e8f0", background: distForm.status === s ? statusColors[s].bg : "#fff", color: distForm.status === s ? statusColors[s].color : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize" }}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+                <div><label style={labelStyle}>Date</label><input type="date" value={distForm.distribution_date} onChange={e => setDistForm(f => ({ ...f, distribution_date: e.target.value }))} style={inputStyle} /></div>
+                <div><label style={labelStyle}>Notes</label><input value={distForm.notes} onChange={e => setDistForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." style={inputStyle} /></div>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+                <button onClick={resetDistForm} style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                <button onClick={handleSaveDist} disabled={distSaving} style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: distSaving ? "#94a3b8" : "linear-gradient(135deg, #7c3aed, #6d28d9)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: distSaving ? "default" : "pointer", fontFamily: "'DM Sans', sans-serif" }}>{distSaving ? "Saving..." : editingDist ? "Update" : "Add"}</button>
+              </div>
+            </div>
+          )}
+
+          {distLoading ? <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13 }}>Loading...</div>
+          : distributions.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+              <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              <div style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No distributions recorded yet</div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {distributions.map(d => {
+                const tc = distTypeColors[d.distribution_type] || distTypeColors.other;
+                const sc = statusColors[d.status] || statusColors.paid;
+                const linkedInv = investments.find(i => i.id === d.investment_id);
+                return (
+                  <div key={d.id} style={{ padding: "14px 18px", borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff", display: "flex", alignItems: "center", gap: 14 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: tc.bg, border: "1px solid " + tc.border, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={tc.color} strokeWidth={2}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{fmt(d.amount)}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: tc.color, background: tc.bg, padding: "2px 8px", borderRadius: 6, border: "1px solid " + tc.border }}>{distTypeLabels[d.distribution_type] || d.distribution_type}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: sc.color, background: sc.bg, padding: "2px 8px", borderRadius: 6, textTransform: "capitalize" }}>{d.status}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                        {linkedInv?.deal_address || d.deal_address || "General"}
+                        {d.distribution_date && " · " + new Date(d.distribution_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </div>
+                      {d.notes && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, fontStyle: "italic" }}>{d.notes}</div>}
+                    </div>
+                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                      <button onClick={() => startEditDist(d)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }} title="Edit"><svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                      <button onClick={() => handleDeleteDist(d.id)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#dc2626" }} title="Delete"><svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -9461,9 +9644,9 @@ function ContactInvestmentsTab({ contactId, deals, orgId, userEmail, isMobile })
 function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, investorFunds, contacts, userEmail, onRefresh, orgData, orgMembers }) {
   const [activeTab, setActiveTab] = useState("overview");
   const isInvestor = (contact.contactType || "").toLowerCase().includes("investor");
-  const baseTabs = ["overview", "companies", "linked deals", "tasks", "communications", "documents", "portal access"];
-  const investorTabs = ["funds", "capital", "investments"];
-  const tabs = isInvestor ? ["overview", "companies", ...investorTabs, "linked deals", "tasks", "communications", "documents", "portal access"] : baseTabs;
+  const baseTabs = ["overview", "companies", "investments", "tasks", "communications", "documents", "portal access"];
+  const investorTabs = ["funds", "capital"];
+  const tabs = isInvestor ? ["overview", "companies", ...investorTabs, "investments", "tasks", "communications", "documents", "portal access"] : baseTabs;
   const initials = (contact.name || "??").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
   const linkedDeals = (deals || []).filter(d => (contact.linkedDealAddresses || []).includes(d.address));
 
@@ -9893,52 +10076,6 @@ function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, in
 
         {activeTab === "investments" && (
           <ContactInvestmentsTab contactId={contact.rowId} deals={deals || []} orgId={orgData?.id} userEmail={userEmail} isMobile={isMobile} />
-        )}
-
-        {activeTab === "linked deals" && (
-          <>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
-              Linked deals ({linkedDeals.length}) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-              <button onClick={() => setShowLinkDealUI(!showLinkDealUI)} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: showLinkDealUI ? "#f1f5f9" : "linear-gradient(135deg, #16a34a, #15803d)", color: showLinkDealUI ? "#64748b" : "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{showLinkDealUI ? "Cancel" : "+ Link deal"}</button>
-            </div>
-            {showLinkDealUI && (
-              <div style={{ marginBottom: 16, padding: 14, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                <input value={linkDealSearch} onChange={e => setLinkDealSearch(e.target.value)} placeholder="Search deals by address..." style={{ width: "100%", background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box", marginBottom: 10 }} autoFocus />
-                <div style={{ maxHeight: 200, overflow: "auto" }}>
-                  {(deals || []).filter(d => !(contact.linkedDealAddresses || []).includes(d.address))
-                    .filter(d => (d.address || "").toLowerCase().includes(linkDealSearch.toLowerCase()) || (d.property_address || "").toLowerCase().includes(linkDealSearch.toLowerCase()))
-                    .slice(0, 10).map(d => (
-                      <button key={d._id || d.address} onClick={() => handleLinkDealToContact(d.address)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "1px solid #f1f5f9", borderRadius: 8, marginBottom: 4, background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "'DM Sans', sans-serif" }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{d.address || d.property_address}</span>
-                      </button>
-                    ))}
-                  {(deals || []).filter(d => !(contact.linkedDealAddresses || []).includes(d.address)).filter(d => (d.address || "").toLowerCase().includes(linkDealSearch.toLowerCase())).length === 0 && (
-                    <div style={{ textAlign: "center", padding: 16, color: "#94a3b8", fontSize: 12 }}>No unlinked deals found.</div>
-                  )}
-                </div>
-              </div>
-            )}
-            {linkedDeals.length === 0 && !showLinkDealUI ? (
-              <div style={{ textAlign: "center", padding: "32px 16px" }}>
-                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>No deals linked yet</p>
-                <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px" }}>Link deals to this contact to send them investor updates.</p>
-                <button onClick={() => setShowLinkDealUI(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Link first deal</button>
-              </div>
-            ) : linkedDeals.map(d => (
-              <div key={d._id || d.address} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", border: "1px solid #f1f5f9", borderRadius: 10, marginBottom: 8, background: "#fff" }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.address || d.property_address}</div>
-                  <div style={{ fontSize: 12, color: "#94a3b8" }}>{d.property_type || ""}{d.status ? " · " + d.status : ""}</div>
-                </div>
-                <button onClick={() => handleUnlinkDealFromContact(d.address)} title="Remove deal" style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
-                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
-              </div>
-            ))}
-          </>
         )}
 
         {activeTab === "tasks" && (
