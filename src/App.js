@@ -17,6 +17,43 @@ const PLATFORM_ADMIN_EMAIL = "javier@thesuarezcapital.com";
 const TIER_RANK = { free: 0, starter: 1, team: 2, pro: 3, enterprise: 4 };
 const getTierRank = (tier) => TIER_RANK[(tier || "starter").toLowerCase()] || 1;
 
+// ── Google Maps loader ──
+const GOOGLE_MAPS_KEY = "AIzaSyCsxeRs8DmPGdyt8DLHbDVjEdr0hF6MTVE";
+let googleMapsLoading = false;
+let googleMapsLoaded = false;
+const loadGoogleMaps = () => new Promise((resolve, reject) => {
+  if (window.google && window.google.maps) { googleMapsLoaded = true; resolve(window.google.maps); return; }
+  if (googleMapsLoading) { const check = setInterval(() => { if (window.google && window.google.maps) { clearInterval(check); resolve(window.google.maps); } }, 100); return; }
+  googleMapsLoading = true;
+  const script = document.createElement("script");
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=marker,geocoding`;
+  script.async = true; script.defer = true;
+  script.onload = () => { googleMapsLoaded = true; googleMapsLoading = false; resolve(window.google.maps); };
+  script.onerror = (e) => { googleMapsLoading = false; reject(e); };
+  document.head.appendChild(script);
+});
+
+// Geocode an address and store lat/lng back to Supabase
+const geocodeAndStore = async (dealId, address, city, state, zip) => {
+  if (!window.google || !window.google.maps) return null;
+  const geocoder = new window.google.maps.Geocoder();
+  const fullAddress = [address, city, state, zip].filter(Boolean).join(", ");
+  try {
+    const result = await new Promise((resolve, reject) => {
+      geocoder.geocode({ address: fullAddress }, (results, status) => {
+        if (status === "OK" && results[0]) resolve(results[0].geometry.location);
+        else reject(status);
+      });
+    });
+    const lat = result.lat();
+    const lng = result.lng();
+    if (dealId) {
+      await supabase.from("deals").update({ latitude: lat, longitude: lng }).eq("id", dealId);
+    }
+    return { lat, lng };
+  } catch (e) { console.warn("Geocode failed for:", fullAddress, e); return null; }
+};
+
 const STATUS_CONFIG = {
   "New":            { color: "#16a34a", bg: "rgba(22,163,74,0.08)",   dot: "#16a34a" },
   "Review":         { color: "#d97706", bg: "rgba(217,119,6,0.08)",   dot: "#d97706" },
@@ -1067,14 +1104,188 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
   const [pipelineView, setPipelineView] = useState("table"); // "table" or "map"
+  const [mapReady, setMapReady] = useState(false);
+  const [mapLoading, setMapLoading] = useState(false);
+  const [geocodingProgress, setGeocodingProgress] = useState("");
+  const [highlightedDealIdx, setHighlightedDealIdx] = useState(null);
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
+  const infoWindowRef = useRef(null);
+  const cardRefsMap = useRef({});
   const searchRef = useRef(null);
 
   useEffect(() => {
     if (searchOpen && searchRef.current) searchRef.current.focus();
   }, [searchOpen]);
+
+  // ── Google Maps initialization ──
+  const initMap = useCallback(async (dealsToMap) => {
+    if (!mapContainerRef.current) return;
+    setMapLoading(true);
+    try {
+      await loadGoogleMaps();
+      // Center on US by default
+      const map = new window.google.maps.Map(mapContainerRef.current, {
+        center: { lat: 39.8283, lng: -98.5795 },
+        zoom: 4,
+        mapTypeControl: true,
+        mapTypeControlOptions: { style: window.google.maps.MapTypeControlStyle.HORIZONTAL_BAR, position: window.google.maps.ControlPosition.TOP_RIGHT },
+        streetViewControl: false,
+        fullscreenControl: true,
+        zoomControl: true,
+        styles: [
+          { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+          { featureType: "transit", stylers: [{ visibility: "off" }] },
+        ],
+      });
+      mapInstanceRef.current = map;
+      infoWindowRef.current = new window.google.maps.InfoWindow();
+
+      // Clear old markers
+      markersRef.current.forEach(m => m.setMap(null));
+      markersRef.current = [];
+
+      const bounds = new window.google.maps.LatLngBounds();
+      let hasMarkers = false;
+      const needsGeocode = [];
+
+      for (let i = 0; i < dealsToMap.length; i++) {
+        const deal = dealsToMap[i];
+        if (deal.latitude && deal.longitude) {
+          const pos = { lat: parseFloat(deal.latitude), lng: parseFloat(deal.longitude) };
+          addMarker(map, pos, deal, i);
+          bounds.extend(pos);
+          hasMarkers = true;
+        } else {
+          needsGeocode.push({ deal, index: i });
+        }
+      }
+
+      // Geocode deals without coordinates (batch with delay to respect rate limits)
+      if (needsGeocode.length > 0) {
+        setGeocodingProgress(`Mapping ${needsGeocode.length} addresses...`);
+        for (let j = 0; j < needsGeocode.length; j++) {
+          const { deal, index } = needsGeocode[j];
+          setGeocodingProgress(`Geocoding ${j + 1}/${needsGeocode.length}: ${(deal.address || "").substring(0, 30)}...`);
+          const result = await geocodeAndStore(deal._id, deal.address, deal.city, deal.state, deal.zip);
+          if (result) {
+            const pos = { lat: result.lat, lng: result.lng };
+            addMarker(map, pos, deal, index);
+            bounds.extend(pos);
+            hasMarkers = true;
+            // Update the local deal object too
+            deal.latitude = result.lat;
+            deal.longitude = result.lng;
+          }
+          // Small delay to avoid hitting geocoding rate limits (50 req/sec)
+          if (j < needsGeocode.length - 1) await new Promise(r => setTimeout(r, 200));
+        }
+        setGeocodingProgress("");
+      }
+
+      if (hasMarkers) {
+        map.fitBounds(bounds);
+        // Don't zoom in too far for a single marker
+        const listener = window.google.maps.event.addListener(map, "idle", () => {
+          if (map.getZoom() > 16) map.setZoom(16);
+          window.google.maps.event.removeListener(listener);
+        });
+      }
+
+      setMapReady(true);
+    } catch (e) {
+      console.error("Map init error:", e);
+    } finally {
+      setMapLoading(false);
+    }
+  }, []);
+
+  const addMarker = (map, pos, deal, index) => {
+    const sc = STATUS_CONFIG[deal.status] || STATUS_CONFIG["New"];
+    const marker = new window.google.maps.Marker({
+      position: pos,
+      map: map,
+      title: deal.address,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        fillColor: sc.color,
+        fillOpacity: 1,
+        strokeColor: "#fff",
+        strokeWeight: 2,
+        scale: 8,
+      },
+    });
+
+    marker.addListener("click", () => {
+      const content = `<div style="font-family:'DM Sans',sans-serif;max-width:260px;padding:4px">
+        <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px">${deal.address || "—"}</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <span style="font-size:10px;font-weight:700;color:${sc.color};background:${sc.bg};padding:2px 8px;border-radius:6px;text-transform:uppercase">${deal.status || "—"}</span>
+          ${deal.type ? `<span style="font-size:11px;color:#64748b">${deal.type}</span>` : ""}
+        </div>
+        ${deal.offer ? `<div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:2px">Offer: $${parseFloat(String(deal.offer).replace(/[$,]/g,"")).toLocaleString()}</div>` : ""}
+        ${deal.city || deal.state ? `<div style="font-size:11px;color:#94a3b8">${[deal.city, deal.state].filter(Boolean).join(", ")}</div>` : ""}
+        <button onclick="document.dispatchEvent(new CustomEvent('mapDealClick',{detail:'${deal.address}'}))" style="margin-top:8px;padding:6px 14px;border:none;border-radius:6px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">View Deal</button>
+      </div>`;
+      infoWindowRef.current.setContent(content);
+      infoWindowRef.current.open(map, marker);
+      setHighlightedDealIdx(index);
+      // Scroll card into view
+      if (cardRefsMap.current[index]) {
+        cardRefsMap.current[index].scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+
+    markersRef.current.push(marker);
+  };
+
+  // Listen for "View Deal" clicks from info window
+  useEffect(() => {
+    const handler = (e) => {
+      const addr = e.detail;
+      const deal = deals.find(d => d.address === addr);
+      if (deal) onSelectDeal(deal);
+    };
+    document.addEventListener("mapDealClick", handler);
+    return () => document.removeEventListener("mapDealClick", handler);
+  }, [deals, onSelectDeal]);
+
+  // Init map when switching to map view
+  useEffect(() => {
+    if (pipelineView === "map" && !loading && deals.length > 0) {
+      // Short delay to ensure container is rendered
+      const timer = setTimeout(() => initMap(deals), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [pipelineView, loading, deals, initMap]);
+
+  // Pan to deal when clicking side panel card
+  const panToDeal = (deal, index) => {
+    if (mapInstanceRef.current && deal.latitude && deal.longitude) {
+      const pos = { lat: parseFloat(deal.latitude), lng: parseFloat(deal.longitude) };
+      mapInstanceRef.current.panTo(pos);
+      mapInstanceRef.current.setZoom(15);
+      setHighlightedDealIdx(index);
+      // Open its info window
+      if (markersRef.current[index]) {
+        const sc = STATUS_CONFIG[deal.status] || STATUS_CONFIG["New"];
+        const content = `<div style="font-family:'DM Sans',sans-serif;max-width:260px;padding:4px">
+          <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px">${deal.address || "—"}</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+            <span style="font-size:10px;font-weight:700;color:${sc.color};background:${sc.bg};padding:2px 8px;border-radius:6px;text-transform:uppercase">${deal.status || "—"}</span>
+          </div>
+          ${deal.offer ? `<div style="font-size:13px;font-weight:600;color:#0f172a">Offer: $${parseFloat(String(deal.offer).replace(/[$,]/g,"")).toLocaleString()}</div>` : ""}
+          <button onclick="document.dispatchEvent(new CustomEvent('mapDealClick',{detail:'${deal.address}'}))" style="margin-top:8px;padding:6px 14px;border:none;border-radius:6px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">View Deal</button>
+        </div>`;
+        infoWindowRef.current.setContent(content);
+        infoWindowRef.current.open(mapInstanceRef.current, markersRef.current[index]);
+      }
+    } else {
+      // No coordinates yet, just open the deal
+      onSelectDeal(deal);
+    }
+  };
 
   const statusFilters = [
     { label: "New", match: d => d.status === "New" },
@@ -1296,46 +1507,48 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
         /* ── MAP VIEW ── */
         <div style={{ flex: 1, display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden" }}>
           {/* Map container */}
-          <div ref={mapContainerRef} id="deals-map" style={{ flex: 1, minHeight: isMobile ? 300 : "100%", background: "#e8ecf0", position: "relative" }}>
-            {/* Google Maps will be initialized here */}
-            {!window.google && (
-              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 50%, #f0f9ff 100%)" }}>
-                <div style={{ width: 72, height: 72, borderRadius: 20, background: "#fff", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                </div>
-                <div style={{ textAlign: "center" }}>
-                  <p style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 6px" }}>Map View</p>
-                  <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "0 0 16px", maxWidth: 320, lineHeight: 1.5 }}>
-                    See all your deals plotted on an interactive map. Connect a Google Maps API key to enable property mapping.
-                  </p>
-                  <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
-                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    {filtered.length} deal{filtered.length !== 1 ? "s" : ""} ready to map
-                  </div>
-                </div>
+          <div style={{ flex: 1, minHeight: isMobile ? 300 : "100%", position: "relative" }}>
+            <div ref={mapContainerRef} style={{ width: "100%", height: "100%", minHeight: isMobile ? 300 : 500 }} />
+            {/* Loading / geocoding overlay */}
+            {(mapLoading || geocodingProgress) && (
+              <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 10, padding: "8px 16px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
+                <div style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                <span style={{ fontSize: 11, color: "#475569", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{geocodingProgress || "Loading map..."}</span>
               </div>
             )}
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
           {/* Side panel with deal cards */}
           <div style={{ width: isMobile ? "100%" : 340, flexShrink: 0, overflow: "auto", background: "#fff", borderLeft: isMobile ? "none" : "1px solid #e2e8f0", borderTop: isMobile ? "1px solid #e2e8f0" : "none", maxHeight: isMobile ? 280 : "100%" }}>
-            <div style={{ padding: "12px 14px 8px", borderBottom: "1px solid #f1f5f9" }}>
+            <div style={{ padding: "12px 14px 8px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{filtered.length} Deal{filtered.length !== 1 ? "s" : ""}</div>
+              {filtered.filter(d => d.latitude && d.longitude).length > 0 && (
+                <div style={{ fontSize: 10, color: "#16a34a", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>
+                  {filtered.filter(d => d.latitude && d.longitude).length} mapped
+                </div>
+              )}
             </div>
             <div style={{ padding: "8px 10px" }}>
               {filtered.length === 0 ? (
                 <div style={{ padding: 24, textAlign: "center", color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>No deals found</div>
               ) : filtered.map((deal, i) => {
-                const sc = { New: "#3b82f6", Review: "#f59e0b", Underwriting: "#8b5cf6", Offer: "#0ea5e9", "Under Contract": "#16a34a", Closed: "#16a34a", Dead: "#ef4444", "On Hold": "#94a3b8" };
+                const sc = STATUS_CONFIG[deal.status] || STATUS_CONFIG["New"];
+                const isHighlighted = highlightedDealIdx === i;
                 return (
-                  <div key={i} onClick={() => onSelectDeal(deal)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #f1f5f9", marginBottom: 6, cursor: "pointer", transition: "all 0.15s", background: "#fff" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0"; }} onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#f1f5f9"; }}>
+                  <div key={i} ref={el => cardRefsMap.current[i] = el} onClick={() => panToDeal(deal, i)} style={{ padding: "10px 12px", borderRadius: 10, border: isHighlighted ? "1.5px solid #16a34a" : "1px solid #f1f5f9", marginBottom: 6, cursor: "pointer", transition: "all 0.15s", background: isHighlighted ? "#f0fdf4" : "#fff" }} onMouseEnter={e => { if (!isHighlighted) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0"; }}} onMouseLeave={e => { if (!isHighlighted) { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#f1f5f9"; }}}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.address || "—"}</span>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: sc[deal.status] || "#94a3b8", background: (sc[deal.status] || "#94a3b8") + "14", padding: "2px 6px", borderRadius: 5, textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap", marginLeft: 8 }}>{deal.status || "—"}</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: sc.color, background: sc.bg, padding: "2px 6px", borderRadius: 5, textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap", marginLeft: 8 }}>{deal.status || "—"}</span>
                     </div>
-                    <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                    <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", alignItems: "center" }}>
                       {deal.offer && <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmt(deal.offer)}</span>}
                       {deal.type && <span>{deal.type}</span>}
                       {deal.sqft && <span>{fmtNum(deal.sqft)} sqft</span>}
+                      {deal.latitude && deal.longitude ? (
+                        <svg width={10} height={10} viewBox="0 0 24 24" fill="#16a34a" stroke="none"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3" fill="#fff"/></svg>
+                      ) : (
+                        <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      )}
                     </div>
                   </div>
                 );
@@ -12481,6 +12694,8 @@ export default function ReapApp() {
         annualTaxes: v(r.annual_taxes),
         insuranceCost: v(r.insurance_cost_annual),
         metadata: r.metadata || {},
+        latitude: r.latitude || null,
+        longitude: r.longitude || null,
       })).filter(d => d.address);
 
       const userDeals = parsed.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
@@ -12531,7 +12746,7 @@ export default function ReapApp() {
         "Source": "REAP App",
       };
 
-      const { error: insertErr } = await supabase.from("deals").insert({
+      const { data: insertedDeal, error: insertErr } = await supabase.from("deals").insert({
         user_email: session?.user?.email || "",
         deal_name: form.dealName,
         property_address: form.address,
@@ -12548,8 +12763,15 @@ export default function ReapApp() {
         lot_acres: parseFloat(form.lotAcres) || null,
         class: form.class || null,
         source: "REAP App",
-      });
+      }).select("id").single();
       if (insertErr) throw new Error(insertErr.message);
+
+      // Geocode the new deal's address in background (non-blocking)
+      if (form.address && insertedDeal?.id) {
+        loadGoogleMaps().then(() => {
+          geocodeAndStore(insertedDeal.id, form.address, form.city, form.state, form.zip).catch(() => {});
+        }).catch(() => {});
+      }
 
       // Build a local deal object so we can open it immediately
       const newDeal = {

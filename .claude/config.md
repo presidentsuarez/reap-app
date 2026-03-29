@@ -22,6 +22,7 @@
 - **Stripe Publishable:** `pk_live_51SLWy2CPBlmmKk8H`
 - **Resend API Key:** `re_KFaHT73z_JE31132r2GGpqikid5Lu54VP`
 - **Quo API Key:** `c8cd61b340ee8e99f7811b20c943799924204d6a69dcb80692c03b127ea3bd51`
+- **Google Maps API Key:** `AIzaSyCsxeRs8DmPGdyt8DLHbDVjEdr0hF6MTVE` (Maps JavaScript API + Geocoding API enabled, restricted to app.getreap.ai)
 
 ## Edge Function Secrets (set via `supabase secrets set`)
 These secrets must be set in Supabase for the `send-investor-notifications` Edge Function:
@@ -133,3 +134,4 @@ When Javier starts a new conversation about REAP:
 4. Always build-test before deploying (`CI=false npm run build`)
 5. Deploy via fresh clone in /tmp if the mounted folder has git lock issues
 6. The .env file needs: `REACT_APP_SUPABASE_URL`, `REACT_APP_SUPABASE_ANON_KEY`, `REACT_APP_STRIPE_PUBLISHABLE_KEY`
+7. Google Maps API key is hardcoded in App.js (REACT_APP_GOOGLE_MAPS_KEY) for the deal pipeline map view
