@@ -1117,7 +1117,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   const [statusFilter, setStatusFilter] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
-  const [pipelineView, setPipelineViewState] = useState(initialView || "table"); // "table" or "map"
+  const [pipelineView, setPipelineViewState] = useState(initialView || "cards"); // "cards", "table", or "map"
   const setPipelineView = (v) => { setPipelineViewState(v); if (onViewChange) onViewChange(v); };
   const [mapReady, setMapReady] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
@@ -1394,8 +1394,11 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                   <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
                 </button>
                 <div style={{ display: "flex", borderRadius: 10, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-                  <button onClick={() => setPipelineView("table")} style={{ width: 36, height: 36, border: "none", background: pipelineView === "table" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
-                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={pipelineView === "table" ? "#fff" : "#64748b"} strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                  <button onClick={() => setPipelineView("cards")} style={{ width: 36, height: 36, border: "none", background: pipelineView === "cards" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={pipelineView === "cards" ? "#fff" : "#64748b"} strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                  </button>
+                  <button onClick={() => setPipelineView("table")} style={{ width: 36, height: 36, border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "table" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={pipelineView === "table" ? "#fff" : "#64748b"} strokeWidth={2}><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
                   </button>
                   <button onClick={() => setPipelineView("map")} style={{ width: 36, height: 36, border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "map" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
                     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={pipelineView === "map" ? "#fff" : "#64748b"} strokeWidth={2}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
@@ -1419,10 +1422,14 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search deals..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
             </div>
-            {/* Table / Map toggle */}
+            {/* Cards / Table / Map toggle */}
             <div style={{ display: "flex", borderRadius: 8, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-              <button onClick={() => setPipelineView("table")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", background: pipelineView === "table" ? "#0f172a" : "#fff", color: pipelineView === "table" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+              <button onClick={() => setPipelineView("cards")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", background: pipelineView === "cards" ? "#0f172a" : "#fff", color: pipelineView === "cards" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                Cards
+              </button>
+              <button onClick={() => setPipelineView("table")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "table" ? "#0f172a" : "#fff", color: pipelineView === "table" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
                 Table
               </button>
               <button onClick={() => setPipelineView("map")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "map" ? "#0f172a" : "#fff", color: pipelineView === "map" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
@@ -1462,73 +1469,75 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
         )}
       </div>
 
-      {/* Deals List / Map */}
-      {pipelineView === "table" ? (
+      {/* Deals Cards / Table / Map */}
+      {pipelineView === "cards" ? (
         <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px 24px" : "20px 24px 32px" }}>
-          {isMobile ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {filtered.length === 0 ? (
-                <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0" }}>
-                  {statusFilter !== null ? "No " + statusFilters[statusFilter].label.toLowerCase() + " deals" : "No deals found"}
-                </div>
-              ) : filtered.map((deal, i) => (
+          {filtered.length === 0 ? (
+            <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0" }}>
+              {statusFilter !== null ? "No " + statusFilters[statusFilter].label.toLowerCase() + " deals" : "No deals found"}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: isMobile ? 10 : 16 }}>
+              {filtered.map((deal, i) => (
                 <DealCard key={i} deal={deal} onSelect={onSelectDeal} />
               ))}
             </div>
-          ) : (
-            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
-                    {["User", "Date", "Status", "Address", "Type", "Our Offer", "$/sqft", "Sq Ft", "Source"].map(h => (
-                      <th key={h} onClick={() => handleSort(h)} style={{
-                        padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
-                        fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
-                        whiteSpace: "nowrap", cursor: "pointer", userSelect: "none", transition: "color 0.15s",
-                      }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                          {h}
-                          {sortCol === h && (
-                            <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} style={{ transition: "transform 0.2s", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }}>
-                              <polyline points="6 9 12 15 18 9"/>
-                            </svg>
-                          )}
-                        </span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 ? (
-                    <tr><td colSpan={10} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
-                  ) : filtered.map((deal, i) => (
-                    <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
-                      <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
-                        <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
-                          {deal.address ? (
-                            <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
-                          ) : null}
-                          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
-                            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", background: "#f1f5f9", padding: "3px 8px", borderRadius: 6, fontWeight: 500 }}>{fmtUserName(deal.user)}</span></td>
-                      <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtDate(deal.date)}</td>
-                      <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
-                      <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
-                      <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</td>
-                      <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.offer)}</td>
-                      <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.netSqft ? `$${deal.netSqft}` : "—"}</td>
-                      <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)}</td>
-                      <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{deal.source || "Manual"}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           )}
+        </div>
+      ) : pipelineView === "table" ? (
+        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px 24px" : "20px 24px 32px" }}>
+          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "auto", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: isMobile ? 900 : 0 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                  <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
+                  {["User", "Date", "Status", "Address", "Type", "Our Offer", "$/sqft", "Sq Ft", "Source"].map(h => (
+                    <th key={h} onClick={() => handleSort(h)} style={{
+                      padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
+                      fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
+                      whiteSpace: "nowrap", cursor: "pointer", userSelect: "none", transition: "color 0.15s",
+                    }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        {h}
+                        {sortCol === h && (
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} style={{ transition: "transform 0.2s", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }}>
+                            <polyline points="6 9 12 15 18 9"/>
+                          </svg>
+                        )}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={10} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
+                ) : filtered.map((deal, i) => (
+                  <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
+                    <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
+                        {deal.address ? (
+                          <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${GOOGLE_MAPS_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+                        ) : null}
+                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
+                          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", background: "#f1f5f9", padding: "3px 8px", borderRadius: 6, fontWeight: 500 }}>{fmtUserName(deal.user)}</span></td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtDate(deal.date)}</td>
+                    <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
+                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.offer)}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.netSqft ? `$${deal.netSqft}` : "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)}</td>
+                    <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{deal.source || "Manual"}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         /* ── MAP VIEW ── */
@@ -12844,7 +12853,7 @@ export default function ReapApp() {
   const [pendingDealAddress, setPendingDealAddress] = useState(null);
   const [pendingMLSSlug, setPendingMLSSlug] = useState(null);
   const [pendingPipelineView, setPendingPipelineView] = useState(null);
-  const [activePipelineView, setActivePipelineView] = useState("table");
+  const [activePipelineView, setActivePipelineView] = useState("cards");
   const [pendingInvestorId, setPendingInvestorId] = useState(null);
   const [pendingPortfolioId, setPendingPortfolioId] = useState(null);
 
@@ -12912,6 +12921,7 @@ export default function ReapApp() {
         setActiveNav("realestate"); setRealEstateTab(tab);
         if (parts[1] === "map") setPendingPipelineView("map");
         else if (parts[1] === "table") setPendingPipelineView("table");
+        else if (parts[1] === "cards") setPendingPipelineView("cards");
       }
     } else if (["command","realestate","contacts","marketplace","mls"].includes(hash)) {
       setActiveNav(hash);
@@ -13007,6 +13017,9 @@ export default function ReapApp() {
         if (["dashboard","pipeline","portfolios","mls","offerings"].includes(tab)) {
           setActiveNav("realestate"); setRealEstateTab(tab); setShowProfile(false);
           setSelectedDeal(null); setSelectedMLSListing(null); if (isMobile) setDealTransition(false);
+          if (tab === "pipeline" && parts[1]) {
+            if (["cards","table","map"].includes(parts[1])) { setPendingPipelineView(parts[1]); setActivePipelineView(parts[1]); }
+          }
         }
       } else if (["command","realestate","contacts","marketplace","mls"].includes(hash)) {
         setActiveNav(hash);
