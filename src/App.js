@@ -336,7 +336,7 @@ function NewDealModal({ isOpen, onClose, onSave, saving, isMobile, userEmail }) 
             <input style={inputStyle} value={form.address} onChange={e => set("address", e.target.value)} placeholder="e.g. 5416 N 9th St, Tampa, FL 33604" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
             <div>
               <label style={labelStyle}>City</label>
               <input style={inputStyle} value={form.city} onChange={e => set("city", e.target.value)} placeholder="Tampa" onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
@@ -1371,7 +1371,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
-  const tabs = ["overview", "financials", "refinance", "bridge loan", "income", "financing", "ai underwriting", "ai summary", "notes", "documents", "shared deal", "activity", "investor updates"];
+  const tabs = ["overview", "financials", "cash flow", "financing", "improvements", "units", "ai underwriting", "ai summary", "notes", "documents", "shared deal", "activity", "investor updates"];
 
   // Resolve pending deal tab from URL
   useEffect(() => {
@@ -1436,6 +1436,25 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
     }
   }, [deal?.bridgeAcqPct, deal?.bridgeImprovPct, deal?.bridgeInterestRate, deal?.bridgePoints]);
 
+  // ── Financing sub-tab state ──
+  const [financingSubTab, setFinancingSubTab] = useState("bridge");
+
+  // ── Improvements tab state ──
+  const [improvements, setImprovements] = useState([]);
+  const [improvementsLoading, setImprovementsLoading] = useState(false);
+  const [showAddImprovement, setShowAddImprovement] = useState(false);
+  const [improvementForm, setImprovementForm] = useState({ description: "", budgeted_cost: "", actual_cost: "", status: "Not Started", contractor: "" });
+  const [improvementSaving, setImprovementSaving] = useState(false);
+
+  // ── Units tab state ──
+  const [units, setUnits] = useState([]);
+  const [unitsLoading, setUnitsLoading] = useState(false);
+  const [showAddUnit, setShowAddUnit] = useState(false);
+  const [unitForm, setUnitForm] = useState({ unit_number: "", sqft: "", bedrooms: "", bathrooms: "", current_rent: "", market_rent: "", status: "Vacant", tenant_name: "" });
+  const [unitSaving, setUnitSaving] = useState(false);
+  const [editingUnitId, setEditingUnitId] = useState(null);
+  const [editingImprovementId, setEditingImprovementId] = useState(null);
+
   // ── Income tab state ──
   const [incomeForm, setIncomeForm] = useState({});
   const [incomeEditing, setIncomeEditing] = useState(false);
@@ -1474,6 +1493,11 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [notificationsSent, setNotificationsSent] = useState({});
   const [engagementData, setEngagementData] = useState({ reads: [], notifications: [] });
   const [showEngagement, setShowEngagement] = useState(false);
+  // ── Contact linking state ──
+  const [allContactsForDeal, setAllContactsForDeal] = useState([]);
+  const [dealLinkedContacts, setDealLinkedContacts] = useState([]);
+  const [showLinkContactDropdown, setShowLinkContactDropdown] = useState(false);
+  const [linkContactSearch, setLinkContactSearch] = useState("");
 
   // ── Fetch documents ──
   const fetchDocuments = useCallback(async () => {
@@ -1536,30 +1560,81 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const fetchLinkedInvestors = useCallback(async () => {
     if (!deal?.address) return;
     try {
-      const { data: allInvestors } = await supabase.from("investors").select("id, investor_name, portal_email, contact_ids, linked_deal_addresses, company");
+      const { data: allInvestors } = await supabase.from("investors").select("id, investor_name, portal_email, contact_ids, linked_deal_addresses, company, notification_email, notification_phone");
       const linked = (allInvestors || []).filter(inv => {
         const addrs = inv.linked_deal_addresses ? inv.linked_deal_addresses.split("|||").filter(Boolean) : [];
         return addrs.includes(deal.address);
       });
-      // For each investor, look up their contacts for email/phone
+      // For each investor/company, look up their contacts for email/phone
       const contactIds = linked.flatMap(inv => inv.contact_ids ? inv.contact_ids.split("|||").filter(Boolean) : []);
       let contactMap = {};
       if (contactIds.length > 0) {
         const { data: contacts } = await supabase.from("contacts").select("id, contact_name, email, phone").in("id", contactIds);
         (contacts || []).forEach(c => { contactMap[c.id] = c; });
       }
-      const enriched = linked.map(inv => ({
-        ...inv,
-        contacts: (inv.contact_ids ? inv.contact_ids.split("|||").filter(Boolean) : []).map(id => contactMap[id]).filter(Boolean),
-        allEmails: [
+      // Also fetch individually-linked contacts for this deal
+      const { data: allContacts } = await supabase.from("contacts").select("id, contact_name, email, phone, linked_deal_addresses");
+      const directLinkedContacts = (allContacts || []).filter(c => {
+        const addrs = c.linked_deal_addresses ? c.linked_deal_addresses.split("|||").filter(Boolean) : [];
+        return addrs.includes(deal.address);
+      });
+      // Build enriched company/investor list with deduplication
+      const globalEmailSet = new Set();
+      const globalPhoneSet = new Set();
+      const enriched = linked.map(inv => {
+        const rawEmails = [
+          inv.notification_email,
           inv.portal_email,
           ...(inv.contact_ids ? inv.contact_ids.split("|||").filter(Boolean) : []).map(id => contactMap[id]?.email).filter(Boolean)
-        ].filter(Boolean),
-        allPhones: (inv.contact_ids ? inv.contact_ids.split("|||").filter(Boolean) : []).map(id => contactMap[id]?.phone).filter(Boolean),
-      }));
+        ].filter(Boolean);
+        const rawPhones = [
+          inv.notification_phone,
+          ...(inv.contact_ids ? inv.contact_ids.split("|||").filter(Boolean) : []).map(id => contactMap[id]?.phone).filter(Boolean)
+        ].filter(Boolean);
+        // Deduplicate across all companies
+        const dedupedEmails = rawEmails.filter(e => { const key = e.toLowerCase().trim(); if (globalEmailSet.has(key)) return false; globalEmailSet.add(key); return true; });
+        const dedupedPhones = rawPhones.filter(p => { const key = p.replace(/\D/g, ""); if (globalPhoneSet.has(key)) return false; globalPhoneSet.add(key); return true; });
+        return {
+          ...inv,
+          contacts: (inv.contact_ids ? inv.contact_ids.split("|||").filter(Boolean) : []).map(id => contactMap[id]).filter(Boolean),
+          allEmails: dedupedEmails,
+          allPhones: dedupedPhones,
+        };
+      });
+      // Add individually-linked contacts (not already covered by a company)
+      directLinkedContacts.forEach(c => {
+        if (c.email) { const key = c.email.toLowerCase().trim(); if (!globalEmailSet.has(key)) { globalEmailSet.add(key); enriched.push({ id: "contact_" + c.id, investor_name: c.contact_name, contacts: [c], allEmails: [c.email], allPhones: [] }); return; } }
+        if (c.phone) { const key = c.phone.replace(/\D/g, ""); if (!globalPhoneSet.has(key)) { globalPhoneSet.add(key); const existing = enriched.find(e => e.id === "contact_" + c.id); if (existing) { existing.allPhones.push(c.phone); } else { enriched.push({ id: "contact_" + c.id, investor_name: c.contact_name, contacts: [c], allEmails: [], allPhones: [c.phone] }); } } }
+      });
       setLinkedInvestors(enriched);
+      // Also update dealLinkedContacts for the contact linking UI
+      setDealLinkedContacts(directLinkedContacts);
+      setAllContactsForDeal(allContacts || []);
     } catch (err) { console.error("Error fetching linked investors:", err); }
   }, [deal?.address]);
+
+  // ── Link/unlink contact to this deal ──
+  const handleLinkContactToDeal = async (contact) => {
+    if (!deal?.address || !contact) return;
+    try {
+      const currentAddrs = contact.linked_deal_addresses ? contact.linked_deal_addresses.split("|||").filter(Boolean) : [];
+      if (!currentAddrs.includes(deal.address)) currentAddrs.push(deal.address);
+      await supabase.from("contacts").update({ linked_deal_addresses: currentAddrs.join("|||") }).eq("id", contact.id);
+      setShowLinkContactDropdown(false);
+      setLinkContactSearch("");
+      fetchLinkedInvestors();
+    } catch (err) { console.error("Error linking contact to deal:", err); }
+  };
+  const handleUnlinkContactFromDeal = async (contact) => {
+    if (!deal?.address || !contact) return;
+    if (!window.confirm(`Remove ${contact.contact_name} from this deal's notifications?`)) return;
+    try {
+      const currentAddrs = contact.linked_deal_addresses ? contact.linked_deal_addresses.split("|||").filter(Boolean) : [];
+      const newAddrs = currentAddrs.filter(a => a !== deal.address);
+      await supabase.from("contacts").update({ linked_deal_addresses: newAddrs.join("|||") }).eq("id", contact.id);
+      fetchLinkedInvestors();
+    } catch (err) { console.error("Error unlinking contact from deal:", err); }
+  };
 
   // ── Fetch notification status for updates ──
   const fetchNotificationStatus = useCallback(async () => {
@@ -1841,6 +1916,99 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
     finally { setIncomeSaving(false); }
   };
 
+  // ── Improvements CRUD ──
+  const fetchImprovements = useCallback(async () => {
+    if (!deal?._id) return;
+    setImprovementsLoading(true);
+    try {
+      const { data, error } = await supabase.from("deal_improvements").select("*").eq("deal_id", deal._id).order("created_at", { ascending: true });
+      if (!error) setImprovements(data || []);
+    } catch (e) { console.log("[REAP] Improvements fetch:", e); }
+    finally { setImprovementsLoading(false); }
+  }, [deal?._id]);
+
+  const handleSaveImprovement = async () => {
+    if (!deal?._id || !improvementForm.description.trim()) return;
+    setImprovementSaving(true);
+    try {
+      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
+      const row = {
+        deal_id: deal._id,
+        description: improvementForm.description.trim(),
+        budgeted_cost: parseFloat(clean(improvementForm.budgeted_cost)) || null,
+        actual_cost: parseFloat(clean(improvementForm.actual_cost)) || null,
+        status: improvementForm.status || "Not Started",
+        contractor: improvementForm.contractor.trim() || null,
+      };
+      if (editingImprovementId) {
+        await supabase.from("deal_improvements").update(row).eq("id", editingImprovementId);
+      } else {
+        await supabase.from("deal_improvements").insert(row);
+      }
+      setShowAddImprovement(false);
+      setEditingImprovementId(null);
+      setImprovementForm({ description: "", budgeted_cost: "", actual_cost: "", status: "Not Started", contractor: "" });
+      await fetchImprovements();
+    } catch (err) { alert("Error saving improvement: " + err.message); }
+    finally { setImprovementSaving(false); }
+  };
+
+  const handleDeleteImprovement = async (id) => {
+    if (!window.confirm("Delete this improvement line item?")) return;
+    try {
+      await supabase.from("deal_improvements").delete().eq("id", id);
+      await fetchImprovements();
+    } catch (err) { alert("Error: " + err.message); }
+  };
+
+  // ── Units CRUD ──
+  const fetchUnits = useCallback(async () => {
+    if (!deal?._id) return;
+    setUnitsLoading(true);
+    try {
+      const { data, error } = await supabase.from("deal_units").select("*").eq("deal_id", deal._id).order("unit_number", { ascending: true });
+      if (!error) setUnits(data || []);
+    } catch (e) { console.log("[REAP] Units fetch:", e); }
+    finally { setUnitsLoading(false); }
+  }, [deal?._id]);
+
+  const handleSaveUnit = async () => {
+    if (!deal?._id || !unitForm.unit_number.trim()) return;
+    setUnitSaving(true);
+    try {
+      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
+      const row = {
+        deal_id: deal._id,
+        unit_number: unitForm.unit_number.trim(),
+        sqft: parseFloat(clean(unitForm.sqft)) || null,
+        bedrooms: parseInt(unitForm.bedrooms) || null,
+        bathrooms: parseFloat(unitForm.bathrooms) || null,
+        current_rent: parseFloat(clean(unitForm.current_rent)) || null,
+        market_rent: parseFloat(clean(unitForm.market_rent)) || null,
+        status: unitForm.status || "Vacant",
+        tenant_name: unitForm.tenant_name.trim() || null,
+      };
+      if (editingUnitId) {
+        await supabase.from("deal_units").update(row).eq("id", editingUnitId);
+      } else {
+        await supabase.from("deal_units").insert(row);
+      }
+      setShowAddUnit(false);
+      setEditingUnitId(null);
+      setUnitForm({ unit_number: "", sqft: "", bedrooms: "", bathrooms: "", current_rent: "", market_rent: "", status: "Vacant", tenant_name: "" });
+      await fetchUnits();
+    } catch (err) { alert("Error saving unit: " + err.message); }
+    finally { setUnitSaving(false); }
+  };
+
+  const handleDeleteUnit = async (id) => {
+    if (!window.confirm("Delete this unit?")) return;
+    try {
+      await supabase.from("deal_units").delete().eq("id", id);
+      await fetchUnits();
+    } catch (err) { alert("Error: " + err.message); }
+  };
+
   // ── Fetch shared users ──
   const fetchSharedUsers = useCallback(async () => {
     if (!deal?._id) return;
@@ -2037,142 +2205,8 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
           <FinancialsTab deal={deal} isMobile={isMobile} />
         )}
 
-        {/* ── REFINANCE TAB ── */}
-        {activeTab === "refinance" && (() => {
-          const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
-          const inpStyle = { width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" };
-          const lblStyle = { display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" };
-          // Auto-calc refinance metrics
-          const pctARV = parseFloat(String(refiForm.refiPctARV).replace(/[%,$]/g, "")) || 0;
-          const arvVal = parseFloat(String(deal.arv).replace(/[$,]/g, "")) || 0;
-          const refiRate = parseFloat(String(refiForm.refiInterestRate).replace(/[%,$]/g, "")) || 0;
-          const refiTermYrs = parseInt(String(refiForm.refiTerm).replace(/[,]/g, "")) || 0;
-          const refiLoanAmt = arvVal * (pctARV / 100);
-          const monthlyRate = refiRate / 100 / 12;
-          const totalPayments = refiTermYrs * 12;
-          const refiMonthlyPayment = monthlyRate > 0 && totalPayments > 0 ? refiLoanAmt * (monthlyRate * Math.pow(1 + monthlyRate, totalPayments)) / (Math.pow(1 + monthlyRate, totalPayments) - 1) : 0;
-          const refiAnnualDebtService = refiMonthlyPayment * 12;
-          const noiAnnual = parseFloat(String(deal.noiAnnual).replace(/[$,]/g, "")) || 0;
-          const refiCashFlow = noiAnnual - refiAnnualDebtService;
-          const refiDSCR = refiAnnualDebtService > 0 ? (noiAnnual / refiAnnualDebtService).toFixed(2) : "—";
-          return (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                  Refinance Details <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-                </h2>
-                {!refiEditing ? (
-                  <button onClick={() => setRefiEditing(true)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
-                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    Edit
-                  </button>
-                ) : (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => setRefiEditing(false)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
-                    <button onClick={handleSaveRefi} disabled={refiSaving} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>{refiSaving ? "Saving..." : "Save"}</button>
-                  </div>
-                )}
-              </div>
-              {refiEditing ? (
-                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 14 }}>
-                    <div><label style={lblStyle}>% of ARV</label><input style={inpStyle} value={refiForm.refiPctARV} onChange={e => setRefiForm(f => ({...f, refiPctARV: e.target.value}))} placeholder="75" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                    <div><label style={lblStyle}>Interest Rate %</label><input style={inpStyle} value={refiForm.refiInterestRate} onChange={e => setRefiForm(f => ({...f, refiInterestRate: e.target.value}))} placeholder="7" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                    <div><label style={lblStyle}>Points %</label><input style={inpStyle} value={refiForm.refiPoints} onChange={e => setRefiForm(f => ({...f, refiPoints: e.target.value}))} placeholder="2" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                    <div><label style={lblStyle}>Term (Years)</label><input style={inpStyle} value={refiForm.refiTerm} onChange={e => setRefiForm(f => ({...f, refiTerm: e.target.value}))} placeholder="25" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                  </div>
-                </div>
-              ) : null}
-              <div style={{ marginTop: refiEditing ? 20 : 0 }}>
-                <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                  Calculated Metrics <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-                </h3>
-                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-                  <MetricCard label="Refi Loan Amount" value={refiLoanAmt > 0 ? fmt(refiLoanAmt) : fmt(deal.refiLoanAmount)} />
-                  <MetricCard label="% of ARV" value={fmtPct(refiForm.refiPctARV || deal.refiPctARV)} />
-                  <MetricCard label="Monthly Payment" value={refiMonthlyPayment > 0 ? fmt(refiMonthlyPayment) : "—"} />
-                  <MetricCard label="Annual Debt Service" value={refiAnnualDebtService > 0 ? fmt(refiAnnualDebtService) : "—"} />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-                  <MetricCard label="Cash Flow (Refi)" value={refiCashFlow !== 0 || refiAnnualDebtService > 0 ? fmt(refiCashFlow) : fmt(deal.refiCashFlow)} sub="annual" highlight good={refiCashFlow > 0 || num(deal.refiCashFlow) > 0} warn={(refiAnnualDebtService > 0 && refiCashFlow <= 0) || (num(deal.refiCashFlow) !== null && num(deal.refiCashFlow) <= 0)} />
-                  <MetricCard label="DSCR (Refi)" value={refiDSCR} good={num(refiDSCR) >= 1.25} warn={num(refiDSCR) !== null && num(refiDSCR) < 1.0} />
-                  <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good={num(deal.cashOutRefi) > 0} warn={num(deal.cashOutRefi) !== null && num(deal.cashOutRefi) <= 0} />
-                  <MetricCard label="Equity After Refi" value={fmt(deal.equityAfterRefi)} />
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── BRIDGE LOAN TAB ── */}
-        {activeTab === "bridge loan" && (() => {
-          const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
-          const inpStyle = { width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" };
-          const lblStyle = { display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" };
-          return (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>Bridge Loan</h2>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, color: bridgeEnabled ? "#16a34a" : "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
-                    <div onClick={() => { setBridgeEnabled(!bridgeEnabled); if (!bridgeEditing) setBridgeEditing(true); }} style={{ width: 40, height: 22, borderRadius: 11, background: bridgeEnabled ? "#16a34a" : "#e2e8f0", position: "relative", cursor: "pointer", transition: "background 0.2s" }}>
-                      <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: bridgeEnabled ? 20 : 2, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
-                    </div>
-                    {bridgeEnabled ? "Active" : "Not Using"}
-                  </label>
-                </div>
-                {bridgeEnabled && !bridgeEditing ? (
-                  <button onClick={() => setBridgeEditing(true)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
-                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    Edit
-                  </button>
-                ) : bridgeEnabled && bridgeEditing ? (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => setBridgeEditing(false)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
-                    <button onClick={handleSaveBridge} disabled={bridgeSaving} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>{bridgeSaving ? "Saving..." : "Save"}</button>
-                  </div>
-                ) : null}
-              </div>
-              {!bridgeEnabled ? (
-                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "48px 20px", textAlign: "center" }}>
-                  <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(100,116,139,0.06)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
-                    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>
-                  </div>
-                  <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Bridge Loan Not Active</p>
-                  <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Toggle the switch above to enable bridge loan tracking for this deal.</p>
-                </div>
-              ) : (
-                <>
-                  {bridgeEditing && (
-                    <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px", marginBottom: 20 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 14 }}>
-                        <div><label style={lblStyle}>Acquisition Financed %</label><input style={inpStyle} value={bridgeForm.bridgeAcqPct} onChange={e => setBridgeForm(f => ({...f, bridgeAcqPct: e.target.value}))} placeholder="75" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                        <div><label style={lblStyle}>Improvement Financed %</label><input style={inpStyle} value={bridgeForm.bridgeImprovPct} onChange={e => setBridgeForm(f => ({...f, bridgeImprovPct: e.target.value}))} placeholder="100" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                        <div><label style={lblStyle}>Interest Rate %</label><input style={inpStyle} value={bridgeForm.bridgeInterestRate} onChange={e => setBridgeForm(f => ({...f, bridgeInterestRate: e.target.value}))} placeholder="10" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                        <div><label style={lblStyle}>Points %</label><input style={inpStyle} value={bridgeForm.bridgePoints} onChange={e => setBridgeForm(f => ({...f, bridgePoints: e.target.value}))} placeholder="2" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
-                      </div>
-                    </div>
-                  )}
-                  <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-                    <MetricCard label="Loan Total" value={fmt(deal.bridgeLoanTotal)} />
-                    <MetricCard label="Interest Rate" value={fmtPct(deal.bridgeInterestRate)} />
-                    <MetricCard label="Interest Cost (Mo)" value={fmt(deal.bridgeInterestMonthly)} />
-                    <MetricCard label="Points" value={fmtPct(deal.bridgePoints)} />
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
-                    <MetricCard label="LTC" value={fmtPct(deal.bridgeLTC)} warn={num(deal.bridgeLTC) > 90} />
-                    <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} good={num(deal.bridgeLTV) !== null && num(deal.bridgeLTV) <= 75} warn={num(deal.bridgeLTV) > 85} />
-                    <MetricCard label="Equity Required" value={fmt(deal.equityRequired)} />
-                    <MetricCard label="Bridge Total Cost" value={fmt(deal.bridgeTotalCost)} />
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* ── INCOME TAB ── */}
-        {activeTab === "income" && (() => {
+        {/* ── CASH FLOW TAB ── */}
+        {activeTab === "cash flow" && (() => {
           const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
           const inpStyle = { width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" };
           const lblStyle = { display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" };
@@ -2180,7 +2214,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                  Income & Expenses <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                  Cash Flow <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
                 </h2>
                 {!incomeEditing ? (
                   <button onClick={() => setIncomeEditing(true)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
@@ -2196,7 +2230,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
               </div>
               {incomeEditing && (
                 <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px", marginBottom: 24 }}>
-                  <p style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>Current Financials <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+                  <p style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>Current Cash Flow <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 14, marginBottom: 20 }}>
                     <div><label style={lblStyle}>Revenue (Annual)</label><input style={inpStyle} value={incomeForm.existingRevenueAnnual} onChange={e => setIncomeForm(f => ({...f, existingRevenueAnnual: e.target.value}))} placeholder="$237,600" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
                     <div><label style={lblStyle}>Expense Ratio %</label><input style={inpStyle} value={incomeForm.existingExpensePct} onChange={e => setIncomeForm(f => ({...f, existingExpensePct: e.target.value}))} placeholder="40" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
@@ -2205,7 +2239,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr", gap: 14, marginBottom: 20 }}>
                     <div><label style={lblStyle}>Insurance (Annual)</label><input style={inpStyle} value={incomeForm.insuranceCost} onChange={e => setIncomeForm(f => ({...f, insuranceCost: e.target.value}))} placeholder="$8,000" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
                   </div>
-                  <p style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>Proforma Income <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+                  <p style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>Pro Forma Cash Flow <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 14 }}>
                     <div><label style={lblStyle}>Revenue (Annual)</label><input style={inpStyle} value={incomeForm.proformaRevenueAnnual} onChange={e => setIncomeForm(f => ({...f, proformaRevenueAnnual: e.target.value}))} placeholder="$240,000" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
                     <div><label style={lblStyle}>Expense Ratio %</label><input style={inpStyle} value={incomeForm.proformaExpensesPct} onChange={e => setIncomeForm(f => ({...f, proformaExpensesPct: e.target.value}))} placeholder="30" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
@@ -2213,9 +2247,9 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                   </div>
                 </div>
               )}
-              {/* Display metrics */}
+              {/* Current Cash Flow */}
               <section style={{ marginBottom: 24 }}>
-                <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Current Financials <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Current Cash Flow <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
                 <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
                   <MetricCard label="Revenue (Annual)" value={fmt(deal.existingRevenueAnnual)} />
                   <MetricCard label="Revenue (Monthly)" value={fmt(deal.existingRevenueMonthly)} />
@@ -2223,8 +2257,9 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                   <MetricCard label="Current NOI" value={fmt(deal.existingNOI)} highlight good={num(deal.existingNOI) > 0} warn={num(deal.existingNOI) !== null && num(deal.existingNOI) <= 0} />
                 </div>
               </section>
+              {/* Pro Forma Cash Flow */}
               <section>
-                <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Proforma Income <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Pro Forma Cash Flow <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
                 <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
                   <MetricCard label="Revenue (Annual)" value={fmt(deal.proformaRevenueAnnual)} highlight />
                   <MetricCard label="Revenue (Monthly)" value={fmt(deal.proformaRevenueMonthly)} />
@@ -2236,55 +2271,464 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
           );
         })()}
 
-        {/* ── FINANCING TAB (read-only summary) ── */}
+        {/* ── FINANCING TAB (with sub-tabs) ── */}
         {activeTab === "financing" && (() => {
           const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
+          const inpStyle = { width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" };
+          const lblStyle = { display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" };
+          const financingSubTabs = [
+            { id: "bridge", label: "Bridge Loan", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>, color: "#d97706" },
+            { id: "refinance", label: "Refinance", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>, color: "#7c3aed" },
+            { id: "summary", label: "Summary", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>, color: "#16a34a" },
+          ];
+          // Refi auto-calc
+          const pctARV = parseFloat(String(refiForm.refiPctARV).replace(/[%,$]/g, "")) || 0;
+          const arvVal = parseFloat(String(deal.arv).replace(/[$,]/g, "")) || 0;
+          const refiRate = parseFloat(String(refiForm.refiInterestRate).replace(/[%,$]/g, "")) || 0;
+          const refiTermYrs = parseInt(String(refiForm.refiTerm).replace(/[,]/g, "")) || 0;
+          const refiLoanAmt = arvVal * (pctARV / 100);
+          const monthlyRate = refiRate / 100 / 12;
+          const totalPayments = refiTermYrs * 12;
+          const refiMonthlyPayment = monthlyRate > 0 && totalPayments > 0 ? refiLoanAmt * (monthlyRate * Math.pow(1 + monthlyRate, totalPayments)) / (Math.pow(1 + monthlyRate, totalPayments) - 1) : 0;
+          const refiAnnualDebtService = refiMonthlyPayment * 12;
+          const noiVal = parseFloat(String(deal.noiAnnual).replace(/[$,]/g, "")) || 0;
+          const refiCashFlow = noiVal - refiAnnualDebtService;
+          const refiDSCR = refiAnnualDebtService > 0 ? (noiVal / refiAnnualDebtService).toFixed(2) : "—";
           return (
             <div>
-              <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 20px", display: "flex", alignItems: "center", gap: 8 }}>
-                Financing Summary <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-              </h2>
-              {/* Bridge Loan Summary */}
-              <section style={{ marginBottom: 28 }}>
-                <h3 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={2}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>
-                  Bridge Loan
-                  {(deal.bridgeLoanTotal && num(deal.bridgeLoanTotal) > 0) ? <span style={{ fontSize: 10, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>Active</span> : <span style={{ fontSize: 10, background: "#f1f5f9", color: "#94a3b8", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>N/A</span>}
-                </h3>
-                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-                  <MetricCard label="Loan Total" value={fmt(deal.bridgeLoanTotal)} />
-                  <MetricCard label="Interest Rate" value={fmtPct(deal.bridgeInterestRate)} />
-                  <MetricCard label="Monthly Interest" value={fmt(deal.bridgeInterestMonthly)} />
-                  <MetricCard label="Total Cost" value={fmt(deal.bridgeTotalCost)} />
+              {/* Sub-tab navigation */}
+              <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
+                {financingSubTabs.map(st => (
+                  <button key={st.id} onClick={() => setFinancingSubTab(st.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, border: financingSubTab === st.id ? "1.5px solid " + st.color : "1px solid #e2e8f0", background: financingSubTab === st.id ? st.color + "10" : "#fff", color: financingSubTab === st.id ? st.color : "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+                    {st.icon} {st.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Bridge Loan sub-tab */}
+              {financingSubTab === "bridge" && (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>Bridge Loan</h3>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, color: bridgeEnabled ? "#16a34a" : "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                        <div onClick={() => { setBridgeEnabled(!bridgeEnabled); if (!bridgeEditing) setBridgeEditing(true); }} style={{ width: 40, height: 22, borderRadius: 11, background: bridgeEnabled ? "#16a34a" : "#e2e8f0", position: "relative", cursor: "pointer", transition: "background 0.2s" }}>
+                          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: bridgeEnabled ? 20 : 2, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
+                        </div>
+                        {bridgeEnabled ? "Active" : "Not Using"}
+                      </label>
+                    </div>
+                    {bridgeEnabled && !bridgeEditing ? (
+                      <button onClick={() => setBridgeEditing(true)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit
+                      </button>
+                    ) : bridgeEnabled && bridgeEditing ? (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => setBridgeEditing(false)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                        <button onClick={handleSaveBridge} disabled={bridgeSaving} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>{bridgeSaving ? "Saving..." : "Save"}</button>
+                      </div>
+                    ) : null}
+                  </div>
+                  {!bridgeEnabled ? (
+                    <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "48px 20px", textAlign: "center" }}>
+                      <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(100,116,139,0.06)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                        <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>
+                      </div>
+                      <p style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Bridge Loan Not Active</p>
+                      <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Toggle the switch above to enable bridge loan tracking for this deal.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {bridgeEditing && (
+                        <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px", marginBottom: 20 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 14 }}>
+                            <div><label style={lblStyle}>Acquisition Financed %</label><input style={inpStyle} value={bridgeForm.bridgeAcqPct} onChange={e => setBridgeForm(f => ({...f, bridgeAcqPct: e.target.value}))} placeholder="75" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                            <div><label style={lblStyle}>Improvement Financed %</label><input style={inpStyle} value={bridgeForm.bridgeImprovPct} onChange={e => setBridgeForm(f => ({...f, bridgeImprovPct: e.target.value}))} placeholder="100" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                            <div><label style={lblStyle}>Interest Rate %</label><input style={inpStyle} value={bridgeForm.bridgeInterestRate} onChange={e => setBridgeForm(f => ({...f, bridgeInterestRate: e.target.value}))} placeholder="10" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                            <div><label style={lblStyle}>Points %</label><input style={inpStyle} value={bridgeForm.bridgePoints} onChange={e => setBridgeForm(f => ({...f, bridgePoints: e.target.value}))} placeholder="2" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                          </div>
+                        </div>
+                      )}
+                      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                        <MetricCard label="Loan Total" value={fmt(deal.bridgeLoanTotal)} />
+                        <MetricCard label="Interest Rate" value={fmtPct(deal.bridgeInterestRate)} />
+                        <MetricCard label="Interest Cost (Mo)" value={fmt(deal.bridgeInterestMonthly)} />
+                        <MetricCard label="Points" value={fmtPct(deal.bridgePoints)} />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+                        <MetricCard label="LTC" value={fmtPct(deal.bridgeLTC)} warn={num(deal.bridgeLTC) > 90} />
+                        <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} good={num(deal.bridgeLTV) !== null && num(deal.bridgeLTV) <= 75} warn={num(deal.bridgeLTV) > 85} />
+                        <MetricCard label="Equity Required" value={fmt(deal.equityRequired)} />
+                        <MetricCard label="Bridge Total Cost" value={fmt(deal.bridgeTotalCost)} />
+                      </div>
+                    </>
+                  )}
                 </div>
-              </section>
-              {/* Refinance Summary */}
-              <section style={{ marginBottom: 28 }}>
-                <h3 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth={2}><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                  Refinance
-                  {(deal.refiLoanAmount && num(deal.refiLoanAmount) > 0) ? <span style={{ fontSize: 10, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>Active</span> : <span style={{ fontSize: 10, background: "#f1f5f9", color: "#94a3b8", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>N/A</span>}
-                </h3>
-                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-                  <MetricCard label="Refi Loan Amount" value={fmt(deal.refiLoanAmount)} />
-                  <MetricCard label="Interest Rate" value={fmtPct(deal.refiInterestRate)} />
-                  <MetricCard label="Cash Flow (Refi)" value={fmt(deal.refiCashFlow)} sub="annual" highlight good={num(deal.refiCashFlow) > 0} warn={num(deal.refiCashFlow) !== null && num(deal.refiCashFlow) <= 0} />
-                  <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good={num(deal.cashOutRefi) > 0} />
+              )}
+
+              {/* Refinance sub-tab */}
+              {financingSubTab === "refinance" && (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                      Refinance Details <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                    </h3>
+                    {!refiEditing ? (
+                      <button onClick={() => setRefiEditing(true)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit
+                      </button>
+                    ) : (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => setRefiEditing(false)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                        <button onClick={handleSaveRefi} disabled={refiSaving} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>{refiSaving ? "Saving..." : "Save"}</button>
+                      </div>
+                    )}
+                  </div>
+                  {refiEditing && (
+                    <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px", marginBottom: 20 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 14 }}>
+                        <div><label style={lblStyle}>% of ARV</label><input style={inpStyle} value={refiForm.refiPctARV} onChange={e => setRefiForm(f => ({...f, refiPctARV: e.target.value}))} placeholder="75" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                        <div><label style={lblStyle}>Interest Rate %</label><input style={inpStyle} value={refiForm.refiInterestRate} onChange={e => setRefiForm(f => ({...f, refiInterestRate: e.target.value}))} placeholder="7" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                        <div><label style={lblStyle}>Points %</label><input style={inpStyle} value={refiForm.refiPoints} onChange={e => setRefiForm(f => ({...f, refiPoints: e.target.value}))} placeholder="2" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                        <div><label style={lblStyle}>Term (Years)</label><input style={inpStyle} value={refiForm.refiTerm} onChange={e => setRefiForm(f => ({...f, refiTerm: e.target.value}))} placeholder="25" onFocus={e => e.target.style.borderColor="#16a34a"} onBlur={e => e.target.style.borderColor="#e2e8f0"} /></div>
+                      </div>
+                    </div>
+                  )}
+                  <h4 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Calculated Metrics <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h4>
+                  <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                    <MetricCard label="Refi Loan Amount" value={refiLoanAmt > 0 ? fmt(refiLoanAmt) : fmt(deal.refiLoanAmount)} />
+                    <MetricCard label="% of ARV" value={fmtPct(refiForm.refiPctARV || deal.refiPctARV)} />
+                    <MetricCard label="Monthly Payment" value={refiMonthlyPayment > 0 ? fmt(refiMonthlyPayment) : "—"} />
+                    <MetricCard label="Annual Debt Service" value={refiAnnualDebtService > 0 ? fmt(refiAnnualDebtService) : "—"} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, marginTop: 12 }}>
+                    <MetricCard label="Cash Flow (Refi)" value={refiCashFlow !== 0 || refiAnnualDebtService > 0 ? fmt(refiCashFlow) : fmt(deal.refiCashFlow)} sub="annual" highlight good={refiCashFlow > 0 || num(deal.refiCashFlow) > 0} warn={(refiAnnualDebtService > 0 && refiCashFlow <= 0) || (num(deal.refiCashFlow) !== null && num(deal.refiCashFlow) <= 0)} />
+                    <MetricCard label="DSCR (Refi)" value={refiDSCR} good={num(refiDSCR) >= 1.25} warn={num(refiDSCR) !== null && num(refiDSCR) < 1.0} />
+                    <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good={num(deal.cashOutRefi) > 0} warn={num(deal.cashOutRefi) !== null && num(deal.cashOutRefi) <= 0} />
+                    <MetricCard label="Equity After Refi" value={fmt(deal.equityAfterRefi)} />
+                  </div>
                 </div>
-              </section>
-              {/* Key Ratios */}
-              <section>
-                <h3 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                  Key Ratios
-                </h3>
-                <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
-                  <MetricCard label="LTC" value={fmtPct(deal.bridgeLTC)} warn={num(deal.bridgeLTC) > 90} />
-                  <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} good={num(deal.bridgeLTV) !== null && num(deal.bridgeLTV) <= 75} warn={num(deal.bridgeLTV) > 85} />
-                  <MetricCard label="DSCR" value={deal.dscr || "—"} good={num(deal.dscr) >= 1.25} warn={num(deal.dscr) !== null && num(deal.dscr) < 1.0} />
-                  <MetricCard label="Equity Required" value={fmt(deal.equityRequired)} />
+              )}
+
+              {/* Summary sub-tab */}
+              {financingSubTab === "summary" && (
+                <div>
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 20px", display: "flex", alignItems: "center", gap: 8 }}>
+                    Financing Overview <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                  </h3>
+                  {/* Bridge Summary */}
+                  <section style={{ marginBottom: 28 }}>
+                    <h4 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={2}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>
+                      Bridge Loan
+                      {(deal.bridgeLoanTotal && num(deal.bridgeLoanTotal) > 0) ? <span style={{ fontSize: 10, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>Active</span> : <span style={{ fontSize: 10, background: "#f1f5f9", color: "#94a3b8", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>N/A</span>}
+                    </h4>
+                    <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                      <MetricCard label="Loan Total" value={fmt(deal.bridgeLoanTotal)} />
+                      <MetricCard label="Interest Rate" value={fmtPct(deal.bridgeInterestRate)} />
+                      <MetricCard label="Monthly Interest" value={fmt(deal.bridgeInterestMonthly)} />
+                      <MetricCard label="Total Cost" value={fmt(deal.bridgeTotalCost)} />
+                    </div>
+                  </section>
+                  {/* Refi Summary */}
+                  <section style={{ marginBottom: 28 }}>
+                    <h4 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth={2}><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      Refinance
+                      {(deal.refiLoanAmount && num(deal.refiLoanAmount) > 0) ? <span style={{ fontSize: 10, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>Active</span> : <span style={{ fontSize: 10, background: "#f1f5f9", color: "#94a3b8", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>N/A</span>}
+                    </h4>
+                    <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                      <MetricCard label="Refi Loan Amount" value={fmt(deal.refiLoanAmount)} />
+                      <MetricCard label="Interest Rate" value={fmtPct(deal.refiInterestRate)} />
+                      <MetricCard label="Cash Flow (Refi)" value={fmt(deal.refiCashFlow)} sub="annual" highlight good={num(deal.refiCashFlow) > 0} warn={num(deal.refiCashFlow) !== null && num(deal.refiCashFlow) <= 0} />
+                      <MetricCard label="Cash Out at Refi" value={fmt(deal.cashOutRefi)} good={num(deal.cashOutRefi) > 0} />
+                    </div>
+                  </section>
+                  {/* Key Ratios */}
+                  <section>
+                    <h4 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                      Key Ratios
+                    </h4>
+                    <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12 }}>
+                      <MetricCard label="LTC" value={fmtPct(deal.bridgeLTC)} warn={num(deal.bridgeLTC) > 90} />
+                      <MetricCard label="LTV" value={fmtPct(deal.bridgeLTV)} good={num(deal.bridgeLTV) !== null && num(deal.bridgeLTV) <= 75} warn={num(deal.bridgeLTV) > 85} />
+                      <MetricCard label="DSCR" value={deal.dscr || "—"} good={num(deal.dscr) >= 1.25} warn={num(deal.dscr) !== null && num(deal.dscr) < 1.0} />
+                      <MetricCard label="Equity Required" value={fmt(deal.equityRequired)} />
+                    </div>
+                  </section>
                 </div>
-              </section>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── IMPROVEMENTS TAB ── */}
+        {activeTab === "improvements" && (() => {
+          const totalBudget = improvements.reduce((s, i) => s + (parseFloat(i.budgeted_cost) || 0), 0);
+          const totalActual = improvements.reduce((s, i) => s + (parseFloat(i.actual_cost) || 0), 0);
+          const completed = improvements.filter(i => i.status === "Complete").length;
+          const inProgress = improvements.filter(i => i.status === "In Progress").length;
+          const statusColors = { "Not Started": { bg: "#f8fafc", color: "#94a3b8", border: "#e2e8f0" }, "In Progress": { bg: "#eff6ff", color: "#2563eb", border: "#bfdbfe" }, "Complete": { bg: "#f0fdf4", color: "#16a34a", border: "#86efac" } };
+          const inpStyle = { width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" };
+          const lblStyle = { display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" };
+          // Auto-fetch on tab open
+          if (improvements.length === 0 && !improvementsLoading) fetchImprovements();
+          return (
+            <div>
+              {/* Summary cards */}
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+                <div style={{ padding: 16, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Total Budget</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{totalBudget > 0 ? fmt(totalBudget) : "—"}</div>
+                </div>
+                <div style={{ padding: 16, borderRadius: 12, background: totalActual > totalBudget && totalBudget > 0 ? "#fef2f2" : "#f8fafc", border: "1px solid " + (totalActual > totalBudget && totalBudget > 0 ? "#fecaca" : "#e2e8f0") }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: totalActual > totalBudget && totalBudget > 0 ? "#ef4444" : "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Actual Spend</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: totalActual > totalBudget && totalBudget > 0 ? "#ef4444" : "#0f172a", fontFamily: "'Playfair Display', serif" }}>{totalActual > 0 ? fmt(totalActual) : "—"}</div>
+                </div>
+                <div style={{ padding: 16, borderRadius: 12, background: "#f0fdf4", border: "1px solid #86efac" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Complete</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#16a34a", fontFamily: "'Playfair Display', serif" }}>{completed}/{improvements.length}</div>
+                </div>
+                <div style={{ padding: 16, borderRadius: 12, background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>In Progress</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#2563eb", fontFamily: "'Playfair Display', serif" }}>{inProgress}</div>
+                </div>
+              </div>
+
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+                  Line Items ({improvements.length}) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                </div>
+                <button onClick={() => { setShowAddImprovement(true); setEditingImprovementId(null); setImprovementForm({ description: "", budgeted_cost: "", actual_cost: "", status: "Not Started", contractor: "" }); }} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add Item</button>
+              </div>
+
+              {/* Add/Edit form */}
+              {showAddImprovement && (
+                <div style={{ background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0", padding: 18, marginBottom: 16 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+                    <div><label style={lblStyle}>Description</label><input style={inpStyle} value={improvementForm.description} onChange={e => setImprovementForm(f => ({...f, description: e.target.value}))} placeholder="Kitchen renovation..." /></div>
+                    <div><label style={lblStyle}>Budgeted Cost</label><input style={inpStyle} value={improvementForm.budgeted_cost} onChange={e => setImprovementForm(f => ({...f, budgeted_cost: e.target.value}))} placeholder="$15,000" /></div>
+                    <div><label style={lblStyle}>Actual Cost</label><input style={inpStyle} value={improvementForm.actual_cost} onChange={e => setImprovementForm(f => ({...f, actual_cost: e.target.value}))} placeholder="$14,200" /></div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                    <div><label style={lblStyle}>Contractor</label><input style={inpStyle} value={improvementForm.contractor} onChange={e => setImprovementForm(f => ({...f, contractor: e.target.value}))} placeholder="ABC Contracting" /></div>
+                    <div>
+                      <label style={lblStyle}>Status</label>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {["Not Started", "In Progress", "Complete"].map(s => (
+                          <button key={s} onClick={() => setImprovementForm(f => ({...f, status: s}))} style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: improvementForm.status === s ? "1.5px solid " + statusColors[s].color : "1px solid #e2e8f0", background: improvementForm.status === s ? statusColors[s].bg : "#fff", color: improvementForm.status === s ? statusColors[s].color : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={() => { setShowAddImprovement(false); setEditingImprovementId(null); }} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                    <button onClick={handleSaveImprovement} disabled={improvementSaving || !improvementForm.description.trim()} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: improvementForm.description.trim() ? "linear-gradient(135deg, #16a34a, #15803d)" : "#e2e8f0", color: improvementForm.description.trim() ? "#fff" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: improvementForm.description.trim() ? "pointer" : "default", fontFamily: "'DM Sans', sans-serif" }}>
+                      {improvementSaving ? "Saving..." : editingImprovementId ? "Update" : "Add"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Items list */}
+              {improvementsLoading ? <LoadingSpinner /> : improvements.length === 0 && !showAddImprovement ? (
+                <div style={{ textAlign: "center", padding: "40px 16px" }}>
+                  <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: "0 0 4px" }}>No improvements tracked yet</p>
+                  <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 14px" }}>Add line items to track renovation costs, contractors, and progress.</p>
+                  <button onClick={() => setShowAddImprovement(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add first improvement</button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {improvements.map(item => {
+                    const sc = statusColors[item.status] || statusColors["Not Started"];
+                    const budget = parseFloat(item.budgeted_cost) || 0;
+                    const actual = parseFloat(item.actual_cost) || 0;
+                    const overBudget = budget > 0 && actual > budget;
+                    return (
+                      <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 10, border: "1px solid #f1f5f9", background: "#fff" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{item.description}</div>
+                          <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>
+                            {item.contractor ? item.contractor + " · " : ""}{budget > 0 ? "Budget: " + fmt(budget) : ""}{actual > 0 ? " · Actual: " + fmt(actual) : ""}
+                            {overBudget && <span style={{ color: "#ef4444", fontWeight: 600 }}> (over budget)</span>}
+                          </div>
+                        </div>
+                        <span style={{ padding: "3px 10px", borderRadius: 8, fontSize: 10, fontWeight: 700, background: sc.bg, color: sc.color, border: "1px solid " + sc.border, whiteSpace: "nowrap" }}>{item.status}</span>
+                        <button onClick={() => { setEditingImprovementId(item.id); setImprovementForm({ description: item.description || "", budgeted_cost: item.budgeted_cost || "", actual_cost: item.actual_cost || "", status: item.status || "Not Started", contractor: item.contractor || "" }); setShowAddImprovement(true); }} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button onClick={() => handleDeleteImprovement(item.id)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── UNITS TAB ── */}
+        {activeTab === "units" && (() => {
+          const totalSqft = units.reduce((s, u) => s + (parseFloat(u.sqft) || 0), 0);
+          const propertySqft = parseFloat(String(deal.sqft || deal.buildingSqft || "0").replace(/[,]/g, "")) || 0;
+          const unaccountedSqft = propertySqft > 0 ? propertySqft - totalSqft : 0;
+          const totalCurrentRent = units.reduce((s, u) => s + (parseFloat(u.current_rent) || 0), 0);
+          const totalMarketRent = units.reduce((s, u) => s + (parseFloat(u.market_rent) || 0), 0);
+          const occupiedCount = units.filter(u => u.status === "Occupied").length;
+          const vacantCount = units.filter(u => u.status === "Vacant").length;
+          const occupancyPct = units.length > 0 ? Math.round((occupiedCount / units.length) * 100) : 0;
+          const inpStyle = { width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" };
+          const lblStyle = { display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" };
+          if (units.length === 0 && !unitsLoading) fetchUnits();
+          return (
+            <div>
+              {/* Summary cards */}
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+                <div style={{ padding: 16, borderRadius: 12, background: "#f0fdf4", border: "1px solid #86efac" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Units</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{units.length}</div>
+                </div>
+                <div style={{ padding: 16, borderRadius: 12, background: occupancyPct >= 90 ? "#f0fdf4" : occupancyPct >= 70 ? "#fffbeb" : "#fef2f2", border: "1px solid " + (occupancyPct >= 90 ? "#86efac" : occupancyPct >= 70 ? "#fde68a" : "#fecaca") }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: occupancyPct >= 90 ? "#16a34a" : occupancyPct >= 70 ? "#d97706" : "#ef4444", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Occupancy</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{occupancyPct}%</div>
+                  <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{occupiedCount} occupied · {vacantCount} vacant</div>
+                </div>
+                <div style={{ padding: 16, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Total Rent (Current)</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{totalCurrentRent > 0 ? fmt(totalCurrentRent) : "—"}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>per month</div>
+                </div>
+                <div style={{ padding: 16, borderRadius: 12, background: unaccountedSqft > 0 && propertySqft > 0 ? "#fffbeb" : "#f8fafc", border: "1px solid " + (unaccountedSqft > 0 && propertySqft > 0 ? "#fde68a" : "#e2e8f0") }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: unaccountedSqft > 0 && propertySqft > 0 ? "#d97706" : "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Unaccounted Space</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: unaccountedSqft > 0 && propertySqft > 0 ? "#d97706" : "#0f172a", fontFamily: "'Playfair Display', serif" }}>{propertySqft > 0 ? unaccountedSqft.toLocaleString() + " sqft" : "—"}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{propertySqft > 0 ? totalSqft.toLocaleString() + " of " + propertySqft.toLocaleString() + " sqft" : "Set property sqft in overview"}</div>
+                </div>
+              </div>
+
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+                  Unit Roster ({units.length}) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                </div>
+                <button onClick={() => { setShowAddUnit(true); setEditingUnitId(null); setUnitForm({ unit_number: "", sqft: "", bedrooms: "", bathrooms: "", current_rent: "", market_rent: "", status: "Vacant", tenant_name: "" }); }} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add Unit</button>
+              </div>
+
+              {/* Add/Edit form */}
+              {showAddUnit && (
+                <div style={{ background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0", padding: 18, marginBottom: 16 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+                    <div><label style={lblStyle}>Unit #</label><input style={inpStyle} value={unitForm.unit_number} onChange={e => setUnitForm(f => ({...f, unit_number: e.target.value}))} placeholder="1A" /></div>
+                    <div><label style={lblStyle}>Sq Ft</label><input style={inpStyle} value={unitForm.sqft} onChange={e => setUnitForm(f => ({...f, sqft: e.target.value}))} placeholder="850" /></div>
+                    <div><label style={lblStyle}>Bedrooms</label><input style={inpStyle} value={unitForm.bedrooms} onChange={e => setUnitForm(f => ({...f, bedrooms: e.target.value}))} placeholder="2" /></div>
+                    <div><label style={lblStyle}>Bathrooms</label><input style={inpStyle} value={unitForm.bathrooms} onChange={e => setUnitForm(f => ({...f, bathrooms: e.target.value}))} placeholder="1" /></div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+                    <div><label style={lblStyle}>Current Rent</label><input style={inpStyle} value={unitForm.current_rent} onChange={e => setUnitForm(f => ({...f, current_rent: e.target.value}))} placeholder="$1,200" /></div>
+                    <div><label style={lblStyle}>Market Rent</label><input style={inpStyle} value={unitForm.market_rent} onChange={e => setUnitForm(f => ({...f, market_rent: e.target.value}))} placeholder="$1,500" /></div>
+                    <div><label style={lblStyle}>Tenant Name</label><input style={inpStyle} value={unitForm.tenant_name} onChange={e => setUnitForm(f => ({...f, tenant_name: e.target.value}))} placeholder="John Smith" /></div>
+                    <div>
+                      <label style={lblStyle}>Status</label>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {["Occupied", "Vacant"].map(s => (
+                          <button key={s} onClick={() => setUnitForm(f => ({...f, status: s}))} style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: unitForm.status === s ? "1.5px solid " + (s === "Occupied" ? "#16a34a" : "#d97706") : "1px solid #e2e8f0", background: unitForm.status === s ? (s === "Occupied" ? "#f0fdf4" : "#fffbeb") : "#fff", color: unitForm.status === s ? (s === "Occupied" ? "#16a34a" : "#d97706") : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={() => { setShowAddUnit(false); setEditingUnitId(null); }} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                    <button onClick={handleSaveUnit} disabled={unitSaving || !unitForm.unit_number.trim()} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: unitForm.unit_number.trim() ? "linear-gradient(135deg, #16a34a, #15803d)" : "#e2e8f0", color: unitForm.unit_number.trim() ? "#fff" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: unitForm.unit_number.trim() ? "pointer" : "default", fontFamily: "'DM Sans', sans-serif" }}>
+                      {unitSaving ? "Saving..." : editingUnitId ? "Update" : "Add"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Units table */}
+              {unitsLoading ? <LoadingSpinner /> : units.length === 0 && !showAddUnit ? (
+                <div style={{ textAlign: "center", padding: "40px 16px" }}>
+                  <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><path d="M3 21h18M3 7v14M21 7v14M6 21V10h4v11M14 21V10h4v11M10 7l2-4 2 4"/></svg>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: "0 0 4px" }}>No units logged yet</p>
+                  <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 14px" }}>Add individual units to track rent, occupancy, and square footage.</p>
+                  <button onClick={() => setShowAddUnit(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add first unit</button>
+                </div>
+              ) : !isMobile ? (
+                <div style={{ overflow: "auto", borderRadius: 10, border: "1px solid #f1f5f9" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc" }}>
+                        {["Unit", "Sq Ft", "Bed/Bath", "Current Rent", "Market Rent", "Status", "Tenant", ""].map((h, i) => (
+                          <th key={i} style={{ padding: "10px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", borderBottom: "1px solid #f1f5f9" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {units.map(u => {
+                        const rent = parseFloat(u.current_rent) || 0;
+                        const market = parseFloat(u.market_rent) || 0;
+                        const belowMarket = market > 0 && rent > 0 && rent < market * 0.9;
+                        return (
+                          <tr key={u.id} style={{ borderBottom: "1px solid #f8fafc" }}>
+                            <td style={{ padding: "12px 14px", fontWeight: 600, color: "#0f172a" }}>{u.unit_number}</td>
+                            <td style={{ padding: "12px 14px", color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{u.sqft ? parseFloat(u.sqft).toLocaleString() : "—"}</td>
+                            <td style={{ padding: "12px 14px", color: "#64748b" }}>{u.bedrooms || "—"} / {u.bathrooms || "—"}</td>
+                            <td style={{ padding: "12px 14px", fontWeight: 600, color: belowMarket ? "#d97706" : "#0f172a", fontFamily: "'DM Mono', monospace" }}>{rent > 0 ? fmt(rent) : "—"}{belowMarket ? " ↓" : ""}</td>
+                            <td style={{ padding: "12px 14px", color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>{market > 0 ? fmt(market) : "—"}</td>
+                            <td style={{ padding: "12px 14px" }}><span style={{ padding: "3px 10px", borderRadius: 8, fontSize: 10, fontWeight: 700, background: u.status === "Occupied" ? "#f0fdf4" : "#fffbeb", color: u.status === "Occupied" ? "#16a34a" : "#d97706", border: "1px solid " + (u.status === "Occupied" ? "#86efac" : "#fde68a") }}>{u.status || "Vacant"}</span></td>
+                            <td style={{ padding: "12px 14px", color: "#64748b" }}>{u.tenant_name || "—"}</td>
+                            <td style={{ padding: "12px 14px" }}>
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <button onClick={() => { setEditingUnitId(u.id); setUnitForm({ unit_number: u.unit_number || "", sqft: u.sqft || "", bedrooms: u.bedrooms || "", bathrooms: u.bathrooms || "", current_rent: u.current_rent || "", market_rent: u.market_rent || "", status: u.status || "Vacant", tenant_name: u.tenant_name || "" }); setShowAddUnit(true); }} style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                </button>
+                                <button onClick={() => handleDeleteUnit(u.id)} style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {units.map(u => (
+                    <div key={u.id} style={{ padding: "14px 16px", borderRadius: 10, border: "1px solid #f1f5f9", background: "#fff" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>Unit {u.unit_number}</div>
+                        <span style={{ padding: "3px 10px", borderRadius: 8, fontSize: 10, fontWeight: 700, background: u.status === "Occupied" ? "#f0fdf4" : "#fffbeb", color: u.status === "Occupied" ? "#16a34a" : "#d97706" }}>{u.status || "Vacant"}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>
+                        {u.sqft ? parseFloat(u.sqft).toLocaleString() + " sqft" : ""}{u.bedrooms ? " · " + u.bedrooms + "BR/" + (u.bathrooms || "—") + "BA" : ""}{u.tenant_name ? " · " + u.tenant_name : ""}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                        Rent: {u.current_rent ? fmt(parseFloat(u.current_rent)) : "—"} · Market: {u.market_rent ? fmt(parseFloat(u.market_rent)) : "—"}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                        <button onClick={() => { setEditingUnitId(u.id); setUnitForm({ unit_number: u.unit_number || "", sqft: u.sqft || "", bedrooms: u.bedrooms || "", bathrooms: u.bathrooms || "", current_rent: u.current_rent || "", market_rent: u.market_rent || "", status: u.status || "Vacant", tenant_name: u.tenant_name || "" }); setShowAddUnit(true); }} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Edit</button>
+                        <button onClick={() => handleDeleteUnit(u.id)} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", color: "#ef4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Rent analysis */}
+              {units.length > 0 && totalMarketRent > 0 && totalCurrentRent > 0 && (
+                <div style={{ marginTop: 20, padding: 16, borderRadius: 12, background: totalCurrentRent < totalMarketRent * 0.9 ? "#fffbeb" : "#f0fdf4", border: "1px solid " + (totalCurrentRent < totalMarketRent * 0.9 ? "#fde68a" : "#86efac") }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: totalCurrentRent < totalMarketRent * 0.9 ? "#d97706" : "#16a34a", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>
+                    Rent Upside: {fmt(totalMarketRent - totalCurrentRent)}/mo ({Math.round(((totalMarketRent - totalCurrentRent) / totalCurrentRent) * 100)}% increase potential)
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Current total: {fmt(totalCurrentRent)}/mo · Market total: {fmt(totalMarketRent)}/mo</div>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -3019,6 +3463,47 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 </div>
               </div>
 
+              {/* Linked contacts for this deal */}
+              <div style={{ marginBottom: 14, padding: "12px 16px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b", fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "0.06em" }}>Linked contacts ({dealLinkedContacts.length})</span>
+                  <button onClick={() => setShowLinkContactDropdown(!showLinkContactDropdown)} style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Link contact</button>
+                </div>
+                {showLinkContactDropdown && (
+                  <div style={{ marginBottom: 10, position: "relative" }}>
+                    <input value={linkContactSearch} onChange={e => setLinkContactSearch(e.target.value)} placeholder="Search contacts..." style={{ width: "100%", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }} autoFocus />
+                    <div style={{ maxHeight: 150, overflow: "auto", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, marginTop: 4 }}>
+                      {allContactsForDeal
+                        .filter(c => !dealLinkedContacts.find(dl => dl.id === c.id))
+                        .filter(c => (c.contact_name || "").toLowerCase().includes(linkContactSearch.toLowerCase()) || (c.email || "").toLowerCase().includes(linkContactSearch.toLowerCase()))
+                        .slice(0, 10)
+                        .map(c => (
+                          <div key={c.id} onClick={() => handleLinkContactToDeal(c)} style={{ padding: "8px 12px", cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between" }}
+                            onMouseEnter={e => e.currentTarget.style.background = "#f0fdf4"} onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+                            <span style={{ fontWeight: 600, color: "#0f172a" }}>{c.contact_name}</span>
+                            <span style={{ color: "#94a3b8", fontSize: 11 }}>{c.email || c.phone || ""}</span>
+                          </div>
+                        ))}
+                      {allContactsForDeal.filter(c => !dealLinkedContacts.find(dl => dl.id === c.id)).filter(c => (c.contact_name || "").toLowerCase().includes(linkContactSearch.toLowerCase())).length === 0 && (
+                        <div style={{ padding: "10px 12px", color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif", textAlign: "center" }}>No contacts found</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {dealLinkedContacts.length > 0 ? (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {dealLinkedContacts.map(c => (
+                      <span key={c.id} style={{ padding: "3px 8px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "#fff", border: "1px solid #e2e8f0", color: "#0f172a", fontFamily: "'DM Sans', sans-serif", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        {c.contact_name}
+                        <span onClick={() => handleUnlinkContactFromDeal(c)} style={{ cursor: "pointer", color: "#ef4444", fontSize: 13, lineHeight: 1 }}>×</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>No individual contacts linked yet. Link contacts to send them deal notifications directly.</span>
+                )}
+              </div>
+
               {/* Notify investors toggle */}
               {linkedInvestors.length > 0 && updateForm.isPublic && (
                 <div style={{ marginBottom: 14, padding: "12px 16px", borderRadius: 10, background: notifyInvestors ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (notifyInvestors ? "#86efac" : "#e2e8f0"), transition: "all 0.2s" }}>
@@ -3066,20 +3551,28 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                   if (error) throw error;
                   const updateId = insertedRows && insertedRows[0] ? insertedRows[0].id : null;
 
-                  // 2. Create notification records for each investor (only if public)
+                  // 2. Create notification records for each investor/contact (only if public)
                   if (updateForm.isPublic && notifyInvestors && updateId && linkedInvestors.length > 0) {
                     const notifRecords = [];
+                    const seenEmails = new Set();
+                    const seenPhones = new Set();
                     linkedInvestors.forEach(inv => {
                       inv.allEmails.forEach(email => {
+                        const key = email.toLowerCase().trim();
+                        if (seenEmails.has(key)) return; // dedup across all recipients
+                        seenEmails.add(key);
                         notifRecords.push({
-                          update_id: updateId, investor_id: inv.id,
+                          update_id: updateId, investor_id: inv.id.toString().startsWith("contact_") ? null : inv.id,
                           contact_email: email, contact_name: inv.investor_name,
                           notification_type: "email", status: "pending",
                         });
                       });
                       inv.allPhones.forEach(phone => {
+                        const key = phone.replace(/\D/g, "");
+                        if (seenPhones.has(key)) return; // dedup across all recipients
+                        seenPhones.add(key);
                         notifRecords.push({
-                          update_id: updateId, investor_id: inv.id,
+                          update_id: updateId, investor_id: inv.id.toString().startsWith("contact_") ? null : inv.id,
                           contact_phone: phone, contact_name: inv.investor_name,
                           notification_type: "sms", status: "pending",
                         });
@@ -3087,23 +3580,23 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                     });
                     if (notifRecords.length > 0) {
                       await supabase.from("investor_notifications").insert(notifRecords);
-                      // Auto-log communications for each investor
+                      // Auto-log communications for each investor/contact
                       const commLogs = [];
                       const loggedInvestors = new Set();
                       notifRecords.forEach(nr => {
-                        if (!loggedInvestors.has(nr.investor_id + "_" + nr.notification_type)) {
-                          loggedInvestors.add(nr.investor_id + "_" + nr.notification_type);
-                          commLogs.push({
-                            investor_id: nr.investor_id,
-                            comm_type: nr.notification_type === "sms" ? "SMS" : "Email",
-                            direction: "outbound",
-                            subject: updateForm.title.trim(),
-                            body: "Investor update notification: " + updateForm.title.trim(),
-                            related_update_id: updateId,
-                            sent_by: userEmail,
-                            status: "sent",
-                          });
-                        }
+                        const logKey = (nr.investor_id || nr.contact_email || nr.contact_phone) + "_" + nr.notification_type;
+                        if (loggedInvestors.has(logKey)) return;
+                        loggedInvestors.add(logKey);
+                        commLogs.push({
+                          investor_id: nr.investor_id || null,
+                          comm_type: nr.notification_type === "sms" ? "SMS" : "Email",
+                          direction: "outbound",
+                          subject: updateForm.title.trim(),
+                          body: "Investor update notification: " + updateForm.title.trim(),
+                          related_update_id: updateId,
+                          sent_by: userEmail,
+                          status: "sent",
+                        });
                       });
                       if (commLogs.length > 0) {
                         await supabase.from("investor_communications").insert(commLogs).then(() => {}).catch(e => console.log("[REAP] Communications log table may not exist yet:", e));
@@ -3987,7 +4480,7 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                   ["Name", investorProfile?.investorName || "—"],
                   ["Company", investorProfile?.company || "—"],
                   ["Email", investorProfile?.email || "—"],
-                  ["Investor type", investorProfile?.investorType || "—"],
+                  ["Entity Type", investorProfile?.investorType || "—"],
                 ].map(([label, value], i) => (
                   <div key={i}>
                     <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginBottom: 2 }}>{label}</div>
@@ -5354,13 +5847,13 @@ function BuyerStatusBadge({ status }) {
 
 function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
   const isEdit = !!buyer?.rowId;
-  const [form, setForm] = useState({ name: "", email: "", phone: "", company: "", buyerStatus: "New", assetPreference: "", temperature: "", manager: "", notes: "", leadSource: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", company: "", contactType: "Buyer (Client)", buyerStatus: "New", assetPreference: "", temperature: "", manager: "", notes: "", leadSource: "" });
 
   useEffect(() => {
     if (isOpen && buyer) {
-      setForm({ name: buyer.name || "", email: buyer.email || "", phone: buyer.phone || "", company: buyer.company || "", buyerStatus: buyer.buyerStatus || "New", assetPreference: buyer.assetPreference || "", temperature: buyer.temperature || "", manager: buyer.manager || "", notes: buyer.notes || "", leadSource: buyer.leadSource || "" });
+      setForm({ name: buyer.name || "", email: buyer.email || "", phone: buyer.phone || "", company: buyer.company || "", contactType: buyer.contactType || "Buyer (Client)", buyerStatus: buyer.buyerStatus || "New", assetPreference: buyer.assetPreference || "", temperature: buyer.temperature || "", manager: buyer.manager || "", notes: buyer.notes || "", leadSource: buyer.leadSource || "" });
     } else if (isOpen) {
-      setForm({ name: "", email: "", phone: "", company: "", buyerStatus: "New", assetPreference: "", temperature: "", manager: "", notes: "", leadSource: "" });
+      setForm({ name: "", email: "", phone: "", company: "", contactType: "Buyer (Client)", buyerStatus: "New", assetPreference: "", temperature: "", manager: "", notes: "", leadSource: "" });
     }
   }, [isOpen, buyer]);
 
@@ -5380,8 +5873,8 @@ function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
       <div style={{ position: "relative", background: "#fff", width: isMobile ? "100%" : 540, maxHeight: isMobile ? "92vh" : "85vh", overflow: "auto", borderRadius: isMobile ? "20px 20px 0 0" : 20, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", animation: isMobile ? "slideUp 0.3s cubic-bezier(0.25, 1, 0.5, 1)" : "fadeIn 0.25s ease" }}>
         <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "#fff", zIndex: 1, borderRadius: isMobile ? "20px 20px 0 0" : "20px 20px 0 0" }}>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>{isEdit ? "Edit Buyer" : "New Buyer"}</h2>
-            <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{isEdit ? "Update buyer details" : "Add a buyer to your pipeline"}</p>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>{isEdit ? "Edit Contact" : "New Contact"}</h2>
+            <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{isEdit ? "Update contact details" : "Add a contact to your pipeline"}</p>
           </div>
           <button onClick={onClose} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12" /></svg>
@@ -5394,10 +5887,31 @@ function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
             <div><label style={labelStyle}>Email</label><input style={inputStyle} type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="john@example.com" onFocus={focusH} onBlur={blurH} /></div>
             <div><label style={labelStyle}>Phone</label><input style={inputStyle} value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(813) 555-1234" onFocus={focusH} onBlur={blurH} /></div>
           </div>
-          <div style={{ marginBottom: 24 }}><label style={labelStyle}>Company</label><input style={inputStyle} value={form.company} onChange={e => set("company", e.target.value)} placeholder="ABC Investments LLC" onFocus={focusH} onBlur={blurH} /></div>
+          <div style={{ marginBottom: 16 }}><label style={labelStyle}>Company</label><input style={inputStyle} value={form.company} onChange={e => set("company", e.target.value)} placeholder="ABC Investments LLC" onFocus={focusH} onBlur={blurH} /></div>
+          <div style={{ marginBottom: 24 }}>
+            <label style={labelStyle}>Contact Type (select all that apply)</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {["Buyer", "Investor", "Vendor", "Broker", "Lender", "Attorney", "Property Manager", "Other"].map(t => {
+                const types = (form.contactType || "").split(",").map(s => s.trim()).filter(Boolean);
+                const isActive = types.includes(t);
+                return (
+                  <button key={t} type="button" onClick={() => {
+                    const updated = isActive ? types.filter(x => x !== t) : [...types, t];
+                    set("contactType", updated.join(", "));
+                  }} style={{
+                    padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s",
+                    background: isActive ? (t === "Investor" ? "#f0fdf4" : "#f8fafc") : "#fff",
+                    border: isActive ? (t === "Investor" ? "1.5px solid #16a34a" : "1.5px solid #94a3b8") : "1.5px solid #e2e8f0",
+                    color: isActive ? (t === "Investor" ? "#16a34a" : "#0f172a") : "#94a3b8",
+                  }}>{t}</button>
+                );
+              })}
+            </div>
+          </div>
           <p style={secStyle}>Pipeline <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-            <div><label style={labelStyle}>Buyer Status</label><select style={selectStyle} value={form.buyerStatus} onChange={e => set("buyerStatus", e.target.value)}>{BUYER_STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+            <div><label style={labelStyle}>Status</label><select style={selectStyle} value={form.buyerStatus} onChange={e => set("buyerStatus", e.target.value)}>{BUYER_STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
             <div><label style={labelStyle}>Temperature</label><select style={selectStyle} value={form.temperature} onChange={e => set("temperature", e.target.value)}><option value="">—</option><option value="🔥 Hot">🔥 Hot</option><option value="🤔 Medium">🤔 Medium</option><option value="🧊 Cold">🧊 Cold</option></select></div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
@@ -5409,7 +5923,7 @@ function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
           <div style={{ marginBottom: 24 }}><label style={labelStyle}>Notes</label><textarea style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Budget, criteria, follow-up notes..." onFocus={focusH} onBlur={blurH} /></div>
           <button onClick={handleSave} disabled={saving || !form.name} style={{ width: "100%", padding: "14px 24px", background: saving ? "#15803d" : "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", border: "none", borderRadius: 12, cursor: saving ? "not-allowed" : "pointer", transition: "all 0.25s", letterSpacing: "0.01em", boxShadow: "0 4px 14px rgba(22,163,74,0.25)", opacity: !form.name ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
             {saving && <svg width={18} height={18} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle cx={12} cy={12} r={10} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={3} /><path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round" /></svg>}
-            {saving ? "Saving..." : isEdit ? "Update Buyer" : "Add Buyer"}
+            {saving ? "Saving..." : isEdit ? "Update Contact" : "Add Contact"}
           </button>
         </div>
       </div>
@@ -5418,7 +5932,7 @@ function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
   );
 }
 
-function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp }) {
+function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp, deals, updateHash, refreshKey }) {
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -5428,6 +5942,31 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
   const [typeFilter, setTypeFilter] = useState("");
   const [hoveredRow, setHoveredRow] = useState(null);
   const searchRef = useRef(null);
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [contactFunds, setContactFunds] = useState([]);
+  const [allFunds, setAllFunds] = useState([]);
+  const [contactComms, setContactComms] = useState([]);
+  const [contactActivities, setContactActivities] = useState([]);
+
+  // Fetch funds + investor_funds for contact detail investor tabs
+  const fetchContactFundsData = useCallback(async () => {
+    try {
+      const [fundsRes, ifRes] = await Promise.all([
+        supabase.from("funds").select("*").order("created_at", { ascending: false }),
+        supabase.from("investor_funds").select("*").order("created_at", { ascending: false }),
+      ]);
+      if (fundsRes.data) setAllFunds(fundsRes.data.map(f => ({ ...f, dealAddresses: f.deal_addresses ? f.deal_addresses.split("|||").filter(Boolean) : [] })));
+      if (ifRes.data) setContactFunds(ifRes.data);
+    } catch (e) { console.log("[REAP] Funds fetch error:", e); }
+  }, []);
+
+  // Handle contact click: always open detail view
+  const handleContactClick = (b) => {
+    setSelectedContact(b);
+    if ((b.contactType || "").toLowerCase().includes("investor")) {
+      fetchContactFundsData();
+    }
+  };
 
   useEffect(() => { if (searchOpen && searchRef.current) searchRef.current.focus(); }, [searchOpen]);
 
@@ -5444,6 +5983,8 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
         leadSource: r.lead_source || "", company: r.company || "", dateAdded: r.date_added || "",
         lastContact: r.last_contact || "", followUpNotes: r.follow_up_notes || "",
         user: r.user_email || "",
+        linkedDealAddresses: r.linked_deal_addresses ? r.linked_deal_addresses.split("|||").filter(Boolean) : [],
+        portalEmail: r.portal_email || "",
       })).filter(c => c.name && c.name.trim() !== "");
       const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
       const filtered = teamList.length > 0
@@ -5453,7 +5994,17 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [teamEmailsProp]);
 
-  useEffect(() => { if (session) fetchBuyers(); }, [session, fetchBuyers]);
+  useEffect(() => { if (session) fetchBuyers(); }, [session, fetchBuyers, refreshKey]);
+
+  // After buyers reload, update selectedContact if still viewing one
+  useEffect(() => {
+    if (selectedContact && buyers.length > 0) {
+      const updated = buyers.find(b => b.rowId === selectedContact.rowId);
+      if (updated && JSON.stringify(updated) !== JSON.stringify(selectedContact)) {
+        setSelectedContact(updated);
+      }
+    }
+  }, [buyers, selectedContact]);
 
   const statusFilters = BUYER_STATUS_LIST.map(label => ({ label, match: b => (b.buyerStatus || "").trim() === label }));
   const typeFiltered = typeFilter ? buyers.filter(b => (b.contactType || "").toLowerCase().includes(typeFilter.toLowerCase())) : buyers;
@@ -5462,6 +6013,25 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorState message={error} onRetry={fetchBuyers} />;
+
+  // If a contact is selected, show the detail view
+  if (selectedContact) {
+    return <>
+      <ContactDetailView
+        contact={selectedContact}
+        onBack={() => setSelectedContact(null)}
+        onEdit={() => { onSetEditingBuyer(selectedContact); }}
+        isMobile={isMobile}
+        deals={deals || []}
+        funds={allFunds}
+        investorFunds={contactFunds}
+        contacts={buyers}
+        userEmail={session?.user?.email || ""}
+        onRefresh={() => { fetchBuyers(); fetchContactFundsData(); }}
+      />
+      <BuyerModal isOpen={showBuyerModal} onClose={() => { onCloseBuyerModal(); }} onSave={async (form) => { await onSaveBuyer(form); }} saving={savingBuyer} isMobile={isMobile} buyer={editingBuyer} />
+    </>;
+  }
 
   return (
     <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
@@ -5503,9 +6073,11 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
               <option value="">All Types</option>
               <option value="Buyer">Buyers</option>
               <option value="Investor">Investors</option>
-              <option value="Wholesaler">Wholesalers</option>
-              <option value="Sphere of Influence">Sphere of Influence</option>
-              <option value="Community">Community</option>
+              <option value="Vendor">Vendors</option>
+              <option value="Broker">Brokers</option>
+              <option value="Lender">Lenders</option>
+              <option value="Attorney">Attorneys</option>
+              <option value="Property Manager">Property Managers</option>
             </select>
             <div style={{ position: "relative" }}>
               <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
@@ -5536,7 +6108,7 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
           </div>
         ) : isMobile ? (
           statusFiltered.map((b, i) => (
-            <div key={b.rowId || b.name + i} onClick={() => onSetEditingBuyer(b)} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 16px", cursor: "pointer", marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.03)", WebkitTapHighlightColor: "transparent" }}>
+            <div key={b.rowId || b.name + i} onClick={() => handleContactClick(b)} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 16px", cursor: "pointer", marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.03)", WebkitTapHighlightColor: "transparent" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.name || "—"}</p>
@@ -5559,10 +6131,16 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
               </tr></thead>
               <tbody>
                 {statusFiltered.map((b, i) => (
-                  <tr key={b.rowId || b.name + i} onClick={() => onSetEditingBuyer(b)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer", background: hoveredRow === i ? "#f8fafc" : "transparent", transition: "background 0.1s" }}>
+                  <tr key={b.rowId || b.name + i} onClick={() => handleContactClick(b)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer", background: hoveredRow === i ? "#f8fafc" : "transparent", transition: "background 0.1s" }}>
                     <td style={{ padding: "12px 14px" }}><span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{b.name || "—"}</span></td>
                     <td style={{ padding: "12px 14px", fontSize: 13, color: "#64748b" }}>{b.company || "—"}</td>
-                    <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>{b.contactType || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>
+                      {(b.contactType || "").split(",").map(t => t.trim()).filter(Boolean).length > 0
+                        ? (b.contactType || "").split(",").map(t => t.trim()).filter(Boolean).map((t, j) => (
+                            <span key={j} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontWeight: 600, fontSize: 10, marginRight: 4, marginBottom: 2, background: t.toLowerCase() === "investor" ? "#f0fdf4" : "#f8fafc", color: t.toLowerCase() === "investor" ? "#16a34a" : "#64748b", border: "1px solid " + (t.toLowerCase() === "investor" ? "#bbf7d0" : "#e2e8f0") }}>{t}</span>
+                          ))
+                        : "—"}
+                    </td>
                     <td style={{ padding: "12px 14px" }}><BuyerStatusBadge status={b.buyerStatus || "New"} /></td>
                     <td style={{ padding: "12px 14px", fontSize: 13 }}>{b.temperature || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.assetPreference || "—"}</td>
@@ -7927,6 +8505,7 @@ function InvestorModal({ isOpen, onClose, onSave, saving, isMobile, investor }) 
     capitalFunded: "", investmentThesis: "", preferredReturn: "", irrTarget: "",
     holdPeriod: "", assetPreference: "", geographyPreference: "", minDealSize: "",
     equityStructure: "", leadSource: "", notes: "", company: "", nextFollowUp: "",
+    notificationEmail: "", notificationPhone: "",
   });
 
   useEffect(() => {
@@ -7942,9 +8521,10 @@ function InvestorModal({ isOpen, onClose, onSave, saving, isMobile, investor }) 
         minDealSize: investor.minDealSize || "", equityStructure: investor.equityStructure || "",
         leadSource: investor.leadSource || "", notes: investor.notes || "",
         company: investor.company || "", nextFollowUp: investor.nextFollowUp || "",
+        notificationEmail: investor.notificationEmail || "", notificationPhone: investor.notificationPhone || "",
       });
     } else {
-      setForm({ investorName: "", investorType: "Individual / HNW", pipelineStage: "Prospect", temperature: "Warm", capitalRangeMin: "", capitalRangeMax: "", capitalCommitted: "", capitalFunded: "", investmentThesis: "", preferredReturn: "", irrTarget: "", holdPeriod: "", assetPreference: "", geographyPreference: "", minDealSize: "", equityStructure: "", leadSource: "", notes: "", company: "", nextFollowUp: "" });
+      setForm({ investorName: "", investorType: "Individual / HNW", pipelineStage: "Prospect", temperature: "Warm", capitalRangeMin: "", capitalRangeMax: "", capitalCommitted: "", capitalFunded: "", investmentThesis: "", preferredReturn: "", irrTarget: "", holdPeriod: "", assetPreference: "", geographyPreference: "", minDealSize: "", equityStructure: "", leadSource: "", notes: "", company: "", nextFollowUp: "", notificationEmail: "", notificationPhone: "" });
     }
   }, [investor, isOpen]);
 
@@ -7959,20 +8539,26 @@ function InvestorModal({ isOpen, onClose, onSave, saving, isMobile, investor }) 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 1000, padding: isMobile ? 0 : 16 }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? "24px 24px 0 0" : 20, padding: isMobile ? "24px 20px 32px" : "28px 32px", width: "100%", maxWidth: 600, maxHeight: isMobile ? "90vh" : "85vh", overflow: "auto", animation: isMobile ? "slideUp 0.3s ease" : "fadeIn 0.2s ease" }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 20px" }}>{isEdit ? "Edit Investor" : "Add Investor"}</h2>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 20px" }}>{isEdit ? "Edit Company" : "Add Company"}</h2>
 
         <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, fontFamily: "'DM Sans', sans-serif" }}>Basic info</div>
         <div style={row}>
-          <div><label style={lbl}>Investor name *</label><input style={inpS} value={form.investorName} onChange={e => set("investorName", e.target.value)} placeholder="Meridian Capital Partners" /></div>
+          <div><label style={lbl}>Company / Entity Name *</label><input style={inpS} value={form.investorName} onChange={e => set("investorName", e.target.value)} placeholder="Meridian Capital Partners" /></div>
           <div><label style={lbl}>Company / entity</label><input style={inpS} value={form.company} onChange={e => set("company", e.target.value)} placeholder="Meridian Capital Partners LLC" /></div>
         </div>
         <div style={row}>
-          <div><label style={lbl}>Investor type</label><select style={selS} value={form.investorType} onChange={e => set("investorType", e.target.value)}>{INVESTOR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+          <div><label style={lbl}>Entity Type</label><select style={selS} value={form.investorType} onChange={e => set("investorType", e.target.value)}>{INVESTOR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
           <div><label style={lbl}>Pipeline stage</label><select style={selS} value={form.pipelineStage} onChange={e => set("pipelineStage", e.target.value)}>{INVESTOR_STAGES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
         </div>
         <div style={row}>
           <div><label style={lbl}>Temperature</label><select style={selS} value={form.temperature} onChange={e => set("temperature", e.target.value)}>{INVESTOR_TEMPS.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
           <div><label style={lbl}>Lead source</label><input style={inpS} value={form.leadSource} onChange={e => set("leadSource", e.target.value)} placeholder="Referral, conference, etc." /></div>
+        </div>
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, marginTop: 20, fontFamily: "'DM Sans', sans-serif" }}>Notifications</div>
+        <div style={row}>
+          <div><label style={lbl}>Notification email</label><input style={inpS} type="email" value={form.notificationEmail} onChange={e => set("notificationEmail", e.target.value)} placeholder="investors@company.com" /></div>
+          <div><label style={lbl}>Notification phone</label><input style={inpS} type="tel" value={form.notificationPhone} onChange={e => set("notificationPhone", e.target.value)} placeholder="+1 (555) 123-4567" /></div>
         </div>
 
         <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, marginTop: 20, fontFamily: "'DM Sans', sans-serif" }}>Capital</div>
@@ -8014,7 +8600,7 @@ function InvestorModal({ isOpen, onClose, onSave, saving, isMobile, investor }) 
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
-          <button onClick={() => onSave(form)} disabled={saving || !form.investorName} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: !form.investorName ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", opacity: !form.investorName ? 0.5 : 1, boxShadow: "0 4px 14px rgba(22,163,74,0.25)" }}>{saving ? "Saving..." : isEdit ? "Update Investor" : "Add Investor"}</button>
+          <button onClick={() => onSave(form)} disabled={saving || !form.investorName} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: !form.investorName ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", opacity: !form.investorName ? 0.5 : 1, boxShadow: "0 4px 14px rgba(22,163,74,0.25)" }}>{saving ? "Saving..." : isEdit ? "Update Investor" : "Add Company"}</button>
         </div>
       </div>
       <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
@@ -8156,9 +8742,683 @@ function ContactsTab({ investor, contacts, investorContacts, isMobile }) {
   );
 }
 
+function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, investorFunds, contacts, userEmail, onRefresh }) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const isInvestor = (contact.contactType || "").toLowerCase().includes("investor");
+  const baseTabs = ["overview", "companies", "linked deals", "communications", "documents", "portal access"];
+  const investorTabs = ["funds", "capital"];
+  const tabs = isInvestor ? ["overview", "companies", ...investorTabs, "linked deals", "communications", "documents", "portal access"] : baseTabs;
+  const initials = (contact.name || "??").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+  const linkedDeals = (deals || []).filter(d => (contact.linkedDealAddresses || []).includes(d.address));
+
+  // Communications
+  const [commsLog, setCommsLog] = useState([]);
+  const [commsLoading, setCommsLoading] = useState(false);
+  useEffect(() => {
+    if (activeTab === "communications" && contact?.rowId) {
+      setCommsLoading(true);
+      supabase.from("investor_communications").select("*").eq("investor_id", contact.rowId).order("created_at", { ascending: false })
+        .then(({ data }) => { setCommsLog(data || []); setCommsLoading(false); })
+        .catch(() => { setCommsLog([]); setCommsLoading(false); });
+    }
+  }, [activeTab, contact?.rowId]);
+  const commTypeConfig = { "SMS": { color: "#16a34a", bg: "#f0fdf4" }, "Email": { color: "#2563eb", bg: "#eff6ff" }, "Call": { color: "#7c3aed", bg: "#f5f3ff" }, "Portal": { color: "#d97706", bg: "#fffbeb" } };
+  const [showCompose, setShowCompose] = useState(false);
+  const [composeType, setComposeType] = useState("Email");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const [composeSending, setComposeSending] = useState(false);
+  const handleSendCommunication = async () => {
+    if (!composeBody.trim()) { alert("Please enter a message."); return; }
+    if (composeType === "Email" && !contact.email) { alert("This contact has no email address."); return; }
+    if (composeType === "SMS" && !contact.phone) { alert("This contact has no phone number."); return; }
+    setComposeSending(true);
+    try {
+      // Log the communication
+      await supabase.from("investor_communications").insert({
+        investor_id: null,
+        comm_type: composeType,
+        direction: "outbound",
+        subject: composeType === "Email" ? composeSubject.trim() || "No subject" : composeBody.trim().slice(0, 60),
+        body: composeBody.trim(),
+        sent_by: userEmail,
+        status: "sent",
+      });
+      // Open native email/SMS client to actually send
+      if (composeType === "Email") {
+        const mailto = "mailto:" + encodeURIComponent(contact.email) + "?subject=" + encodeURIComponent(composeSubject) + "&body=" + encodeURIComponent(composeBody);
+        window.open(mailto, "_blank");
+      } else {
+        const smsLink = "sms:" + encodeURIComponent(contact.phone) + "?body=" + encodeURIComponent(composeBody);
+        window.open(smsLink, "_blank");
+      }
+      // Refresh log
+      const { data } = await supabase.from("investor_communications").select("*").eq("investor_id", contact.rowId).order("created_at", { ascending: false });
+      setCommsLog(data || []);
+      setShowCompose(false);
+      setComposeSubject("");
+      setComposeBody("");
+    } catch (err) { alert("Error: " + err.message); } finally { setComposeSending(false); }
+  };
+
+  // Portal access
+  const [portalEmail, setPortalEmail] = useState(contact.portalEmail || contact.email || "");
+  const [portalSaving, setPortalSaving] = useState(false);
+  const [portalSuccess, setPortalSuccess] = useState("");
+
+  // Documents
+  const [contactDocs, setContactDocs] = useState([]);
+  const [contactDocsLoading, setContactDocsLoading] = useState(false);
+  const [contactDocUploading, setContactDocUploading] = useState(false);
+  const contactDocInputRef = useRef(null);
+  const fetchContactDocs = useCallback(async () => {
+    if (!contact?.rowId) return;
+    setContactDocsLoading(true);
+    try {
+      const prefix = `contact-documents/${contact.rowId}/`;
+      const { data, error } = await supabase.storage.from("deal-documents").list(prefix.replace(/\/$/, ""), { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+      if (!error && data) setContactDocs(data.filter(f => f.name && f.name !== ".emptyFolderPlaceholder"));
+    } catch (e) { console.log("[REAP] Contact docs fetch error:", e); }
+    finally { setContactDocsLoading(false); }
+  }, [contact?.rowId]);
+  useEffect(() => { if (activeTab === "documents") fetchContactDocs(); }, [activeTab, fetchContactDocs]);
+  const handleContactDocUpload = async (files) => {
+    if (!files || files.length === 0 || !contact?.rowId) return;
+    setContactDocUploading(true);
+    try {
+      for (const file of files) {
+        const path = `contact-documents/${contact.rowId}/${Date.now()}_${file.name}`;
+        const { error } = await supabase.storage.from("deal-documents").upload(path, file);
+        if (error) console.error("Upload error:", error);
+      }
+      await fetchContactDocs();
+    } catch (e) { console.error("Upload error:", e); }
+    finally { setContactDocUploading(false); }
+  };
+  const handleContactDocDelete = async (fileName) => {
+    if (!contact?.rowId || !window.confirm("Delete " + fileName + "?")) return;
+    try {
+      const path = `contact-documents/${contact.rowId}/${fileName}`;
+      await supabase.storage.from("deal-documents").remove([path]);
+      await fetchContactDocs();
+    } catch (e) { console.error("Delete error:", e); }
+  };
+  const getContactDocUrl = (fileName) => {
+    const path = `contact-documents/${contact.rowId}/${fileName}`;
+    const { data } = supabase.storage.from("deal-documents").getPublicUrl(path);
+    return data?.publicUrl || "#";
+  };
+
+  // Link deal to contact
+  const [showLinkDealUI, setShowLinkDealUI] = useState(false);
+  const [linkDealSearch, setLinkDealSearch] = useState("");
+  const handleLinkDealToContact = async (dealAddress) => {
+    if (!contact?.rowId) return;
+    try {
+      const currentAddrs = [...(contact.linkedDealAddresses || [])];
+      if (!currentAddrs.includes(dealAddress)) currentAddrs.push(dealAddress);
+      await supabase.from("contacts").update({ linked_deal_addresses: currentAddrs.join("|||") }).eq("id", contact.rowId);
+      contact.linkedDealAddresses = currentAddrs;
+      setShowLinkDealUI(false);
+      setLinkDealSearch("");
+      if (onRefresh) onRefresh();
+    } catch (err) { console.error("Error linking deal:", err); }
+  };
+  const handleUnlinkDealFromContact = async (dealAddress) => {
+    if (!contact?.rowId || !window.confirm("Remove this deal from this contact's linked deals?")) return;
+    try {
+      const newAddrs = (contact.linkedDealAddresses || []).filter(a => a !== dealAddress);
+      await supabase.from("contacts").update({ linked_deal_addresses: newAddrs.join("|||") }).eq("id", contact.rowId);
+      contact.linkedDealAddresses = newAddrs;
+      if (onRefresh) onRefresh();
+    } catch (err) { console.error("Error unlinking deal:", err); }
+  };
+
+  // Companies tab
+  const [allCompanies, setAllCompanies] = useState([]);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
+  const [showLinkCompanyUI, setShowLinkCompanyUI] = useState(false);
+  const [linkCompanySearch, setLinkCompanySearch] = useState("");
+  useEffect(() => {
+    if (activeTab === "companies") {
+      setCompaniesLoading(true);
+      supabase.from("investors").select("id, investor_name, company, contact_ids")
+        .then(({ data }) => { setAllCompanies(data || []); setCompaniesLoading(false); })
+        .catch(() => { setAllCompanies([]); setCompaniesLoading(false); });
+    }
+  }, [activeTab]);
+  const linkedCompanies = allCompanies.filter(c => {
+    const ids = c.contact_ids ? c.contact_ids.split("|||").filter(Boolean) : [];
+    return ids.includes(String(contact.rowId));
+  });
+  const unlinkedCompanies = allCompanies.filter(c => {
+    const ids = c.contact_ids ? c.contact_ids.split("|||").filter(Boolean) : [];
+    return !ids.includes(String(contact.rowId));
+  });
+  const handleLinkCompany = async (companyId) => {
+    try {
+      const company = allCompanies.find(c => c.id === companyId);
+      if (!company) return;
+      const ids = company.contact_ids ? company.contact_ids.split("|||").filter(Boolean) : [];
+      if (!ids.includes(String(contact.rowId))) ids.push(String(contact.rowId));
+      await supabase.from("investors").update({ contact_ids: ids.join("|||") }).eq("id", companyId);
+      setAllCompanies(prev => prev.map(c => c.id === companyId ? { ...c, contact_ids: ids.join("|||") } : c));
+      setShowLinkCompanyUI(false);
+      setLinkCompanySearch("");
+    } catch (err) { console.error("Error linking company:", err); }
+  };
+  const handleUnlinkCompany = async (companyId) => {
+    if (!window.confirm("Remove this contact from this company?")) return;
+    try {
+      const company = allCompanies.find(c => c.id === companyId);
+      if (!company) return;
+      const ids = (company.contact_ids || "").split("|||").filter(Boolean).filter(id => id !== String(contact.rowId));
+      await supabase.from("investors").update({ contact_ids: ids.length > 0 ? ids.join("|||") : null }).eq("id", companyId);
+      setAllCompanies(prev => prev.map(c => c.id === companyId ? { ...c, contact_ids: ids.length > 0 ? ids.join("|||") : null } : c));
+    } catch (err) { console.error("Error unlinking company:", err); }
+  };
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", padding: isMobile ? "16px 16px 80px" : "28px 36px" }}>
+      <button onClick={onBack} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#64748b", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "4px 0", marginBottom: 16 }}>
+        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Back to contacts
+      </button>
+
+      {/* Header card */}
+      <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? "18px 16px" : "24px 28px", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: isInvestor ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #3b82f6, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 18, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{initials}</div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>{contact.name}</h1>
+            <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 8px" }}>
+              {contact.company ? contact.company + " · " : ""}{contact.contactType || "Contact"}
+            </p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(contact.contactType || "").split(",").map(t => t.trim()).filter(Boolean).map((t, j) => (
+                <span key={j} style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: t.toLowerCase() === "investor" ? "#f0fdf4" : "#f8fafc", color: t.toLowerCase() === "investor" ? "#16a34a" : "#64748b", border: "1px solid " + (t.toLowerCase() === "investor" ? "#bbf7d0" : "#e2e8f0") }}>{t}</span>
+              ))}
+              {contact.buyerStatus && <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0" }}>{contact.buyerStatus}</span>}
+              {contact.temperature && <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0" }}>{contact.temperature}</span>}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={onEdit} style={{ padding: "8px 16px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Edit</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stat cards */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+        <div style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Email</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace", overflow: "hidden", textOverflow: "ellipsis" }}>{contact.email || "—"}</div>
+        </div>
+        <div style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Phone</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{contact.phone || "—"}</div>
+        </div>
+        <div style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Deals linked</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{linkedDeals.length}</div>
+        </div>
+        <div style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Added</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{fmtDate(contact.dateAdded)}</div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: "12px 12px 0 0", border: "1px solid #e2e8f0", borderBottom: "none", padding: isMobile ? "0 8px" : "0 20px", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        {tabs.map(t => (
+          <button key={t} onClick={() => setActiveTab(t)} style={{ background: "transparent", border: "none", borderBottom: activeTab === t ? "2px solid #16a34a" : "2px solid transparent", padding: isMobile ? "12px 12px" : "12px 18px", color: activeTab === t ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize", whiteSpace: "nowrap", flexShrink: 0, transition: "all 0.15s" }}>{t}</button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div style={{ background: "#fff", borderRadius: "0 0 12px 12px", border: "1px solid #e2e8f0", borderTop: "1px solid #e2e8f0", padding: isMobile ? "20px 16px" : "24px 28px" }}>
+        {activeTab === "overview" && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Contact profile <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "12px 24px", fontSize: 13, marginBottom: 24 }}>
+              {[
+                ["Full name", contact.name], ["Email", contact.email || "—"],
+                ["Phone", contact.phone || "—"], ["Company", contact.company || "—"],
+                ["Contact type", contact.contactType || "—"], ["Status", contact.buyerStatus || "—"],
+                ["Temperature", contact.temperature || "—"], ["Asset preference", contact.assetPreference || "—"],
+                ["Lead source", contact.leadSource || "—"], ["Manager", contact.manager || "—"],
+                ["Date added", fmtDate(contact.dateAdded)], ["Last contact", fmtDate(contact.lastContact)],
+              ].map(([label, value], i) => (
+                <div key={i}>
+                  <div style={{ color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif", marginBottom: 2 }}>{label}</div>
+                  <div style={{ color: "#0f172a", fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}>{value || "—"}</div>
+                </div>
+              ))}
+            </div>
+            {contact.notes && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Notes <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+                <p style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6 }}>{contact.notes}</p>
+              </>
+            )}
+          </>
+        )}
+
+        {activeTab === "companies" && (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
+              Linked Companies <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              <button onClick={() => setShowLinkCompanyUI(!showLinkCompanyUI)} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #16a34a", background: "#f0fdf4", color: "#16a34a", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                {showLinkCompanyUI ? "Cancel" : "+ Link to Company"}
+              </button>
+            </div>
+
+            {showLinkCompanyUI && (
+              <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
+                <input value={linkCompanySearch} onChange={e => setLinkCompanySearch(e.target.value)} placeholder="Search companies..." style={{ width: "100%", padding: "8px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", marginBottom: 8 }} />
+                <div style={{ maxHeight: 180, overflow: "auto" }}>
+                  {unlinkedCompanies.filter(c => (c.investor_name || "").toLowerCase().includes(linkCompanySearch.toLowerCase()) || (c.company || "").toLowerCase().includes(linkCompanySearch.toLowerCase())).map(c => (
+                    <div key={c.id} onClick={() => handleLinkCompany(c.id)} style={{ padding: "8px 12px", cursor: "pointer", borderRadius: 6, fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", display: "flex", alignItems: "center", gap: 8, transition: "background 0.15s" }} onMouseEnter={e => e.currentTarget.style.background = "#f0fdf4"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 11, flexShrink: 0 }}>{(c.investor_name || "?")[0].toUpperCase()}</div>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{c.investor_name}</div>
+                        {c.company && <div style={{ fontSize: 11, color: "#94a3b8" }}>{c.company}</div>}
+                      </div>
+                    </div>
+                  ))}
+                  {unlinkedCompanies.filter(c => (c.investor_name || "").toLowerCase().includes(linkCompanySearch.toLowerCase())).length === 0 && (
+                    <div style={{ padding: 12, textAlign: "center", color: "#94a3b8", fontSize: 12 }}>No companies to link</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {companiesLoading ? (
+              <div style={{ textAlign: "center", padding: 30, color: "#94a3b8", fontSize: 13 }}>Loading...</div>
+            ) : linkedCompanies.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 30 }}>
+                <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><path d="M3 21h18M3 7v14M21 7v14M6 21V10h4v11M14 21V10h4v11M10 7l2-4 2 4"/></svg>
+                <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>This contact is not linked to any companies yet.</p>
+                <p style={{ fontSize: 12, color: "#cbd5e1", margin: "6px 0 0" }}>Click "+ Link to Company" above to add one.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {linkedCompanies.map(c => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff" }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{(c.investor_name || "?")[0].toUpperCase()}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{c.investor_name}</div>
+                      {c.company && <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{c.company}</div>}
+                    </div>
+                    <button onClick={() => handleUnlinkCompany(c.id)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #fecaca", background: "#fef2f2", color: "#ef4444", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "funds" && (() => {
+          const myAssignments = (investorFunds || []).filter(af => af.investor_id === contact.rowId);
+          const assignedFundIds = new Set(myAssignments.map(a => a.fund_id));
+          const myFundDetails = myAssignments.map(a => {
+            const fund = (funds || []).find(f => f.id === a.fund_id);
+            return fund ? { ...a, fund } : null;
+          }).filter(Boolean);
+          const unassignedFunds = (funds || []).filter(f => !assignedFundIds.has(f.id));
+          const totalMyCommitted = myAssignments.reduce((s, a) => s + (parseFloat(a.committed_capital) || 0), 0);
+          const totalMyFunded = myAssignments.reduce((s, a) => s + (parseFloat(a.funded_capital) || 0), 0);
+          return (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
+                Fund Assignments <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                {unassignedFunds.length > 0 && (
+                  <select onChange={async (e) => {
+                    const fundId = e.target.value;
+                    if (!fundId) return;
+                    try {
+                      await supabase.from("investor_funds").insert({ fund_id: fundId, investor_id: contact.rowId, user_email: userEmail || "" });
+                      if (onRefresh) onRefresh();
+                    } catch (err) { alert("Error: " + err.message); }
+                    e.target.value = "";
+                  }} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #16a34a", background: "#f0fdf4", color: "#16a34a", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                    <option value="">+ Assign to Fund</option>
+                    {unassignedFunds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                )}
+              </div>
+              {myFundDetails.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 30 }}>
+                  <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>{(funds || []).length === 0 ? "No funds have been created yet." : "This contact is not assigned to any funds yet."}</p>
+                  <p style={{ fontSize: 12, color: "#cbd5e1", margin: "6px 0 0" }}>Use the dropdown above to assign them to a fund.</p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
+                    <div style={{ padding: 16, borderRadius: 12, background: "#f0fdf4", border: "1px solid #86efac" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Funds</div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>{myFundDetails.length}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Total Committed</div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>{totalMyCommitted > 0 ? fmt(totalMyCommitted) : "—"}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Total Funded</div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: "#16a34a" }}>{totalMyFunded > 0 ? fmt(totalMyFunded) : "—"}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {myFundDetails.map(a => {
+                      const f = a.fund;
+                      const ac = parseFloat(a.committed_capital) || 0;
+                      const af = parseFloat(a.funded_capital) || 0;
+                      const pctCalled = ac > 0 ? Math.round((af / ac) * 100) : 0;
+                      return (
+                        <div key={a.id} style={{ padding: 18, borderRadius: 14, border: "1px solid #e2e8f0", background: "#fff" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+                            <div>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{f.name}</div>
+                              {f.description && <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{f.description}</div>}
+                            </div>
+                            <button onClick={async () => { if (window.confirm("Remove from " + f.name + "?")) { await supabase.from("investor_funds").delete().eq("id", a.id); if (onRefresh) onRefresh(); }}} style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontSize: 10, fontWeight: 600, cursor: "pointer", color: "#dc2626" }}>Remove</button>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 10 }}>
+                            <div style={{ padding: 10, borderRadius: 8, background: "#f8fafc" }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase" }}>Committed</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{ac > 0 ? fmt(ac) : "—"}</div>
+                            </div>
+                            <div style={{ padding: 10, borderRadius: 8, background: "#f8fafc" }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase" }}>Funded</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: "#16a34a" }}>{af > 0 ? fmt(af) : "—"}</div>
+                            </div>
+                            <div style={{ padding: 10, borderRadius: 8, background: "#f8fafc" }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase" }}>% Called</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{pctCalled}%</div>
+                              <div style={{ height: 4, borderRadius: 2, background: "#e2e8f0", marginTop: 4 }}><div style={{ height: "100%", borderRadius: 2, background: "#16a34a", width: `${pctCalled}%` }} /></div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </>
+          );
+        })()}
+
+        {activeTab === "capital" && (() => {
+          const myAssignments = (investorFunds || []).filter(af => af.investor_id === contact.rowId);
+          const totalCommitted = myAssignments.reduce((s, a) => s + (parseFloat(a.committed_capital) || 0), 0);
+          const totalFunded = myAssignments.reduce((s, a) => s + (parseFloat(a.funded_capital) || 0), 0);
+          const pctFunded = totalCommitted > 0 ? Math.round((totalFunded / totalCommitted) * 100) : 0;
+          return (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif" }}>Capital Summary</div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 16, marginBottom: 20 }}>
+                <div style={{ padding: 20, borderRadius: 14, background: "#f0fdf4", border: "1px solid #86efac", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", marginBottom: 6 }}>Total Committed</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{totalCommitted > 0 ? fmt(totalCommitted) : "—"}</div>
+                </div>
+                <div style={{ padding: 20, borderRadius: 14, background: "#f8fafc", border: "1px solid #e2e8f0", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginBottom: 6 }}>Total Funded</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#16a34a", fontFamily: "'Playfair Display', serif" }}>{totalFunded > 0 ? fmt(totalFunded) : "—"}</div>
+                </div>
+                <div style={{ padding: 20, borderRadius: 14, background: "#f8fafc", border: "1px solid #e2e8f0", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginBottom: 6 }}>% Called</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{pctFunded}%</div>
+                  <div style={{ height: 6, borderRadius: 3, background: "#e2e8f0", marginTop: 8 }}><div style={{ height: "100%", borderRadius: 3, background: "#16a34a", width: `${pctFunded}%`, transition: "width 0.3s" }} /></div>
+                </div>
+              </div>
+              {myAssignments.length === 0 && <p style={{ fontSize: 13, color: "#94a3b8", textAlign: "center", padding: 20 }}>No capital data yet. Assign this contact to funds to track capital.</p>}
+            </>
+          );
+        })()}
+
+        {activeTab === "linked deals" && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
+              Linked deals ({linkedDeals.length}) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              <button onClick={() => setShowLinkDealUI(!showLinkDealUI)} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: showLinkDealUI ? "#f1f5f9" : "linear-gradient(135deg, #16a34a, #15803d)", color: showLinkDealUI ? "#64748b" : "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{showLinkDealUI ? "Cancel" : "+ Link deal"}</button>
+            </div>
+            {showLinkDealUI && (
+              <div style={{ marginBottom: 16, padding: 14, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                <input value={linkDealSearch} onChange={e => setLinkDealSearch(e.target.value)} placeholder="Search deals by address..." style={{ width: "100%", background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box", marginBottom: 10 }} autoFocus />
+                <div style={{ maxHeight: 200, overflow: "auto" }}>
+                  {(deals || []).filter(d => !(contact.linkedDealAddresses || []).includes(d.address))
+                    .filter(d => (d.address || "").toLowerCase().includes(linkDealSearch.toLowerCase()) || (d.property_address || "").toLowerCase().includes(linkDealSearch.toLowerCase()))
+                    .slice(0, 10).map(d => (
+                      <button key={d._id || d.address} onClick={() => handleLinkDealToContact(d.address)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "1px solid #f1f5f9", borderRadius: 8, marginBottom: 4, background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "'DM Sans', sans-serif" }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{d.address || d.property_address}</span>
+                      </button>
+                    ))}
+                  {(deals || []).filter(d => !(contact.linkedDealAddresses || []).includes(d.address)).filter(d => (d.address || "").toLowerCase().includes(linkDealSearch.toLowerCase())).length === 0 && (
+                    <div style={{ textAlign: "center", padding: 16, color: "#94a3b8", fontSize: 12 }}>No unlinked deals found.</div>
+                  )}
+                </div>
+              </div>
+            )}
+            {linkedDeals.length === 0 && !showLinkDealUI ? (
+              <div style={{ textAlign: "center", padding: "32px 16px" }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>No deals linked yet</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px" }}>Link deals to this contact to send them investor updates.</p>
+                <button onClick={() => setShowLinkDealUI(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Link first deal</button>
+              </div>
+            ) : linkedDeals.map(d => (
+              <div key={d._id || d.address} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", border: "1px solid #f1f5f9", borderRadius: 10, marginBottom: 8, background: "#fff" }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.address || d.property_address}</div>
+                  <div style={{ fontSize: 12, color: "#94a3b8" }}>{d.property_type || ""}{d.status ? " · " + d.status : ""}</div>
+                </div>
+                <button onClick={() => handleUnlinkDealFromContact(d.address)} title="Remove deal" style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+            ))}
+          </>
+        )}
+
+        {activeTab === "communications" && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+                Communications <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {contact.email && (
+                  <button onClick={() => { setShowCompose(true); setComposeType("Email"); }} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #2563eb", background: "#eff6ff", color: "#2563eb", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg> Send Email
+                  </button>
+                )}
+                {contact.phone && (
+                  <button onClick={() => { setShowCompose(true); setComposeType("SMS"); }} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #16a34a", background: "#f0fdf4", color: "#16a34a", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Send SMS
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {showCompose && (
+              <div style={{ marginBottom: 20, padding: 18, borderRadius: 12, border: "1px solid " + (composeType === "Email" ? "#bfdbfe" : "#86efac"), background: composeType === "Email" ? "#eff6ff" : "#f0fdf4" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {contact.email && <button onClick={() => setComposeType("Email")} style={{ padding: "5px 12px", borderRadius: 6, border: composeType === "Email" ? "1.5px solid #2563eb" : "1px solid #e2e8f0", background: composeType === "Email" ? "#dbeafe" : "#fff", color: composeType === "Email" ? "#2563eb" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Email</button>}
+                    {contact.phone && <button onClick={() => setComposeType("SMS")} style={{ padding: "5px 12px", borderRadius: 6, border: composeType === "SMS" ? "1.5px solid #16a34a" : "1px solid #e2e8f0", background: composeType === "SMS" ? "#dcfce7" : "#fff", color: composeType === "SMS" ? "#16a34a" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>SMS</button>}
+                  </div>
+                  <button onClick={() => { setShowCompose(false); setComposeSubject(""); setComposeBody(""); }} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>&times;</button>
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginBottom: 10 }}>
+                  To: <strong style={{ color: "#0f172a" }}>{contact.name}</strong> — {composeType === "Email" ? contact.email : contact.phone}
+                </div>
+                {composeType === "Email" && (
+                  <input value={composeSubject} onChange={e => setComposeSubject(e.target.value)} placeholder="Subject..." style={{ width: "100%", padding: "8px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", marginBottom: 8 }} />
+                )}
+                <textarea value={composeBody} onChange={e => setComposeBody(e.target.value)} placeholder={composeType === "Email" ? "Write your email..." : "Write your message..."} rows={composeType === "Email" ? 5 : 3} style={{ width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box", resize: "vertical" }} />
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
+                  <button onClick={() => { setShowCompose(false); setComposeSubject(""); setComposeBody(""); }} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                  <button onClick={handleSendCommunication} disabled={composeSending || !composeBody.trim()} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: composeBody.trim() ? (composeType === "Email" ? "linear-gradient(135deg, #2563eb, #1d4ed8)" : "linear-gradient(135deg, #16a34a, #15803d)") : "#e2e8f0", color: composeBody.trim() ? "#fff" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: composeBody.trim() ? "pointer" : "default", fontFamily: "'DM Sans', sans-serif", boxShadow: composeBody.trim() ? "0 2px 8px rgba(0,0,0,0.15)" : "none" }}>
+                    {composeSending ? "Sending..." : composeType === "Email" ? "Send Email" : "Send SMS"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {commsLoading ? <LoadingSpinner /> : commsLog.length === 0 && !showCompose ? (
+              <div style={{ textAlign: "center", padding: "32px 16px" }}>
+                <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>No communications yet</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px" }}>Send an email or text message to start a conversation, or notifications sent through investor updates will appear here automatically.</p>
+                <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                  {contact.email && <button onClick={() => { setShowCompose(true); setComposeType("Email"); }} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Send first email</button>}
+                  {contact.phone && <button onClick={() => { setShowCompose(true); setComposeType("SMS"); }} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Send first SMS</button>}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {commsLog.map((c, i) => {
+                  const cfg = commTypeConfig[c.comm_type] || { color: "#64748b", bg: "#f8fafc" };
+                  return (
+                    <div key={c.id || i} style={{ padding: "14px 16px", borderRadius: 10, border: "1px solid #f1f5f9", background: "#fff", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 8, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color }}>{c.comm_type}</span>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{c.subject || "Notification"}</div>
+                        {c.body && <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginTop: 4, lineHeight: 1.5 }}>{c.body.length > 150 ? c.body.slice(0, 150) + "..." : c.body}</div>}
+                        <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>
+                          {c.direction === "outbound" ? "Sent" : "Received"} · {c.sent_by || ""} · {fmtDate(c.created_at)}
+                        </div>
+                      </div>
+                      <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: c.status === "sent" ? "#f0fdf4" : "#f8fafc", color: c.status === "sent" ? "#16a34a" : "#64748b" }}>{c.status || "—"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === "documents" && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>
+              Documents ({contactDocs.length}) <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              <button onClick={() => contactDocInputRef.current?.click()} disabled={contactDocUploading} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{contactDocUploading ? "Uploading..." : "+ Upload"}</button>
+              <input ref={contactDocInputRef} type="file" multiple style={{ display: "none" }} onChange={e => handleContactDocUpload(e.target.files)} />
+            </div>
+            {contactDocsLoading ? <LoadingSpinner /> : contactDocs.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 16px" }}>
+                <div style={{ width: 48, height: 48, borderRadius: 12, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                  <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.5}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>No documents yet</p>
+                <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px" }}>Upload documents like agreements, KYC forms, or subscription docs.</p>
+                <button onClick={() => contactDocInputRef.current?.click()} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Upload first document</button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {contactDocs.map((doc, i) => {
+                  const ext = (doc.name || "").split(".").pop().toLowerCase();
+                  const extColors = { pdf: "#ef4444", doc: "#2563eb", docx: "#2563eb", xls: "#16a34a", xlsx: "#16a34a", png: "#d97706", jpg: "#d97706", jpeg: "#d97706" };
+                  const displayName = doc.name.replace(/^\d+_/, "");
+                  return (
+                    <div key={doc.name || i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 10, border: "1px solid #f1f5f9", background: "#fff" }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 8, background: (extColors[ext] || "#64748b") + "12", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: extColors[ext] || "#64748b", textTransform: "uppercase" }}>{ext}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <a href={getContactDocUrl(doc.name)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</a>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>{doc.metadata?.size ? (doc.metadata.size / 1024).toFixed(1) + " KB" : ""}{doc.created_at ? " · " + fmtDate(doc.created_at) : ""}</div>
+                      </div>
+                      <button onClick={() => handleContactDocDelete(doc.name)} title="Delete" style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #fee2e2", background: "#fef2f2", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === "portal access" && (
+          <div>
+            <div style={{ background: "#fff", borderRadius: 16, padding: isMobile ? 0 : 0 }}>
+              <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
+                Investor Portal Access <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              </h2>
+
+              {/* Status indicator */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, padding: "12px 16px", borderRadius: 10, background: portalEmail ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (portalEmail ? "#86efac" : "#e2e8f0") }}>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", background: portalEmail ? "#16a34a" : "#94a3b8" }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: portalEmail ? "#16a34a" : "#64748b", fontFamily: "'DM Sans', sans-serif" }}>
+                  {portalEmail ? "Portal Active" : "Not Invited"}
+                </span>
+                {portalEmail && <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>· {portalEmail}</span>}
+              </div>
+
+              <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, marginBottom: 16 }}>
+                Set the email this contact will use to sign in to the investor portal. They'll see updates for any deals linked to them directly or through their associated companies.
+              </p>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Portal Login Email</label>
+                  <input value={portalEmail} onChange={e => setPortalEmail(e.target.value)} placeholder="contact@email.com" type="email"
+                    style={{ width: "100%", padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 10, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" }}
+                    onFocus={e => e.target.style.borderColor = "#16a34a"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                </div>
+                <button onClick={async () => {
+                  if (!portalEmail.trim() || !portalEmail.includes("@")) { alert("Please enter a valid email address."); return; }
+                  setPortalSaving(true); setPortalSuccess("");
+                  try {
+                    const { error } = await supabase.from("contacts").update({ portal_email: portalEmail.trim().toLowerCase() }).eq("id", contact.rowId);
+                    if (error) throw error;
+                    setPortalSuccess("Portal access saved! This contact can now sign in at app.getreap.ai with this email.");
+                  } catch (err) { alert("Error: " + err.message); } finally { setPortalSaving(false); }
+                }} disabled={portalSaving} style={{
+                  padding: "10px 20px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  fontFamily: "'DM Sans', sans-serif",
+                  background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff",
+                  boxShadow: "0 2px 10px rgba(22,163,74,0.3)", opacity: portalSaving ? 0.7 : 1,
+                  whiteSpace: "nowrap",
+                }}>
+                  {portalSaving ? "Saving..." : portalEmail ? "Update Portal Email" : "Enable Portal Access"}
+                </button>
+              </div>
+
+              {portalSuccess && (
+                <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8, background: "#f0fdf4", border: "1px solid #86efac", fontSize: 12, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>
+                  {portalSuccess}
+                </div>
+              )}
+            </div>
+
+            {/* Linked deals info */}
+            <div style={{ marginTop: 20, padding: 16, borderRadius: 12, border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>Deals this contact will see in the portal:</div>
+              {linkedDeals.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>No deals linked yet.{isInvestor ? " Link deals from the \"Linked deals\" tab." : ""}</p>
+              ) : (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {linkedDeals.map(d => (
+                    <span key={d.address} style={{ padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>{d.address}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivity, onLinkDeal, deals, isMobile, contacts, investorFunds, funds }) {
   const [activeTab, setActiveTab] = useState("overview");
-  const tabs = ["overview", "funds", "contacts", "capital", "linked deals", "communications", "documents", "portal access"];
+  const tabs = ["overview", "funds", "contacts", "capital", "linked deals", "communications", "documents"];
   const [portalEmail, setPortalEmail] = useState(investor.portalEmail || "");
   const [portalSaving, setPortalSaving] = useState(false);
   const [portalSuccess, setPortalSuccess] = useState("");
@@ -8186,7 +9446,7 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
   return (
     <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", padding: isMobile ? "16px 16px 80px" : "28px 36px" }}>
       <button onClick={onBack} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#64748b", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "4px 0", marginBottom: 16 }}>
-        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Back to investors
+        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Back to companies
       </button>
 
       {/* Header card */}
@@ -8240,10 +9500,10 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
       <div style={{ background: "#fff", borderRadius: "0 0 12px 12px", border: "1px solid #e2e8f0", borderTop: "1px solid #e2e8f0", padding: isMobile ? "20px 16px" : "24px 28px" }}>
         {activeTab === "overview" && (
           <>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Investor profile <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Company profile <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "12px 24px", fontSize: 13, marginBottom: 24 }}>
               {[
-                ["Investor name", investor.investorName], ["Type", investor.investorType],
+                ["Company name", investor.investorName], ["Type", investor.investorType],
                 ["Pipeline stage", investor.pipelineStage], ["Temperature", investor.temperature],
                 ["Capital range", investor.capitalRangeMin || investor.capitalRangeMax ? `${investor.capitalRangeMin ? fmt(investor.capitalRangeMin) : "—"} – ${investor.capitalRangeMax ? fmt(investor.capitalRangeMax) : "—"}` : "—"],
                 ["Investment thesis", investor.investmentThesis || "—"],
@@ -8682,6 +9942,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
         notes: r.notes || "", dateAdded: r.date_added || "",
         dateLastContact: r.date_last_contact || "", nextFollowUp: r.next_follow_up || "",
         company: r.company || "", portalEmail: r.portal_email || "", notificationPrefs: r.notification_prefs || "",
+        notificationEmail: r.notification_email || "", notificationPhone: r.notification_phone || "",
       })).filter(inv => inv.investorName && inv.investorName.trim() !== "");
       const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
       const filtered = teamList.length > 0
@@ -8820,6 +10081,8 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
         if (form.company !== undefined) updates.company = form.company;
         if (form.nextFollowUp !== undefined) updates.next_follow_up = form.nextFollowUp || null;
         if (form.linkedDealAddresses !== undefined) updates.linked_deal_addresses = (form.linkedDealAddresses || []).join("|||");
+        if (form.notificationEmail !== undefined) updates.notification_email = form.notificationEmail || null;
+        if (form.notificationPhone !== undefined) updates.notification_phone = form.notificationPhone || null;
         const { error } = await supabase.from("investors").update(updates).eq("id", editingInvestor.id);
         if (error) throw new Error(error.message);
         setInvestors(prev => prev.map(inv => inv.id === editingInvestor.id ? { ...inv, ...form } : inv));
@@ -8832,6 +10095,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
           temperature: form.temperature || "Warm", capital_range_min: parseFloat(form.capitalRangeMin) || null,
           capital_range_max: parseFloat(form.capitalRangeMax) || null, notes: form.notes || "",
           company: form.company || "", date_added: new Date().toISOString(),
+          notification_email: form.notificationEmail || null, notification_phone: form.notificationPhone || null,
         });
         if (error) throw new Error(error.message);
         await fetchInvestors();
@@ -8927,7 +10191,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
             <div style={{ display: "flex", alignItems: "center", gap: 10, animation: "fadeIn 0.2s ease" }}>
               <div style={{ position: "relative", flex: 1 }}>
                 <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
-                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search investors..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px 10px 32px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: "100%" }} />
+                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search companies..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px 10px 32px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: "100%" }} />
               </div>
               <button onClick={() => { setSearchOpen(false); setSearch(""); }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "8px 4px", whiteSpace: "nowrap" }}>Cancel</button>
             </div>
@@ -8952,13 +10216,13 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
         <div style={{ padding: "28px 36px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
             <div>
-              <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Investor Pipeline</h1>
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Company Pipeline</h1>
               <p style={{ fontSize: 13, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{investors.length} investor{investors.length !== 1 ? "s" : ""} in pipeline</p>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <div style={{ position: "relative" }}>
                 <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search investors..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px 10px 34px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 240, transition: "border 0.15s" }} />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search companies..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px 10px 34px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 240, transition: "border 0.15s" }} />
               </div>
               <button onClick={() => setShowFundsPanel(!showFundsPanel)} style={{ padding: "10px 16px", borderRadius: 10, border: "1px solid " + (showFundsPanel ? "#16a34a" : "#e2e8f0"), background: showFundsPanel ? "#f0fdf4" : "#fff", color: showFundsPanel ? "#16a34a" : "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
                 <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
@@ -9298,6 +10562,7 @@ export default function ReapApp() {
   const [showBuyerModal, setShowBuyerModal] = useState(false);
   const [savingBuyer, setSavingBuyer] = useState(false);
   const [editingBuyer, setEditingBuyer] = useState(null);
+  const [buyerRefreshKey, setBuyerRefreshKey] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [pendingDealAddress, setPendingDealAddress] = useState(null);
@@ -10096,7 +11361,7 @@ export default function ReapApp() {
         "Contact / Email": form.email,
         "Contact / Phone": form.phone,
         "Contact / Company": form.company,
-        "Contact / Type": "Buyer (Client)",
+        "Contact / Type": form.contactType || "Buyer (Client)",
         "Buyer / Status": form.buyerStatus || "New",
         "Contact / Asset Preference": form.assetPreference,
         "Contact / Temperature": form.temperature,
@@ -10111,6 +11376,7 @@ export default function ReapApp() {
         const { error } = await supabase.from("contacts").update({
           contact_name: form.name, first_name: form.name.split(" ")[0],
           email: form.email, phone: form.phone, company: form.company,
+          contact_type: form.contactType || "Buyer (Client)",
           buyer_status: form.buyerStatus || "New", asset_preference: form.assetPreference,
           temperature: form.temperature, manager: form.manager, notes: form.notes,
           lead_source: form.leadSource,
@@ -10121,7 +11387,7 @@ export default function ReapApp() {
           user_email: session?.user?.email || "",
           contact_name: form.name, first_name: form.name.split(" ")[0],
           email: form.email, phone: form.phone, company: form.company,
-          contact_type: "Buyer (Client)", buyer_status: form.buyerStatus || "New",
+          contact_type: form.contactType || "Buyer (Client)", buyer_status: form.buyerStatus || "New",
           asset_preference: form.assetPreference, temperature: form.temperature,
           manager: form.manager, notes: form.notes, lead_source: form.leadSource,
         });
@@ -10130,9 +11396,8 @@ export default function ReapApp() {
 
       setShowBuyerModal(false);
       setEditingBuyer(null);
-      // Force a re-render of BuyerPipelineView by briefly switching nav
-      setActiveNav("command");
-      setTimeout(() => setActiveNav("contacts"), 50);
+      // Signal BuyerPipelineView to refetch
+      setBuyerRefreshKey(prev => prev + 1);
     } catch (err) {
       alert("Error saving buyer: " + err.message);
     } finally {
@@ -10148,10 +11413,10 @@ export default function ReapApp() {
     command: "dashboard", realestate: "pipeline", contacts: "contacts", research: "market_intel"
   };
   const allNavItems = [
-    { id: "command", label: "Command Center", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+    { id: "command", label: "Command Center", mobileLabel: "Dashboard", featured: true, icon: <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
     { id: "realestate", label: "Real Estate", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
     { id: "contacts", label: "Contacts", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
-    { id: "research", label: "Research", icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
+    { id: "research", label: "Research", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
   ];
   // Filter nav items by feature flags (fallback: show all if features haven't loaded yet)
   const navItems = Object.keys(features).length === 0
@@ -10304,11 +11569,11 @@ export default function ReapApp() {
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "investors" ? "contacts/investors" : "contacts"); }} title="Contacts" />
+                <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "investors" ? "contacts/investors" : "contacts"); }} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {contactsTab === "investors"
                     ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} />
-                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
+                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} />
                   }
                 </div>
               </div>
@@ -10371,11 +11636,11 @@ export default function ReapApp() {
                 </div>
               : activeNav === "contacts"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Investors" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "investors" ? "contacts/investors" : "contacts"); }} title="Contacts" />
+                  <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "investors" ? "contacts/investors" : "contacts"); }} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {contactsTab === "investors"
                       ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} />
-                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} />
+                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} />
                     }
                   </div>
                 </div>
@@ -10434,7 +11699,7 @@ export default function ReapApp() {
                   transition: "color 0.2s", WebkitTapHighlightColor: "transparent",
                 }}>
                   {item.icon}
-                  <span style={{ fontSize: 9, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{item.label}</span>
+                  <span style={{ fontSize: 9, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{item.mobileLabel || item.label}</span>
                 </button>
               );
             })}
@@ -10459,7 +11724,7 @@ export default function ReapApp() {
               <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
             <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", letterSpacing: "-0.01em" }}>
-              {showProfile ? "Profile" : navItems.find(i => i.id === activeNav)?.label || "REAP"}
+              {showProfile ? "Profile" : (navItems.find(i => i.id === activeNav)?.mobileLabel || navItems.find(i => i.id === activeNav)?.label || "REAP")}
             </span>
             <div style={{ width: 40 }} />
           </div>

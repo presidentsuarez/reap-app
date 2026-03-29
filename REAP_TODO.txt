@@ -1,0 +1,130 @@
+REAP Platform - Future Improvements & Large Items
+==================================================
+Last updated: March 29, 2026 (Session 5D)
+
+SUPABASE MIGRATIONS NEEDED (Run these SQL statements)
+------------------------------------------------------
+-- From Session 5C/5D: Contact & Notification fields
+ALTER TABLE investors ADD COLUMN IF NOT EXISTS notification_email text;
+ALTER TABLE investors ADD COLUMN IF NOT EXISTS notification_phone text;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS linked_deal_addresses text;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS portal_email text;
+
+-- From Session 5D: New tables for deal improvements and units
+CREATE TABLE deal_improvements (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  deal_id uuid NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  description text NOT NULL,
+  budgeted_cost numeric,
+  actual_cost numeric,
+  status text DEFAULT 'Not Started',
+  contractor text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE deal_units (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  deal_id uuid NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  unit_number text NOT NULL,
+  sqft numeric,
+  bedrooms integer,
+  bathrooms numeric,
+  current_rent numeric,
+  market_rent numeric,
+  status text DEFAULT 'Vacant',
+  tenant_name text,
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE deal_improvements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deal_units ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users can manage improvements" ON deal_improvements FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Authenticated users can manage units" ON deal_units FOR ALL USING (auth.role() = 'authenticated');
+
+
+LARGE FUTURE ITEMS (Require significant development time)
+---------------------------------------------------------
+
+1. INVESTOR PORTAL FRONTEND
+   - Build the actual portal UI at app.getreap.ai for investors to sign in
+   - Google OAuth login checking contacts.portal_email
+   - Read-only view of deal updates, documents, fund performance
+   - Separate route/view from admin app
+
+2. EDGE FUNCTION: send-investor-notifications
+   - Deploy Supabase Edge Function to actually send emails (Resend) and SMS (Quo)
+   - Currently notifications are queued as "pending" in investor_notifications table
+   - Function should read pending records, send via API, update status to "sent"/"failed"
+
+3. REAL-TIME NOTIFICATIONS
+   - Supabase Realtime subscriptions for deal updates
+   - In-app notification bell/center
+   - Push notifications for mobile (PWA)
+
+4. DOCUMENT MANAGEMENT ENHANCEMENTS
+   - Document categories/tags
+   - Document expiry tracking (insurance, leases)
+   - E-signature integration (DocuSign already connected via Make.com)
+   - Auto-organize documents by type
+
+5. REPORTING & ANALYTICS
+   - Portfolio-level performance dashboards
+   - Cash flow projections with charts
+   - Investor return calculations (IRR, equity multiple, CoC)
+   - Export to PDF/Excel reports
+
+6. UNIT MANAGEMENT ENHANCEMENTS
+   - Lease tracking (start/end dates, renewal alerts)
+   - Unit-level expense tracking
+   - Tenant communication log
+   - Rent roll export to spreadsheet
+   - Unit condition photos/notes
+
+7. IMPROVEMENTS TRACKER ENHANCEMENTS
+   - Timeline/Gantt view for renovation phases
+   - Photo progress tracking per line item
+   - Draw schedule integration (link to financing)
+   - Contractor management (contact info, insurance, contracts)
+
+8. MULTI-USER COLLABORATION
+   - Real-time presence indicators
+   - Activity feed per deal
+   - @mentions in notes
+   - Role-based permissions (beyond viewer/editor)
+
+9. MLS INTEGRATION
+   - Auto-import from MLS feeds
+   - Property matching/alerts
+   - Comp analysis automation
+
+10. MOBILE APP (PWA)
+    - Service worker for offline access
+    - App manifest for install prompt
+    - Camera integration for property photos
+    - GPS location tagging
+
+
+QUICK FIXES COMPLETED IN SESSION 5D
+-------------------------------------
+- Fixed: Contact edit button not working (BuyerModal not rendering in detail view)
+- Fixed: NewDealModal city/state/zip grid not responsive on mobile
+- Fixed: Mobile bottom nav now shows only 3 items (Real Estate, Dashboard, Contacts)
+- Fixed: Research moved to hamburger side menu only
+- Fixed: Command Center shows as "Dashboard" on mobile bottom nav
+- Added: Companies tab on ContactDetailView (link/unlink contacts to companies)
+- Added: Linked Deals and Communications tabs for ALL contacts (not just investors)
+- Added: Send Email/SMS compose UI in Communications tab
+- Renamed: "Income" tab to "Cash Flow" in deal detail
+- Consolidated: Refinance + Bridge Loan + Financing into one "Financing" tab with sub-tabs
+- Added: Improvements tracker tab (line items with budget/actual/status/contractor)
+- Added: Units tab (unit roster with sqft, beds/baths, rent, occupancy, unaccounted space calc)
+
+
+AUDIT NOTES (Session 5D)
+--------------------------
+- All detail view tab bars (Deal, Contact, Company) have horizontal scroll on mobile
+- All modals are mobile-responsive (full-width, slide-up animation)
+- CSS animations (fadeIn, slideInLeft, slideUp) are defined globally
+- Search inputs use width: 100% with box-sizing: border-box throughout
+- Grid layouts use isMobile conditionals for responsive columns
+- Bottom nav padding accounts for safe area on modern phones
