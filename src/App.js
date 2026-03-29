@@ -1066,12 +1066,14 @@ function AIUnderwritingTab({ deal, isMobile }) {
    DEAL OFFERINGS TAB
    ═══════════════════════════════════════════════════════════ */
 
-function DealOfferingsTab({ deal, isMobile, userEmail }) {
+function DealOfferingsTab({ deal, isMobile, userEmail, onUpdateDeal }) {
   const [offerings, setOfferings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [dealPublished, setDealPublished] = useState(!!deal.marketplace_published);
+  const [publishSaving, setPublishSaving] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", minimum_investment: "", target_raise: "", preferred_return: "", profit_share_pct: "", status: "Draft" });
 
   // Fetch offerings for this deal
@@ -1083,6 +1085,19 @@ function DealOfferingsTab({ deal, isMobile, userEmail }) {
       setLoading(false);
     })();
   }, [deal._id, deal.id]);
+
+  // Toggle deal marketplace visibility
+  const toggleDealPublish = async () => {
+    setPublishSaving(true);
+    const newVal = !dealPublished;
+    try {
+      await supabase.from("deals").update({ marketplace_published: newVal }).eq("id", deal._id || deal.id);
+      setDealPublished(newVal);
+      deal.marketplace_published = newVal;
+      if (onUpdateDeal) onUpdateDeal();
+    } catch (e) { console.error(e); }
+    finally { setPublishSaving(false); }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -1127,6 +1142,28 @@ function DealOfferingsTab({ deal, isMobile, userEmail }) {
 
   return (
     <div>
+      {/* Marketplace Publish Toggle */}
+      <div style={{ background: dealPublished ? "#f0fdf4" : "#fff", borderRadius: 14, border: `1px solid ${dealPublished ? "#16a34a33" : "#e2e8f0"}`, padding: isMobile ? 16 : 20, marginBottom: 20, display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexDirection: isMobile ? "column" : "row", gap: 12 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={dealPublished ? "#16a34a" : "#94a3b8"} strokeWidth={2}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Marketplace Visibility</h3>
+          </div>
+          <p style={{ fontSize: 12, color: "#64748b", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>
+            {dealPublished ? "This deal is live on the Marketplace. Clients and investors can see it." : "Publish this deal to make it visible on the Marketplace for clients and investors."}
+          </p>
+        </div>
+        <button onClick={toggleDealPublish} disabled={publishSaving} style={{
+          padding: "10px 20px", borderRadius: 8, border: "none", flexShrink: 0,
+          background: dealPublished ? "#dc2626" : "linear-gradient(135deg, #16a34a, #15803d)",
+          color: "#fff", fontSize: 12, fontWeight: 700, cursor: publishSaving ? "not-allowed" : "pointer",
+          fontFamily: "'DM Sans', sans-serif", boxShadow: dealPublished ? "0 2px 8px rgba(220,38,38,0.25)" : "0 2px 10px rgba(22,163,74,0.35)",
+          opacity: publishSaving ? 0.7 : 1, transition: "all 0.15s",
+        }}>
+          {publishSaving ? "Saving..." : dealPublished ? "Unpublish from Marketplace" : "Publish to Marketplace"}
+        </button>
+      </div>
+
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <div>
@@ -4087,7 +4124,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
         })()}
 
         {activeTab === "offerings" && (
-          <DealOfferingsTab deal={deal} isMobile={isMobile} userEmail={userEmail} />
+          <DealOfferingsTab deal={deal} isMobile={isMobile} userEmail={userEmail} onUpdateDeal={onUpdateDeal} />
         )}
 
         {activeTab === "ai underwriting" && (
@@ -10246,87 +10283,261 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
    ═══════════════════════════════════════════════════════════ */
 
 function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHash }) {
-  const [viewMode, setViewMode] = useState("deals"); // "deals" or "investments"
+  const [contentMode, setContentMode] = useState("deals"); // "deals" or "investments"
+  const [viewMode, setViewMode] = useState("cards"); // "cards", "table", "map"
   const [search, setSearch] = useState("");
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [selectedDeal, setSelectedDeal] = useState(null);
+  const [detailTab, setDetailTab] = useState("overview");
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState("desc");
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markersRef = useRef([]);
+  const [mapLoading, setMapLoading] = useState(false);
 
-  // Filter to published deals (status = Closed or any with marketplace_published flag)
-  const publishedDeals = deals.filter(d => d.marketplace_published || d.status === "Closed");
+  const publishedDeals = deals.filter(d => d.marketplace_published);
   const filtered = publishedDeals.filter(d => {
     if (!search) return true;
     const s = search.toLowerCase();
     return (d.address || "").toLowerCase().includes(s) || (d.city || "").toLowerCase().includes(s) || (d.type || "").toLowerCase().includes(s);
   });
 
+  const handleSort = (col) => { if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortCol(col); setSortDir("desc"); } };
+  const sorted = [...filtered].sort((a, b) => {
+    if (!sortCol) return 0;
+    const av = a[sortCol], bv = b[sortCol];
+    const an = parseFloat(String(av).replace(/[$,]/g, "")), bn = parseFloat(String(bv).replace(/[$,]/g, ""));
+    if (!isNaN(an) && !isNaN(bn)) return sortDir === "asc" ? an - bn : bn - an;
+    return sortDir === "asc" ? String(av || "").localeCompare(String(bv || "")) : String(bv || "").localeCompare(String(av || ""));
+  });
+
+  // Map init
+  const initMarketplaceMap = useCallback(async () => {
+    if (!mapRef.current || filtered.length === 0) return;
+    setMapLoading(true);
+    try {
+      await loadGoogleMaps();
+      const map = new window.google.maps.Map(mapRef.current, { center: { lat: 39.8283, lng: -98.5795 }, zoom: 4, mapTypeControl: true, streetViewControl: false, fullscreenControl: true, styles: [{ featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }] });
+      mapInstanceRef.current = map;
+      markersRef.current.forEach(m => m.setMap(null));
+      markersRef.current = [];
+      const bounds = new window.google.maps.LatLngBounds();
+      let hasMarkers = false;
+      for (const deal of filtered) {
+        if (deal.latitude && deal.longitude) {
+          const pos = { lat: parseFloat(deal.latitude), lng: parseFloat(deal.longitude) };
+          const sc = STATUS_CONFIG[deal.status] || STATUS_CONFIG["New"];
+          const marker = new window.google.maps.Marker({ position: pos, map, title: deal.address, icon: { path: window.google.maps.SymbolPath.CIRCLE, fillColor: sc.color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, scale: 8 } });
+          marker.addListener("click", () => setSelectedDeal(deal));
+          markersRef.current.push(marker);
+          bounds.extend(pos);
+          hasMarkers = true;
+        }
+      }
+      if (hasMarkers) map.fitBounds(bounds);
+    } catch (e) { console.error(e); }
+    finally { setMapLoading(false); }
+  }, [filtered]);
+
+  useEffect(() => { if (viewMode === "map") { const t = setTimeout(() => initMarketplaceMap(), 100); return () => clearTimeout(t); } }, [viewMode, initMarketplaceMap]);
+
+  // ── DETAIL VIEW ──
+  if (selectedDeal) {
+    const deal = selectedDeal;
+    const streetUrl = deal.address ? `https://maps.googleapis.com/maps/api/streetview?size=1200x300&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}` : null;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        {/* Detail Header */}
+        <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px 16px 0" : "20px 32px 0" }}>
+          <button onClick={() => { setSelectedDeal(null); setDetailTab("overview"); }} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: "#16a34a", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", padding: 0, marginBottom: 12 }}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="15 18 9 12 15 6"/></svg>
+            Back to Marketplace
+          </button>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexDirection: isMobile ? "column" : "row", gap: 12 }}>
+            <div>
+              <p style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.08em", fontWeight: 700, textTransform: "uppercase", margin: "0 0 6px" }}>{deal.type || "Property"} · {[deal.city, deal.state].filter(Boolean).join(", ")}</p>
+              <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 10px", letterSpacing: "-0.02em" }}>{deal.address || "—"}</h1>
+              <div style={{ display: "flex", gap: 8 }}><StatusBadge status={deal.status} /></div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={(e) => { e.stopPropagation(); }} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #16a34a22", background: "rgba(22,163,74,0.06)", color: "#16a34a", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Interested</button>
+              <button onClick={(e) => { e.stopPropagation(); }} style={{ padding: "8px 16px", borderRadius: 8, background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}>Make Offer</button>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 0, marginTop: 16, borderBottom: "none" }}>
+            {["overview"].map(tab => (
+              <button key={tab} onClick={() => setDetailTab(tab)} style={{ padding: "10px 18px", border: "none", borderBottom: detailTab === tab ? "2px solid #16a34a" : "2px solid transparent", background: "transparent", color: detailTab === tab ? "#0f172a" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textTransform: "capitalize" }}>{tab}</button>
+            ))}
+          </div>
+        </div>
+        {/* Detail Content */}
+        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "20px 16px" : "28px 32px", background: "#f8fafc" }}>
+          {detailTab === "overview" && (
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20 }}>
+              <div style={{ flex: 1 }}>
+                {/* Street View + Stats */}
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", marginBottom: 16, display: "flex", flexDirection: isMobile ? "column" : "row" }}>
+                  <div style={{ width: isMobile ? "100%" : 220, height: isMobile ? 180 : 220, flexShrink: 0, background: "#f1f5f9", position: "relative" }}>
+                    {streetUrl && <img src={streetUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={e => { e.target.style.display = "none"; }} />}
+                    <div style={{ position: "absolute", inset: 0, display: streetUrl ? "none" : "flex", alignItems: "center", justifyContent: "center" }}>
+                      <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, padding: "18px 20px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", fontFamily: "'DM Mono', monospace", marginBottom: 8 }}>{fmt(deal.offer)}</div>
+                    <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
+                      {deal.type && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>{deal.type}</strong></span>}
+                      {deal.sqft && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>{fmtNum(deal.sqft)}</strong> SqFt</span>}
+                      {deal.netSqft && <span style={{ fontSize: 13, color: "#475569", fontFamily: "'DM Sans', sans-serif" }}><strong>${deal.netSqft}</strong>/SF</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6 }}>
+                      <div>{deal.address}</div>
+                      <div>{[deal.city, deal.state, deal.zip].filter(Boolean).join(", ")}</div>
+                    </div>
+                  </div>
+                </div>
+                {/* Property Details */}
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px" }}>
+                  <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>Property Details</h3>
+                  {[
+                    { label: "Status", value: deal.status || "—" },
+                    { label: "Property Type", value: deal.type || "—" },
+                    { label: "Square Footage", value: deal.sqft ? fmtNum(deal.sqft) + " SF" : "—" },
+                    { label: "Price Per SF", value: deal.netSqft ? "$" + deal.netSqft : "—" },
+                    { label: "Source", value: deal.source || "Manual" },
+                    { label: "Date Added", value: deal.date || "—" },
+                  ].map((item, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: i < 5 ? "1px solid #f8fafc" : "none" }}>
+                      <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{item.label}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Right sidebar */}
+              {!isMobile && (
+                <div style={{ width: 300, flexShrink: 0 }}>
+                  <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px" }}>
+                    <h3 style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px" }}>Quick Actions</h3>
+                    <button style={{ width: "100%", padding: "10px 16px", borderRadius: 8, border: "1px solid #16a34a22", background: "rgba(22,163,74,0.06)", color: "#16a34a", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>Express Interest</button>
+                    <button style={{ width: "100%", padding: "10px 16px", borderRadius: 8, background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}>Submit Offer</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── LIST VIEW ──
   return (
-    <div style={{ padding: isMobile ? 16 : 28 }}>
+    <div style={{ padding: isMobile ? 16 : 28, display: "flex", flexDirection: "column", height: viewMode === "map" ? "100%" : "auto" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <div>
           <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Marketplace</h2>
-          <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>Browse available deals and investment offerings</p>
+          <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{filtered.length} listing{filtered.length !== 1 ? "s" : ""} published</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* Toggle between deals and investments */}
+          {/* Deals / Investments toggle */}
           <div style={{ display: "flex", borderRadius: 8, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-            <button onClick={() => setViewMode("deals")} style={{ padding: "7px 14px", border: "none", background: viewMode === "deals" ? "#0f172a" : "#fff", color: viewMode === "deals" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
-              Deals
-            </button>
-            <button onClick={() => setViewMode("investments")} style={{ padding: "7px 14px", border: "none", borderLeft: "1px solid #e2e8f0", background: viewMode === "investments" ? "#0f172a" : "#fff", color: viewMode === "investments" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
-              Investments
-            </button>
+            <button onClick={() => setContentMode("deals")} style={{ padding: "7px 14px", border: "none", background: contentMode === "deals" ? "#0f172a" : "#fff", color: contentMode === "deals" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Deals</button>
+            <button onClick={() => setContentMode("investments")} style={{ padding: "7px 14px", border: "none", borderLeft: "1px solid #e2e8f0", background: contentMode === "investments" ? "#0f172a" : "#fff", color: contentMode === "investments" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Investments</button>
+          </div>
+          {/* Cards / Table / Map toggle */}
+          <div style={{ display: "flex", borderRadius: 8, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+            {[
+              { id: "cards", icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
+              { id: "table", icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg> },
+              { id: "map", icon: <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg> },
+            ].map((v, idx) => (
+              <button key={v.id} onClick={() => setViewMode(v.id)} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 34, border: "none", borderLeft: idx > 0 ? "1px solid #e2e8f0" : "none", background: viewMode === v.id ? "#0f172a" : "#fff", color: viewMode === v.id ? "#fff" : "#64748b", cursor: "pointer" }}>{v.icon}</button>
+            ))}
           </div>
           <div style={{ position: "relative" }}>
             <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: isMobile ? 140 : 200 }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: isMobile ? 120 : 180 }} />
           </div>
         </div>
       </div>
 
-      {viewMode === "deals" ? (
+      {contentMode === "deals" ? (
         filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
             <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 16 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
             <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>No marketplace listings yet</p>
-            <p style={{ fontSize: 12, margin: 0 }}>Published deals and offerings will appear here</p>
+            <p style={{ fontSize: 12, margin: 0 }}>Publish deals from the Offerings tab in any deal to list them here</p>
           </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-            {filtered.map((deal, i) => (
-              <div key={deal._id || i} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{
+        ) : viewMode === "cards" ? (
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+            {sorted.map((deal, i) => (
+              <div key={deal._id || i} onClick={() => setSelectedDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{
                 background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", cursor: "pointer",
                 boxShadow: hoveredRow === i ? "0 8px 24px rgba(0,0,0,0.08)" : "0 1px 4px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s, transform 0.2s",
                 transform: hoveredRow === i ? "translateY(-2px)" : "none",
               }}>
-                {/* Street View Image */}
-                <div style={{ height: 160, background: "#f1f5f9", position: "relative", overflow: "hidden" }}>
-                  {deal.address ? (
-                    <img src={`https://maps.googleapis.com/maps/api/streetview?size=640x320&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
-                  ) : null}
-                  <div style={{ position: "absolute", bottom: 8, left: 8 }}>
-                    <StatusBadge status={deal.status} />
-                  </div>
+                <div style={{ height: 140, background: "#f1f5f9", position: "relative", overflow: "hidden" }}>
+                  {deal.address && <img src={`https://maps.googleapis.com/maps/api/streetview?size=640x280&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />}
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}><svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+                  <div style={{ position: "absolute", bottom: 8, left: 8, zIndex: 2 }}><StatusBadge status={deal.status} /></div>
                 </div>
-                {/* Deal Info */}
-                <div style={{ padding: "14px 16px" }}>
-                  <h3 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>{deal.address || "—"}</h3>
-                  <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px", fontFamily: "'DM Sans', sans-serif" }}>{[deal.city, deal.state, deal.zip].filter(Boolean).join(", ")}</p>
-                  <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                <div style={{ padding: "12px 14px" }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 3px", fontFamily: "'DM Sans', sans-serif" }}>{deal.address || "—"}</h3>
+                  <p style={{ fontSize: 11, color: "#64748b", margin: "0 0 8px", fontFamily: "'DM Sans', sans-serif" }}>{[deal.city, deal.state, deal.zip].filter(Boolean).join(", ")}</p>
+                  <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
                     {deal.offer && <span style={{ fontSize: 14, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>{fmt(deal.offer)}</span>}
                     {deal.type && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{deal.type}</span>}
                     {deal.sqft && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)} SF</span>}
                   </div>
-                  <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                    <button style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #16a34a22", background: "rgba(22,163,74,0.06)", color: "#16a34a", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-                      Interested
-                    </button>
-                    <button style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#475569", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-                      Make Offer
-                    </button>
-                  </div>
                 </div>
               </div>
             ))}
+          </div>
+        ) : viewMode === "table" ? (
+          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "auto", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: isMobile ? 800 : 0 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                  <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
+                  {[{ k: "address", l: "Address" }, { k: "city", l: "City" }, { k: "type", l: "Type" }, { k: "offer", l: "Price" }, { k: "status", l: "Status" }, { k: "sqft", l: "Sq Ft" }, { k: "netSqft", l: "$/SF" }].map(h => (
+                    <th key={h.k} onClick={() => handleSort(h.k)} style={{ padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h.k ? "#16a34a" : "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", whiteSpace: "nowrap", cursor: "pointer" }}>{h.l}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.length === 0 ? <tr><td colSpan={8} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings</td></tr> : sorted.map((deal, i) => (
+                  <tr key={deal._id || i} onClick={() => setSelectedDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f1f5f9", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
+                    <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", position: "relative" }}>
+                        {deal.address && <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />}
+                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+                      </div>
+                    </td>
+                    <td style={{ padding: "13px 16px", fontSize: 13, fontWeight: 500, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{deal.address || "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b" }}>{deal.city || "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b" }}>{deal.type || "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmt(deal.offer)}</td>
+                    <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.sqft ? fmtNum(deal.sqft) : "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.netSqft ? "$" + deal.netSqft : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          /* MAP VIEW */
+          <div style={{ flex: 1, minHeight: isMobile ? 300 : 500, position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+            <div ref={mapRef} style={{ width: "100%", height: "100%", minHeight: isMobile ? 300 : 500 }} />
+            {mapLoading && (
+              <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 10, padding: "8px 16px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
+                <div style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                <span style={{ fontSize: 11, color: "#475569", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Loading map...</span>
+              </div>
+            )}
           </div>
         )
       ) : (
