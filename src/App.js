@@ -3178,23 +3178,35 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
         }));
         setDeals(parsed);
 
-        // Fetch funds this investor is linked to
+        // Fetch funds this investor is linked to (via deal addresses OR direct investor_funds assignment)
         try {
-          const { data: fundsData } = await supabase.from("funds").select("*").order("created_at", { ascending: false });
-          if (fundsData) {
-            // Filter funds that include any of this investor's deals
+          const [fundsRes, investorFundsRes] = await Promise.all([
+            supabase.from("funds").select("*").order("created_at", { ascending: false }),
+            supabase.from("investor_funds").select("*").eq("investor_id", investorProfile.id),
+          ]);
+          const fundsData = fundsRes.data || [];
+          const myFundAssignments = investorFundsRes.data || [];
+          const myFundIds = new Set(myFundAssignments.map(a => a.fund_id));
+          if (fundsData.length > 0) {
             const investorAddresses = new Set(investorProfile.linkedDealAddresses || []);
             const relevantFunds = fundsData.filter(f => {
               const fundAddresses = f.deal_addresses ? f.deal_addresses.split("|||").filter(Boolean) : [];
-              return fundAddresses.some(addr => investorAddresses.has(addr));
-            }).map(f => ({
-              ...f,
-              dealAddresses: f.deal_addresses ? f.deal_addresses.split("|||").filter(Boolean) : [],
-              fundDeals: parsed.filter(d => {
-                const fAddrs = f.deal_addresses ? f.deal_addresses.split("|||").filter(Boolean) : [];
-                return fAddrs.includes(d.address);
-              }),
-            }));
+              return fundAddresses.some(addr => investorAddresses.has(addr)) || myFundIds.has(f.id);
+            }).map(f => {
+              const assignment = myFundAssignments.find(a => a.fund_id === f.id);
+              return {
+                ...f,
+                dealAddresses: f.deal_addresses ? f.deal_addresses.split("|||").filter(Boolean) : [],
+                fundDeals: parsed.filter(d => {
+                  const fAddrs = f.deal_addresses ? f.deal_addresses.split("|||").filter(Boolean) : [];
+                  return fAddrs.includes(d.address);
+                }),
+                myCommitment: assignment ? parseFloat(assignment.committed_capital) || 0 : 0,
+                myFunded: assignment ? parseFloat(assignment.funded_capital) || 0 : 0,
+                myInvestmentDate: assignment ? assignment.investment_date : null,
+                myNotes: assignment ? assignment.notes : null,
+              };
+            });
             setFunds(relevantFunds);
           }
         } catch (e) { console.log("[REAP] Funds table may not exist yet:", e); }
@@ -3652,6 +3664,37 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
                               <span style={{ fontSize: 12, color: "#64748b" }}>{fmt(capitalRaised)} raised</span>
                               <span style={{ fontSize: 12, color: "#94a3b8" }}>Target: {fmt(targetRaise)}</span>
                             </div>
+                          </div>
+                        )}
+
+                        {/* Your Investment Card */}
+                        {(fund.myCommitment > 0 || fund.myFunded > 0) && (
+                          <div style={{ padding: 16, borderRadius: 12, background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)", border: "1px solid #86efac", marginBottom: 16 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Your Investment</div>
+                            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12 }}>
+                              <div>
+                                <div style={{ fontSize: 10, color: "#64748b", marginBottom: 2 }}>Committed</div>
+                                <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>{fmt(fund.myCommitment)}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 10, color: "#64748b", marginBottom: 2 }}>Funded</div>
+                                <div style={{ fontSize: 20, fontWeight: 700, color: "#16a34a" }}>{fmt(fund.myFunded)}</div>
+                              </div>
+                              {fund.myCommitment > 0 && (
+                                <div>
+                                  <div style={{ fontSize: 10, color: "#64748b", marginBottom: 2 }}>% Called</div>
+                                  <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>{Math.round((fund.myFunded / fund.myCommitment) * 100)}%</div>
+                                </div>
+                              )}
+                            </div>
+                            {fund.myCommitment > 0 && (
+                              <div style={{ marginTop: 10 }}>
+                                <div style={{ height: 6, borderRadius: 3, background: "#bbf7d0", overflow: "hidden" }}>
+                                  <div style={{ height: "100%", borderRadius: 3, background: "#16a34a", width: Math.min(100, Math.round((fund.myFunded / fund.myCommitment) * 100)) + "%", transition: "width 0.5s ease" }} />
+                                </div>
+                              </div>
+                            )}
+                            {fund.myInvestmentDate && <div style={{ fontSize: 11, color: "#64748b", marginTop: 8 }}>Invested: {new Date(fund.myInvestmentDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</div>}
                           </div>
                         )}
 
@@ -8013,9 +8056,9 @@ function ContactsTab({ investor, contacts, investorContacts, isMobile }) {
   );
 }
 
-function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivity, onLinkDeal, deals, isMobile, contacts }) {
+function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivity, onLinkDeal, deals, isMobile, contacts, investorFunds, funds }) {
   const [activeTab, setActiveTab] = useState("overview");
-  const tabs = ["overview", "contacts", "capital", "linked deals", "communications", "documents", "portal access"];
+  const tabs = ["overview", "funds", "contacts", "capital", "linked deals", "communications", "documents", "portal access"];
   const [portalEmail, setPortalEmail] = useState(investor.portalEmail || "");
   const [portalSaving, setPortalSaving] = useState(false);
   const [portalSuccess, setPortalSuccess] = useState("");
@@ -8116,6 +8159,91 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
             )}
           </>
         )}
+
+        {activeTab === "funds" && (() => {
+          const myAssignments = (investorFunds || []).filter(af => af.investor_id === investor.id);
+          const myFundDetails = myAssignments.map(a => {
+            const fund = (funds || []).find(f => f.id === a.fund_id);
+            return fund ? { ...a, fund } : null;
+          }).filter(Boolean);
+          const totalMyCommitted = myAssignments.reduce((s, a) => s + (parseFloat(a.committed_capital) || 0), 0);
+          const totalMyFunded = myAssignments.reduce((s, a) => s + (parseFloat(a.funded_capital) || 0), 0);
+          return (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Fund Assignments <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
+              {myFundDetails.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 30 }}>
+                  <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>This investor is not assigned to any funds yet.</p>
+                  <p style={{ fontSize: 12, color: "#cbd5e1", margin: "6px 0 0" }}>Use the Funds panel to assign investors to funds with capital commitments.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Summary cards */}
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
+                    <div style={{ padding: 16, borderRadius: 12, background: "#f0fdf4", border: "1px solid #86efac" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Funds</div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>{myFundDetails.length}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Total Committed</div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>{totalMyCommitted > 0 ? fmt(totalMyCommitted) : "—"}</div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Total Funded</div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: "#16a34a" }}>{totalMyFunded > 0 ? fmt(totalMyFunded) : "—"}</div>
+                    </div>
+                  </div>
+                  {/* Fund cards */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {myFundDetails.map(a => {
+                      const f = a.fund;
+                      const fundDeals = deals.filter(d => (f.dealAddresses || []).includes(d.address));
+                      const ac = parseFloat(a.committed_capital) || 0;
+                      const af = parseFloat(a.funded_capital) || 0;
+                      const pctCalled = ac > 0 ? Math.round((af / ac) * 100) : 0;
+                      return (
+                        <div key={a.id} style={{ padding: 18, borderRadius: 14, border: "1px solid #e2e8f0", background: "#fff" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+                            <div>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif" }}>{f.name}</div>
+                              {f.description && <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{f.description}</div>}
+                            </div>
+                            <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: f.status === "Active" ? "#f0fdf4" : "#f8fafc", color: f.status === "Active" ? "#16a34a" : "#64748b" }}>{f.status || "Active"}</span>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+                            <div style={{ padding: 10, borderRadius: 8, background: "#f8fafc" }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase" }}>Committed</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{ac > 0 ? fmt(ac) : "—"}</div>
+                            </div>
+                            <div style={{ padding: 10, borderRadius: 8, background: "#f0fdf4" }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: "#16a34a", textTransform: "uppercase" }}>Funded</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: "#16a34a" }}>{af > 0 ? fmt(af) : "—"}</div>
+                            </div>
+                            <div style={{ padding: 10, borderRadius: 8, background: "#f8fafc" }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase" }}>% Called</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{pctCalled}%</div>
+                            </div>
+                            <div style={{ padding: 10, borderRadius: 8, background: "#f8fafc" }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase" }}>Properties</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{fundDeals.length}</div>
+                            </div>
+                          </div>
+                          {ac > 0 && (
+                            <div style={{ height: 5, borderRadius: 3, background: "#f1f5f9", overflow: "hidden" }}>
+                              <div style={{ height: "100%", borderRadius: 3, background: "#16a34a", width: Math.min(100, pctCalled) + "%", transition: "width 0.3s ease" }} />
+                            </div>
+                          )}
+                          {a.investment_date && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>Invested: {fmtDate(a.investment_date)}</div>}
+                          {a.notes && <div style={{ fontSize: 12, color: "#64748b", marginTop: 6, fontStyle: "italic" }}>{a.notes}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </>
+          );
+        })()}
 
         {activeTab === "contacts" && (
           <ContactsTab investor={investor} contacts={contacts} investorContacts={investorContacts} isMobile={isMobile} />
@@ -8346,6 +8474,11 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
   const [editingFund, setEditingFund] = useState(null);
   const [fundForm, setFundForm] = useState({ name: "", description: "", status: "Active", targetRaise: "", capitalRaised: "", targetIrr: "", preferredReturn: "", holdPeriod: "", vintageYear: "", dealAddresses: [] });
   const [fundSaving, setFundSaving] = useState(false);
+  const [investorFunds, setInvestorFunds] = useState([]);
+  const [showAssignInvestorModal, setShowAssignInvestorModal] = useState(false);
+  const [assigningFund, setAssigningFund] = useState(null);
+  const [assignForm, setAssignForm] = useState({ investorId: "", committedCapital: "", fundedCapital: "", investmentDate: "", notes: "" });
+  const [assignSaving, setAssignSaving] = useState(false);
   const searchRef = useRef(null);
 
   useEffect(() => { if (searchOpen && searchRef.current) searchRef.current.focus(); }, [searchOpen]);
@@ -8417,6 +8550,50 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
     } catch (e) { console.log("[REAP] Funds table may not exist yet:", e); }
   }, []);
 
+  const fetchInvestorFunds = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from("investor_funds").select("*").order("created_at", { ascending: false });
+      if (!error && data) setInvestorFunds(data);
+    } catch (e) { console.log("[REAP] investor_funds table may not exist yet:", e); }
+  }, []);
+
+  const handleAssignInvestor = async () => {
+    if (!assigningFund || !assignForm.investorId) return;
+    setAssignSaving(true);
+    try {
+      // Check if already assigned
+      const existing = investorFunds.find(af => af.fund_id === assigningFund.id && af.investor_id === assignForm.investorId);
+      if (existing) {
+        // Update existing assignment
+        await supabase.from("investor_funds").update({
+          committed_capital: parseFloat(assignForm.committedCapital) || null,
+          funded_capital: parseFloat(assignForm.fundedCapital) || null,
+          investment_date: assignForm.investmentDate || null,
+          notes: assignForm.notes || null,
+        }).eq("id", existing.id);
+      } else {
+        await supabase.from("investor_funds").insert({
+          fund_id: assigningFund.id,
+          investor_id: assignForm.investorId,
+          committed_capital: parseFloat(assignForm.committedCapital) || null,
+          funded_capital: parseFloat(assignForm.fundedCapital) || null,
+          investment_date: assignForm.investmentDate || null,
+          notes: assignForm.notes || null,
+          user_email: userEmail,
+        });
+      }
+      setShowAssignInvestorModal(false);
+      setAssignForm({ investorId: "", committedCapital: "", fundedCapital: "", investmentDate: "", notes: "" });
+      fetchInvestorFunds();
+    } catch (err) { alert("Error assigning investor: " + err.message); } finally { setAssignSaving(false); }
+  };
+
+  const handleRemoveInvestorFromFund = async (assignmentId) => {
+    if (!window.confirm("Remove this investor from the fund?")) return;
+    await supabase.from("investor_funds").delete().eq("id", assignmentId);
+    fetchInvestorFunds();
+  };
+
   const handleSaveFund = async () => {
     setFundSaving(true);
     try {
@@ -8441,7 +8618,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
     } catch (err) { alert("Error saving fund: " + err.message); } finally { setFundSaving(false); }
   };
 
-  useEffect(() => { if (session) { fetchInvestors(); fetchActivities(); fetchContacts(); fetchFunds(); } }, [session, fetchInvestors, fetchActivities, fetchContacts, fetchFunds]);
+  useEffect(() => { if (session) { fetchInvestors(); fetchActivities(); fetchContacts(); fetchFunds(); fetchInvestorFunds(); } }, [session, fetchInvestors, fetchActivities, fetchContacts, fetchFunds, fetchInvestorFunds]);
 
   // Auto-select investor from URL hash
   useEffect(() => {
@@ -8551,7 +8728,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
       <>
         <InvestorDetailView
           investor={selectedInvestor} activities={activities} deals={deals} contacts={contacts}
-          isMobile={isMobile}
+          isMobile={isMobile} investorFunds={investorFunds} funds={funds}
           onBack={() => { setSelectedInvestor(null); if (updateHash) updateHash("contacts/investors"); }}
           onEdit={() => { setEditingInvestor(selectedInvestor); setShowModal(true); }}
           onLogActivity={() => setShowActivityModal(true)}
@@ -8665,18 +8842,49 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
                   const targetRaise = parseFloat(fund.target_raise) || 0;
                   const capitalRaised = parseFloat(fund.capital_raised) || 0;
                   const pctRaised = targetRaise > 0 ? Math.min(100, Math.round((capitalRaised / targetRaise) * 100)) : 0;
+                  const fundAssignments = investorFunds.filter(af => af.fund_id === fund.id);
+                  const totalCommittedToFund = fundAssignments.reduce((s, a) => s + (parseFloat(a.committed_capital) || 0), 0);
+                  const totalFundedToFund = fundAssignments.reduce((s, a) => s + (parseFloat(a.funded_capital) || 0), 0);
                   return (
-                    <div key={fund.id} style={{ padding: "14px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 14 }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
-                        {fund.name ? fund.name.charAt(0).toUpperCase() : "F"}
+                    <div key={fund.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                      <div style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                          {fund.name ? fund.name.charAt(0).toUpperCase() : "F"}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fund.name}</div>
+                          <div style={{ fontSize: 11, color: "#94a3b8" }}>{fundDeals.length} deal{fundDeals.length !== 1 ? "s" : ""} · {fundAssignments.length} investor{fundAssignments.length !== 1 ? "s" : ""}{targetRaise > 0 ? " · " + pctRaised + "% raised" : ""}</div>
+                        </div>
+                        <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: fund.status === "Active" ? "#f0fdf4" : fund.status === "Closed" ? "#fef2f2" : "#f8fafc", color: fund.status === "Active" ? "#16a34a" : fund.status === "Closed" ? "#dc2626" : "#64748b" }}>{fund.status || "Active"}</span>
+                        <button onClick={() => { setAssigningFund(fund); setAssignForm({ investorId: "", committedCapital: "", fundedCapital: "", investmentDate: "", notes: "" }); setShowAssignInvestorModal(true); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #dbeafe", background: "#eff6ff", fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#2563eb" }}>+ Investor</button>
+                        <button onClick={() => { setEditingFund(fund); setFundForm({ name: fund.name || "", description: fund.description || "", status: fund.status || "Active", targetRaise: fund.target_raise || "", capitalRaised: fund.capital_raised || "", targetIrr: fund.target_irr || "", preferredReturn: fund.preferred_return || "", holdPeriod: fund.hold_period || "", vintageYear: fund.vintage_year || "", dealAddresses: fund.dealAddresses || [] }); setShowFundModal(true); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#64748b" }}>Edit</button>
+                        <button onClick={async () => { if (!window.confirm("Delete fund '" + fund.name + "'?")) return; await supabase.from("funds").delete().eq("id", fund.id); fetchFunds(); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#dc2626" }}>Delete</button>
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{fund.name}</div>
-                        <div style={{ fontSize: 11, color: "#94a3b8" }}>{fundDeals.length} deal{fundDeals.length !== 1 ? "s" : ""}{targetRaise > 0 ? " · " + pctRaised + "% raised" : ""}</div>
-                      </div>
-                      <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: fund.status === "Active" ? "#f0fdf4" : fund.status === "Closed" ? "#fef2f2" : "#f8fafc", color: fund.status === "Active" ? "#16a34a" : fund.status === "Closed" ? "#dc2626" : "#64748b" }}>{fund.status || "Active"}</span>
-                      <button onClick={() => { setEditingFund(fund); setFundForm({ name: fund.name || "", description: fund.description || "", status: fund.status || "Active", targetRaise: fund.target_raise || "", capitalRaised: fund.capital_raised || "", targetIrr: fund.target_irr || "", preferredReturn: fund.preferred_return || "", holdPeriod: fund.hold_period || "", vintageYear: fund.vintage_year || "", dealAddresses: fund.dealAddresses || [] }); setShowFundModal(true); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#64748b" }}>Edit</button>
-                      <button onClick={async () => { if (!window.confirm("Delete fund '" + fund.name + "'?")) return; await supabase.from("funds").delete().eq("id", fund.id); fetchFunds(); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#dc2626" }}>Delete</button>
+                      {/* Investor Assignments */}
+                      {fundAssignments.length > 0 && (
+                        <div style={{ padding: "0 20px 14px", marginLeft: 54 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Investors · Committed {fmt(totalCommittedToFund)} · Funded {fmt(totalFundedToFund)}</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {fundAssignments.map(a => {
+                              const inv = investors.find(i => i.id === a.investor_id);
+                              return (
+                                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", borderRadius: 8, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
+                                  <div style={{ width: 24, height: 24, borderRadius: 6, background: "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#64748b", flexShrink: 0 }}>
+                                    {inv ? (inv.investorName || "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2) : "?"}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", cursor: "pointer" }} onClick={() => { if (inv) { setSelectedInvestor(inv); if (updateHash) updateHash("contacts/investor/" + inv.id); } }}>{inv ? inv.investorName : "Unknown"}</span>
+                                  </div>
+                                  {a.committed_capital && <span style={{ fontSize: 11, color: "#64748b", flexShrink: 0 }}>{fmt(a.committed_capital)} committed</span>}
+                                  {a.funded_capital && <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600, flexShrink: 0 }}>{fmt(a.funded_capital)} funded</span>}
+                                  <button onClick={() => { setAssigningFund(fund); setAssignForm({ investorId: a.investor_id, committedCapital: a.committed_capital || "", fundedCapital: a.funded_capital || "", investmentDate: a.investment_date || "", notes: a.notes || "" }); setShowAssignInvestorModal(true); }} style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid #e2e8f0", background: "#fff", fontSize: 10, cursor: "pointer", color: "#64748b" }}>Edit</button>
+                                  <button onClick={() => handleRemoveInvestorFromFund(a.id)} style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid #fecaca", background: "#fef2f2", fontSize: 10, cursor: "pointer", color: "#dc2626" }}>×</button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -8756,6 +8964,49 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
               <button onClick={() => setShowFundModal(false)} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#64748b" }}>Cancel</button>
               <button onClick={handleSaveFund} disabled={fundSaving || !fundForm.name.trim()} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: fundForm.name.trim() ? "linear-gradient(135deg, #16a34a, #15803d)" : "#e2e8f0", color: fundForm.name.trim() ? "#fff" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: fundForm.name.trim() ? "pointer" : "default", opacity: fundSaving ? 0.7 : 1 }}>{fundSaving ? "Saving..." : (editingFund ? "Update Fund" : "Create Fund")}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Investor to Fund Modal */}
+      {showAssignInvestorModal && assigningFund && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setShowAssignInvestorModal(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 480, maxHeight: "80vh", overflow: "auto", padding: 28 }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>{investorFunds.find(af => af.fund_id === assigningFund.id && af.investor_id === assignForm.investorId) ? "Edit" : "Add"} Investor to Fund</h2>
+            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 20px" }}>{assigningFund.name}</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Investor *</label>
+                <select value={assignForm.investorId} onChange={e => setAssignForm(f => ({ ...f, investorId: e.target.value }))} style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }}>
+                  <option value="">Select an investor...</option>
+                  {investors.map(inv => (
+                    <option key={inv.id} value={inv.id}>{inv.investorName}{inv.company ? " — " + inv.company : ""}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Committed Capital ($)</label>
+                  <input value={assignForm.committedCapital} onChange={e => setAssignForm(f => ({ ...f, committedCapital: e.target.value }))} placeholder="250000" type="number" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Funded Capital ($)</label>
+                  <input value={assignForm.fundedCapital} onChange={e => setAssignForm(f => ({ ...f, fundedCapital: e.target.value }))} placeholder="100000" type="number" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Investment Date</label>
+                <input value={assignForm.investmentDate} onChange={e => setAssignForm(f => ({ ...f, investmentDate: e.target.value }))} type="date" style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Notes</label>
+                <textarea value={assignForm.notes} onChange={e => setAssignForm(f => ({ ...f, notes: e.target.value }))} placeholder="Investment notes..." rows={2} style={{ width: "100%", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+              <button onClick={() => setShowAssignInvestorModal(false)} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#64748b" }}>Cancel</button>
+              <button onClick={handleAssignInvestor} disabled={assignSaving || !assignForm.investorId} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: assignForm.investorId ? "linear-gradient(135deg, #16a34a, #15803d)" : "#e2e8f0", color: assignForm.investorId ? "#fff" : "#94a3b8", fontSize: 13, fontWeight: 600, cursor: assignForm.investorId ? "pointer" : "default", opacity: assignSaving ? 0.7 : 1 }}>{assignSaving ? "Saving..." : "Save Assignment"}</button>
             </div>
           </div>
         </div>
