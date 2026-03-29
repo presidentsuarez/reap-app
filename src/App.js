@@ -9472,6 +9472,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
   const [addingId, setAddingId] = useState(null);
   const [activeTab, setActiveTab] = useState("table");
   const [statusFilter, setStatusFilter] = useState(null);
+  const [reviewFilter, setReviewFilter] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
   const searchRef = useRef(null);
@@ -9574,7 +9575,8 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
     (l.agent || "").toLowerCase().includes(search.toLowerCase()) ||
     (l.propType || "").toLowerCase().includes(search.toLowerCase())
   );
-  const filtered = statusFilter ? textFiltered.filter(l => l.status === statusFilter) : textFiltered;
+  const statusFiltered = statusFilter ? textFiltered.filter(l => l.status === statusFilter) : textFiltered;
+  const filtered = reviewFilter ? statusFiltered.filter(l => l.reviewStatus === reviewFilter) : statusFiltered;
 
   // Sort for table
   const sorted = [...filtered].sort((a, b) => {
@@ -9594,6 +9596,12 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
   const statusCounts = {};
   listings.forEach(l => { const s = l.status || "Unknown"; statusCounts[s] = (statusCounts[s] || 0) + 1; });
   const statuses = Object.keys(statusCounts).sort((a, b) => statusCounts[b] - statusCounts[a]);
+
+  // Review status counts
+  const reviewCounts = {};
+  listings.forEach(l => { const rs = l.reviewStatus || "New"; reviewCounts[rs] = (reviewCounts[rs] || 0) + 1; });
+  const REVIEW_ORDER = ["New", "Watching", "Reviewing", "Added to Pipeline", "Declined"];
+  const reviewStatuses = REVIEW_ORDER.filter(rs => reviewCounts[rs]);
 
   // Dashboard stats
   const totalListings = listings.length;
@@ -9779,7 +9787,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
           <div>
             <h1 style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>MLS Feed</h1>
             <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "4px 0 0" }}>
-              {loading ? "Loading listings..." : `${filtered.length} listing${filtered.length !== 1 ? "s" : ""}${statusFilter ? " · " + statusFilter : ""}`}
+              {loading ? "Loading listings..." : `${filtered.length} listing${filtered.length !== 1 ? "s" : ""}${statusFilter ? " · " + statusFilter : ""}${reviewFilter ? " · " + reviewFilter : ""}`}
             </p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -9806,26 +9814,53 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
           </div>
         </div>
 
-        {/* Tab bar + Status filter */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16, overflow: "auto" }}>
-          <div style={{ display: "flex", gap: 2, background: "#f1f5f9", borderRadius: 10, padding: 3 }}>
-            {tabs.map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
-                display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 8, border: "none",
-                background: activeTab === tab.id ? "#fff" : "transparent",
-                color: activeTab === tab.id ? "#0f172a" : "#94a3b8",
-                fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-                boxShadow: activeTab === tab.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                transition: "all 0.15s", whiteSpace: "nowrap",
-              }}>{tab.icon} {tab.label}</button>
-            ))}
-          </div>
-          {activeTab !== "dashboard" && (
-            <div style={{ display: "flex", gap: 6, overflow: "auto", paddingBottom: 2 }}>
-              <button onClick={() => setStatusFilter(null)} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (!statusFilter ? "#16a34a" : "#e2e8f0"), background: !statusFilter ? "#f0fdf4" : "#fff", color: !statusFilter ? "#16a34a" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>All</button>
-              {statuses.slice(0, 6).map(s => (
-                <button key={s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (statusFilter === s ? (MLS_STATUS_COLORS[s]?.color || "#16a34a") : "#e2e8f0"), background: statusFilter === s ? (MLS_STATUS_COLORS[s]?.bg || "#f0fdf4") : "#fff", color: statusFilter === s ? (MLS_STATUS_COLORS[s]?.color || "#16a34a") : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>{s} ({statusCounts[s]})</button>
+        {/* Tab bar + Status filters */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, overflow: "auto" }}>
+            <div style={{ display: "flex", gap: 2, background: "#f1f5f9", borderRadius: 10, padding: 3 }}>
+              {tabs.map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+                  display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 8, border: "none",
+                  background: activeTab === tab.id ? "#fff" : "transparent",
+                  color: activeTab === tab.id ? "#0f172a" : "#94a3b8",
+                  fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                  boxShadow: activeTab === tab.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                  transition: "all 0.15s", whiteSpace: "nowrap",
+                }}>{tab.icon} {tab.label}</button>
               ))}
+            </div>
+            {activeTab !== "dashboard" && (
+              <div style={{ display: "flex", gap: 6, overflow: "auto", paddingBottom: 2 }}>
+                <button onClick={() => setStatusFilter(null)} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (!statusFilter ? "#16a34a" : "#e2e8f0"), background: !statusFilter ? "#f0fdf4" : "#fff", color: !statusFilter ? "#16a34a" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>All</button>
+                {statuses.slice(0, 6).map(s => (
+                  <button key={s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (statusFilter === s ? (MLS_STATUS_COLORS[s]?.color || "#16a34a") : "#e2e8f0"), background: statusFilter === s ? (MLS_STATUS_COLORS[s]?.bg || "#f0fdf4") : "#fff", color: statusFilter === s ? (MLS_STATUS_COLORS[s]?.color || "#16a34a") : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>{s} ({statusCounts[s]})</button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Review status filter row */}
+          {activeTab !== "dashboard" && reviewStatuses.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "auto", paddingBottom: 2 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", flexShrink: 0 }}>My Status</span>
+              <button onClick={() => setReviewFilter(null)} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (!reviewFilter ? "#0f172a" : "#e2e8f0"), background: !reviewFilter ? "#0f172a0a" : "#fff", color: !reviewFilter ? "#0f172a" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>All</button>
+              {reviewStatuses.map(rs => {
+                const cfg = MLS_REVIEW_STATUS[rs] || MLS_REVIEW_STATUS["New"];
+                const isActive = reviewFilter === rs;
+                return (
+                  <button key={rs} onClick={() => setReviewFilter(isActive ? null : rs)} style={{
+                    padding: "5px 12px", borderRadius: 20,
+                    border: "1px solid " + (isActive ? cfg.color : "#e2e8f0"),
+                    background: isActive ? cfg.bg : "#fff",
+                    color: isActive ? cfg.color : "#64748b",
+                    fontSize: 11, fontWeight: 600, cursor: "pointer",
+                    fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap",
+                    display: "flex", alignItems: "center", gap: 5,
+                  }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.color, flexShrink: 0 }} />
+                    {rs} ({reviewCounts[rs]})
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
