@@ -10125,8 +10125,31 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
   const [notesLoaded, setNotesLoaded] = useState(false);
   const scrollRef = useRef(null);
   const [scrolled, setScrolled] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editFields, setEditFields] = useState({});
+  // Quick Underwrite state
+  const [uwOfferPrice, setUwOfferPrice] = useState("");
+  const [uwCapRate, setUwCapRate] = useState("7");
+  const [uwExpenseRatio, setUwExpenseRatio] = useState("45");
+  const [uwVacancy, setUwVacancy] = useState("5");
+  const [uwRentPerUnit, setUwRentPerUnit] = useState("1200");
+  const [uwRentPerSF, setUwRentPerSF] = useState("");
+  // Pro Forma state
+  const [pfGrossRent, setPfGrossRent] = useState("");
+  const [pfOtherIncome, setPfOtherIncome] = useState("0");
+  const [pfVacancy, setPfVacancy] = useState("5");
+  const [pfTaxes, setPfTaxes] = useState("");
+  const [pfInsurance, setPfInsurance] = useState("");
+  const [pfMaintenance, setPfMaintenance] = useState("");
+  const [pfManagement, setPfManagement] = useState("8");
+  const [pfUtilities, setPfUtilities] = useState("0");
+  const [pfOtherExpense, setPfOtherExpense] = useState("0");
+  const [pfLoanAmount, setPfLoanAmount] = useState("");
+  const [pfInterestRate, setPfInterestRate] = useState("7.5");
+  const [pfLoanTerm, setPfLoanTerm] = useState("30");
 
-  const tabs = ["overview"];
+  const tabs = ["overview", "quick underwrite", "pro forma"];
 
   // Load notes from DB
   useEffect(() => {
@@ -10158,11 +10181,62 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
     finally { setNotesSaving(false); }
   };
 
+  // Edit listing fields
+  const startEditing = () => {
+    setEditFields({
+      price: listing.price || "", beds: listing.beds || "", baths: listing.baths || "",
+      heated_area: listing.heatedArea || listing.sqftTotal || "", lot_acres: listing.lotAcres || "",
+      year_built: listing.yearBuilt || "", units: listing.units || "", style: listing.style || "",
+      ownership: listing.ownership || "", agent: listing.agent || "", status: listing.status || "",
+      prop_type: listing.propType || "",
+    });
+    setEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    setEditSaving(true);
+    try {
+      const updates = {};
+      if (editFields.price) updates.price = parseFloat(String(editFields.price).replace(/[$,]/g, "")) || null;
+      if (editFields.beds !== undefined) updates.beds = parseInt(editFields.beds) || null;
+      if (editFields.baths !== undefined) updates.baths = parseInt(editFields.baths) || null;
+      if (editFields.heated_area) updates.heated_area = parseInt(String(editFields.heated_area).replace(/,/g, "")) || null;
+      updates.sqft_total = updates.heated_area;
+      if (editFields.lot_acres) updates.lot_acres = parseFloat(editFields.lot_acres) || null;
+      if (editFields.year_built) updates.year_built = parseInt(editFields.year_built) || null;
+      if (editFields.units) updates.units = parseInt(editFields.units) || null;
+      updates.style = editFields.style || null;
+      updates.ownership = editFields.ownership || null;
+      updates.agent = editFields.agent || null;
+      updates.status = editFields.status || null;
+      updates.prop_type = editFields.prop_type || null;
+      if (updates.price && updates.heated_area) updates.ppsf = Math.round((updates.price / updates.heated_area) * 100) / 100;
+      const { error } = await supabase.from("mls_listings").update(updates).eq("id", listing._id);
+      if (error) { alert("Error saving: " + error.message); return; }
+      // Update local listing object
+      Object.entries(updates).forEach(([k, v]) => {
+        const map = { price: "price", beds: "beds", baths: "baths", heated_area: "heatedArea", sqft_total: "sqftTotal", lot_acres: "lotAcres", year_built: "yearBuilt", units: "units", style: "style", ownership: "ownership", agent: "agent", status: "status", prop_type: "propType", ppsf: "ppsf" };
+        if (map[k]) listing[map[k]] = v != null ? String(v) : "";
+      });
+      setEditing(false);
+      if (onRefresh) onRefresh();
+    } catch (e) { alert("Error: " + e.message); }
+    finally { setEditSaving(false); }
+  };
+
+  const ef = (field, label, type = "text") => (
+    <div style={{ flex: 1, minWidth: 120 }}>
+      <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>{label}</label>
+      <input value={editFields[field] || ""} onChange={e => setEditFields(p => ({ ...p, [field]: e.target.value }))} type={type} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", color: "#0f172a", outline: "none", background: "#fff", boxSizing: "border-box" }} />
+    </div>
+  );
+
   const zillowUrl = buildZillowUrl(listing.address, listing.city, listing.state, listing.zip);
   const streetViewUrl = listing.address ? `https://maps.googleapis.com/maps/api/streetview?size=1200x220&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}` : null;
 
   const price = listing.price ? parseFloat(String(listing.price).replace(/[$,]/g, "")) : null;
   const sqft = listing.heatedArea || listing.sqftTotal ? parseFloat(String(listing.heatedArea || listing.sqftTotal).replace(/,/g, "")) : null;
+  const unitsNum = listing.units ? parseInt(listing.units) : 0;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#f8fafc", overflow: "hidden" }}>
@@ -10187,6 +10261,10 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignSelf: isMobile ? "stretch" : "auto" }}>
+            <button onClick={startEditing} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 18px", color: "#475569", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, flex: isMobile ? 1 : "none" }}>
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+              Edit
+            </button>
             {zillowUrl && (
               <a href={zillowUrl} target="_blank" rel="noopener noreferrer" style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 18px", color: "#475569", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, textDecoration: "none", flex: isMobile ? 1 : "none" }}>
                 <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -10383,7 +10461,263 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
             </div>
           </div>
         )}
+
+        {/* ── QUICK UNDERWRITE TAB ── */}
+        {activeTab === "quick underwrite" && (() => {
+          const offer = parseFloat(String(uwOfferPrice || price || 0).replace(/[$,]/g, "")) || 0;
+          const cap = parseFloat(uwCapRate) / 100 || 0.07;
+          const expRatio = parseFloat(uwExpenseRatio) / 100 || 0.45;
+          const vac = parseFloat(uwVacancy) / 100 || 0.05;
+          const rentUnit = parseFloat(uwRentPerUnit) || 0;
+          const rentSF = parseFloat(uwRentPerSF) || 0;
+          const u = unitsNum || 1;
+          const sf = sqft || 0;
+          // Income calculation: prefer rent per unit if units > 1, else rent per SF
+          const grossAnnual = u > 1 ? (rentUnit * u * 12) : (rentSF > 0 && sf > 0 ? rentSF * sf * 12 : rentUnit * 12);
+          const vacLoss = grossAnnual * vac;
+          const egi = grossAnnual - vacLoss;
+          const totalExpenses = egi * expRatio;
+          const noi = egi - totalExpenses;
+          const impliedValue = cap > 0 ? noi / cap : 0;
+          const ppsf = offer > 0 && sf > 0 ? Math.round(offer / sf) : 0;
+          const grm = grossAnnual > 0 ? (offer / grossAnnual).toFixed(2) : 0;
+          const cashOnCash = offer > 0 ? ((noi / (offer * 0.25)) * 100).toFixed(1) : 0;
+          const actualCap = offer > 0 ? ((noi / offer) * 100).toFixed(2) : 0;
+          const dscr = (() => { const loanAmt = offer * 0.75; const mo = (loanAmt * (0.075/12)) / (1 - Math.pow(1 + 0.075/12, -360)); return mo > 0 ? (noi / 12 / mo).toFixed(2) : "—"; })();
+
+          const uwInput = (label, value, setter, prefix, suffix) => (
+            <div style={{ flex: 1, minWidth: 100 }}>
+              <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>{label}</label>
+              <div style={{ position: "relative" }}>
+                {prefix && <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{prefix}</span>}
+                <input value={value} onChange={e => setter(e.target.value)} type="number" style={{ width: "100%", padding: "8px 12px", paddingLeft: prefix ? 22 : 12, paddingRight: suffix ? 28 : 12, borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Mono', monospace", color: "#0f172a", outline: "none", background: "#fff", boxSizing: "border-box" }} />
+                {suffix && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{suffix}</span>}
+              </div>
+            </div>
+          );
+
+          const metricCard = (label, value, color, sub) => (
+            <div style={{ flex: 1, minWidth: 120, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 16px", textAlign: "center" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: color || "#0f172a", fontFamily: "'DM Mono', monospace" }}>{value}</div>
+              <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{label}</div>
+              {sub && <div style={{ fontSize: 10, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{sub}</div>}
+            </div>
+          );
+
+          return (
+            <div>
+              {/* Assumptions */}
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                <h3 style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px" }}>Assumptions</h3>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                  {uwInput("Offer Price", uwOfferPrice || (price || ""), setUwOfferPrice, "$")}
+                  {uwInput("Cap Rate", uwCapRate, setUwCapRate, null, "%")}
+                  {uwInput("Expense Ratio", uwExpenseRatio, setUwExpenseRatio, null, "%")}
+                  {uwInput("Vacancy", uwVacancy, setUwVacancy, null, "%")}
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {uwInput("Rent / Unit / Mo", uwRentPerUnit, setUwRentPerUnit, "$")}
+                  {uwInput("Rent / SF / Mo", uwRentPerSF, setUwRentPerSF, "$")}
+                </div>
+                <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "10px 0 0" }}>
+                  {unitsNum > 0 ? `${unitsNum} units` : "1 unit"} · {sf > 0 ? sf.toLocaleString() + " SF" : "No SF data"} · Adjust assumptions above to see results update live
+                </p>
+              </div>
+
+              {/* Key Metrics */}
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+                {metricCard("NOI", noi > 0 ? "$" + Math.round(noi).toLocaleString() : "—", "#16a34a", "/year")}
+                {metricCard("Cap Rate", actualCap + "%", parseFloat(actualCap) >= parseFloat(uwCapRate) ? "#16a34a" : "#d97706")}
+                {metricCard("Cash-on-Cash", cashOnCash + "%", parseFloat(cashOnCash) >= 10 ? "#16a34a" : "#d97706", "@ 25% down")}
+                {metricCard("DSCR", dscr, parseFloat(dscr) >= 1.25 ? "#16a34a" : "#ef4444", "@ 7.5% / 30yr")}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+                {metricCard("GRM", grm + "x", "#475569")}
+                {metricCard("$/SF", ppsf > 0 ? "$" + ppsf : "—", "#475569")}
+                {metricCard("Implied Value", impliedValue > 0 ? "$" + Math.round(impliedValue).toLocaleString() : "—", impliedValue > offer ? "#16a34a" : "#d97706", "at target cap")}
+                {metricCard("Gross Income", grossAnnual > 0 ? "$" + Math.round(grossAnnual).toLocaleString() : "—", "#475569", "/year")}
+              </div>
+
+              {/* P&L Summary */}
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px" }}>
+                <h3 style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px" }}>Back-of-Napkin P&L</h3>
+                {[
+                  { label: "Gross Rental Income", value: "$" + Math.round(grossAnnual).toLocaleString(), bold: true },
+                  { label: `  Less Vacancy (${uwVacancy}%)`, value: "-$" + Math.round(vacLoss).toLocaleString(), color: "#ef4444" },
+                  { label: "Effective Gross Income", value: "$" + Math.round(egi).toLocaleString(), bold: true },
+                  { label: `  Less Operating Expenses (${uwExpenseRatio}%)`, value: "-$" + Math.round(totalExpenses).toLocaleString(), color: "#ef4444" },
+                  { label: "Net Operating Income (NOI)", value: "$" + Math.round(noi).toLocaleString(), bold: true, color: noi > 0 ? "#16a34a" : "#ef4444" },
+                ].map((row, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i < 4 ? "1px solid #f1f5f9" : "none" }}>
+                    <span style={{ fontSize: 13, color: row.color || "#475569", fontWeight: row.bold ? 600 : 400, fontFamily: "'DM Sans', sans-serif" }}>{row.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: row.bold ? 700 : 500, color: row.color || "#0f172a", fontFamily: "'DM Mono', monospace" }}>{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── PRO FORMA TAB ── */}
+        {activeTab === "pro forma" && (() => {
+          const u = unitsNum || 1;
+          const sf = sqft || 0;
+          const grossRent = parseFloat(pfGrossRent) || (u > 1 ? u * 1200 * 12 : (sf > 0 ? sf * 1 * 12 : 14400));
+          const otherInc = parseFloat(pfOtherIncome) || 0;
+          const totalGross = grossRent + otherInc;
+          const vacLoss = totalGross * (parseFloat(pfVacancy) / 100 || 0.05);
+          const egi = totalGross - vacLoss;
+          const taxes = parseFloat(pfTaxes) || (price ? price * 0.012 : 0);
+          const insurance = parseFloat(pfInsurance) || (price ? price * 0.005 : 0);
+          const maint = parseFloat(pfMaintenance) || (sf > 0 ? sf * 1.5 : 2000);
+          const mgmt = egi * (parseFloat(pfManagement) / 100 || 0.08);
+          const utils = parseFloat(pfUtilities) || 0;
+          const otherExp = parseFloat(pfOtherExpense) || 0;
+          const totalExp = taxes + insurance + maint + mgmt + utils + otherExp;
+          const noi = egi - totalExp;
+          const loanAmt = parseFloat(pfLoanAmount) || (price ? price * 0.75 : 0);
+          const rate = parseFloat(pfInterestRate) / 100 / 12 || 0.00625;
+          const term = (parseFloat(pfLoanTerm) || 30) * 12;
+          const monthlyPayment = loanAmt > 0 && rate > 0 ? (loanAmt * rate) / (1 - Math.pow(1 + rate, -term)) : 0;
+          const annualDebt = monthlyPayment * 12;
+          const cashFlow = noi - annualDebt;
+          const expRatio = egi > 0 ? ((totalExp / egi) * 100).toFixed(1) : 0;
+          const capRate = price > 0 ? ((noi / price) * 100).toFixed(2) : 0;
+          const dscrVal = annualDebt > 0 ? (noi / annualDebt).toFixed(2) : "N/A";
+          const equity = price ? price - loanAmt : 0;
+          const coc = equity > 0 ? ((cashFlow / equity) * 100).toFixed(1) : 0;
+
+          const pfInput = (label, val, setter, prefix, suffix, ph) => (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
+              <label style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", minWidth: 140 }}>{label}</label>
+              <div style={{ position: "relative", width: 160 }}>
+                {prefix && <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "#94a3b8" }}>{prefix}</span>}
+                <input value={val} onChange={e => setter(e.target.value)} placeholder={ph || ""} type="number" style={{ width: "100%", padding: "7px 10px", paddingLeft: prefix ? 20 : 10, paddingRight: suffix ? 24 : 10, borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 12, fontFamily: "'DM Mono', monospace", color: "#0f172a", outline: "none", textAlign: "right", boxSizing: "border-box" }} />
+                {suffix && <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#94a3b8" }}>{suffix}</span>}
+              </div>
+            </div>
+          );
+
+          const pfRow = (label, val, bold, color) => (
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f1f5f9" }}>
+              <span style={{ fontSize: 13, color: color || "#475569", fontWeight: bold ? 600 : 400, fontFamily: "'DM Sans', sans-serif" }}>{label}</span>
+              <span style={{ fontSize: 13, fontWeight: bold ? 700 : 500, color: color || "#0f172a", fontFamily: "'DM Mono', monospace" }}>{val}</span>
+            </div>
+          );
+
+          return (
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20 }}>
+              {/* Left: Inputs */}
+              <div style={{ flex: 1 }}>
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px" }}>Income</h3>
+                  {pfInput("Annual Gross Rent", pfGrossRent, setPfGrossRent, "$", null, Math.round(grossRent).toString())}
+                  {pfInput("Other Income", pfOtherIncome, setPfOtherIncome, "$")}
+                  {pfInput("Vacancy Rate", pfVacancy, setPfVacancy, null, "%")}
+                </div>
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px" }}>Operating Expenses</h3>
+                  {pfInput("Property Taxes", pfTaxes, setPfTaxes, "$", null, Math.round(taxes).toString())}
+                  {pfInput("Insurance", pfInsurance, setPfInsurance, "$", null, Math.round(insurance).toString())}
+                  {pfInput("Maintenance / Repairs", pfMaintenance, setPfMaintenance, "$", null, Math.round(maint).toString())}
+                  {pfInput("Management", pfManagement, setPfManagement, null, "%")}
+                  {pfInput("Utilities", pfUtilities, setPfUtilities, "$")}
+                  {pfInput("Other Expenses", pfOtherExpense, setPfOtherExpense, "$")}
+                </div>
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px" }}>
+                  <h3 style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px" }}>Debt Service</h3>
+                  {pfInput("Loan Amount", pfLoanAmount, setPfLoanAmount, "$", null, Math.round(loanAmt).toString())}
+                  {pfInput("Interest Rate", pfInterestRate, setPfInterestRate, null, "%")}
+                  {pfInput("Term (years)", pfLoanTerm, setPfLoanTerm)}
+                </div>
+              </div>
+
+              {/* Right: Results */}
+              <div style={{ width: isMobile ? "100%" : 360, flexShrink: 0 }}>
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px" }}>Pro Forma P&L</h3>
+                  {pfRow("Gross Rental Income", "$" + Math.round(grossRent).toLocaleString(), true)}
+                  {pfRow("Other Income", "$" + Math.round(otherInc).toLocaleString())}
+                  {pfRow("Less Vacancy", "-$" + Math.round(vacLoss).toLocaleString(), false, "#ef4444")}
+                  {pfRow("Effective Gross Income", "$" + Math.round(egi).toLocaleString(), true)}
+                  <div style={{ height: 8 }} />
+                  {pfRow("Property Taxes", "-$" + Math.round(taxes).toLocaleString())}
+                  {pfRow("Insurance", "-$" + Math.round(insurance).toLocaleString())}
+                  {pfRow("Maintenance", "-$" + Math.round(maint).toLocaleString())}
+                  {pfRow("Management (" + pfManagement + "%)", "-$" + Math.round(mgmt).toLocaleString())}
+                  {pfRow("Utilities", "-$" + Math.round(utils).toLocaleString())}
+                  {pfRow("Other", "-$" + Math.round(otherExp).toLocaleString())}
+                  {pfRow("Total Expenses", "-$" + Math.round(totalExp).toLocaleString(), true, "#ef4444")}
+                  <div style={{ height: 8 }} />
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: "2px solid #e2e8f0", borderBottom: "2px solid #e2e8f0" }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>NOI</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: noi >= 0 ? "#16a34a" : "#ef4444", fontFamily: "'DM Mono', monospace" }}>${Math.round(noi).toLocaleString()}</span>
+                  </div>
+                  <div style={{ height: 8 }} />
+                  {pfRow("Annual Debt Service", "-$" + Math.round(annualDebt).toLocaleString())}
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: "2px solid #16a34a33" }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>Cash Flow</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: cashFlow >= 0 ? "#16a34a" : "#ef4444", fontFamily: "'DM Mono', monospace" }}>${Math.round(cashFlow).toLocaleString()}</span>
+                  </div>
+                  <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "6px 0 0" }}>${Math.round(cashFlow / 12).toLocaleString()}/mo cash flow</p>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 12px", textAlign: "center" }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: parseFloat(capRate) >= 7 ? "#16a34a" : "#d97706", fontFamily: "'DM Mono', monospace" }}>{capRate}%</div>
+                    <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Cap Rate</div>
+                  </div>
+                  <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 12px", textAlign: "center" }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: parseFloat(dscrVal) >= 1.25 ? "#16a34a" : "#ef4444", fontFamily: "'DM Mono', monospace" }}>{dscrVal}x</div>
+                    <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>DSCR</div>
+                  </div>
+                  <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 12px", textAlign: "center" }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: parseFloat(coc) >= 8 ? "#16a34a" : "#d97706", fontFamily: "'DM Mono', monospace" }}>{coc}%</div>
+                    <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Cash-on-Cash</div>
+                  </div>
+                  <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 12px", textAlign: "center" }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: "#475569", fontFamily: "'DM Mono', monospace" }}>{expRatio}%</div>
+                    <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Expense Ratio</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
+
+      {/* Edit Modal */}
+      {editing && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={() => setEditing(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)" }} />
+          <div style={{ position: "relative", background: "#fff", borderRadius: 16, padding: 24, width: "90%", maxWidth: 540, maxHeight: "80vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Edit Listing</h2>
+              <button onClick={() => setEditing(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }}>
+                <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+              {ef("price", "List Price")} {ef("beds", "Beds")} {ef("baths", "Baths")}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+              {ef("heated_area", "Sq Ft")} {ef("lot_acres", "Lot Acres")} {ef("year_built", "Year Built")}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+              {ef("units", "Units")} {ef("style", "Style")} {ef("ownership", "Ownership")}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+              {ef("prop_type", "Property Type")} {ef("status", "MLS Status")} {ef("agent", "Listing Agent")}
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setEditing(false)} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+              <button onClick={handleSaveEdit} disabled={editSaving} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: editSaving ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.3)", opacity: editSaving ? 0.7 : 1 }}>
+                {editSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
