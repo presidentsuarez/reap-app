@@ -7555,7 +7555,7 @@ function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
   );
 }
 
-function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp, deals, updateHash, refreshKey, orgData, orgMembers, contactTypeFilter }) {
+function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp, deals, updateHash, refreshKey, orgData, orgMembers, contactTypeFilter, hasFullAccess }) {
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -7610,9 +7610,9 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
         portalEmail: r.portal_email || "",
       })).filter(c => c.name && c.name.trim() !== "");
       const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
-      let filtered = teamList.length > 0
+      let filtered = hasFullAccess ? parsed : (teamList.length > 0
         ? parsed.filter(c => { const contactUser = (c.user || "").toLowerCase().trim(); return contactUser && teamList.includes(contactUser); })
-        : parsed;
+        : parsed);
       // Filter by contact type if prop is set
       if (contactTypeFilter) {
         filtered = filtered.filter(c => (c.contactType || "").toLowerCase().includes(contactTypeFilter.toLowerCase()));
@@ -8922,7 +8922,7 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
   );
 }
 
-function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckout, onSignOut, onClose, orgData, orgMembers, inviteEmail, setInviteEmail, inviteSaving, inviteSuccess, onInviteMember, onRemoveMember, features, featureFlags, onToggleFeature, isAdmin }) {
+function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckout, onSignOut, onClose, orgData, orgMembers, inviteEmail, setInviteEmail, inviteSaving, inviteSuccess, onInviteMember, onRemoveMember, onUpdateDataAccess, features, featureFlags, onToggleFeature, isAdmin }) {
   const [activeTab, setActiveTab] = useState("profile");
   const user = session?.user || {};
   const email = user.email || "—";
@@ -9062,8 +9062,17 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
                         <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'DM Mono', monospace", padding: "2px 8px", borderRadius: 5, background: m.status === "active" ? "#f0fdf4" : m.status === "invited" ? "#fffbeb" : "#f8fafc", color: m.status === "active" ? "#16a34a" : m.status === "invited" ? "#d97706" : "#94a3b8", border: "1px solid " + (m.status === "active" ? "#bbf7d0" : m.status === "invited" ? "#fde68a" : "#e2e8f0"), textTransform: "uppercase" }}>{m.status}</span>
                       </div>
                     </div>
+                    {isOwner && m.role !== "owner" && m.status === "active" && (
+                      <button onClick={() => onUpdateDataAccess && onUpdateDataAccess(m.user_email, m.data_access === "full" ? "team" : "full")} style={{
+                        marginLeft: 8, background: m.data_access === "full" ? "#eff6ff" : "#f8fafc",
+                        border: "1px solid " + (m.data_access === "full" ? "#93c5fd" : "#e2e8f0"),
+                        borderRadius: 8, padding: "5px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer",
+                        fontFamily: "'DM Mono', monospace", color: m.data_access === "full" ? "#2563eb" : "#94a3b8",
+                        letterSpacing: "0.03em",
+                      }}>{m.data_access === "full" ? "FULL ACCESS" : "TEAM ONLY"}</button>
+                    )}
                     {isOwner && m.role !== "owner" && (
-                      <button onClick={() => onRemoveMember(m.user_email)} style={{ marginLeft: 10, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "5px 12px", fontSize: 11, fontWeight: 600, color: "#dc2626", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Remove</button>
+                      <button onClick={() => onRemoveMember(m.user_email)} style={{ marginLeft: 6, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "5px 12px", fontSize: 11, fontWeight: 600, color: "#dc2626", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Remove</button>
                     )}
                   </div>
                 ))}
@@ -13265,7 +13274,7 @@ function LinkDealModal({ isOpen, onClose, deals, linkedAddresses, onLink, isMobi
   );
 }
 
-function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, deals, pendingInvestorId, onInvestorSelected, updateHash, orgData, orgMembers }) {
+function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, deals, pendingInvestorId, onInvestorSelected, updateHash, orgData, orgMembers, hasFullAccess }) {
   const [investors, setInvestors] = useState([]);
   const [activities, setActivities] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -13324,12 +13333,12 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
         notificationEmail: r.notification_email || "", notificationPhone: r.notification_phone || "",
       })).filter(inv => inv.investorName && inv.investorName.trim() !== "");
       const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
-      const filtered = teamList.length > 0
+      const filtered = hasFullAccess ? parsed : (teamList.length > 0
         ? parsed.filter(inv => { const invUser = (inv.user || "").toLowerCase().trim(); return invUser && teamList.includes(invUser); })
-        : parsed;
+        : parsed);
       setInvestors(filtered);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
-  }, [teamEmailsProp]);
+  }, [teamEmailsProp, hasFullAccess]);
 
   const fetchActivities = useCallback(async () => {
     try {
@@ -13962,6 +13971,7 @@ export default function ReapApp() {
   const [teamEmails, setTeamEmails] = useState([]);        // all emails in the user's org
   const [features, setFeatures] = useState({});            // { pipeline: true, portfolio: false, ... }
   const [orgLoading, setOrgLoading] = useState(true);
+  const [hasFullAccess, setHasFullAccess] = useState(false); // user can see all data, not just team
   const [pendingInvite, setPendingInvite] = useState(null); // invite awaiting acceptance
   const [orgMembers, setOrgMembers] = useState([]);        // all members in the user's org
   const [inviteEmail, setInviteEmail] = useState("");
@@ -14353,12 +14363,16 @@ export default function ReapApp() {
             // 5. Get all team member emails
             const { data: members } = await supabase
               .from("org_members")
-              .select("user_email, role, status, joined_at, created_at")
+              .select("user_email, role, status, joined_at, created_at, data_access")
               .eq("org_id", orgRow.id);
             const activeMembers = (members || []).filter(m => m.status === "active");
             setOrgMembers(members || []);
             setTeamEmails(activeMembers.map(m => m.user_email.toLowerCase()));
-            console.log("[REAP Org] Team emails:", activeMembers.length, "active members");
+            // Check if current user has full data access
+            const myMembership = activeMembers.find(m => m.user_email.toLowerCase() === email);
+            const isOrgOwner = orgRow.owner_email?.toLowerCase() === email;
+            setHasFullAccess(isOrgOwner || myMembership?.data_access === "full");
+            console.log("[REAP Org] Team emails:", activeMembers.length, "active members, fullAccess:", isOrgOwner || myMembership?.data_access === "full");
           }
         }
 
@@ -14428,11 +14442,13 @@ export default function ReapApp() {
       if (membership?.organizations) {
         setOrgData(membership.organizations);
         const { data: members } = await supabase
-          .from("org_members").select("user_email, role, status, joined_at, created_at")
+          .from("org_members").select("user_email, role, status, joined_at, created_at, data_access")
           .eq("org_id", membership.organizations.id);
         const activeMembers = (members || []).filter(m => m.status === "active");
         setOrgMembers(members || []);
         setTeamEmails(activeMembers.map(m => m.user_email.toLowerCase()));
+        const myM = activeMembers.find(m => m.user_email.toLowerCase() === email);
+        setHasFullAccess(membership.organizations.owner_email?.toLowerCase() === email || myM?.data_access === "full");
       }
       // Reload deals with new team context
       fetchDeals();
@@ -14465,7 +14481,7 @@ export default function ReapApp() {
       setInviteEmail("");
       // Reload members
       const { data: members } = await supabase
-        .from("org_members").select("user_email, role, status, joined_at, created_at")
+        .from("org_members").select("user_email, role, status, joined_at, created_at, data_access")
         .eq("org_id", orgData.id);
       setOrgMembers(members || []);
     } catch (err) {
@@ -14482,11 +14498,33 @@ export default function ReapApp() {
         .eq("org_id", orgData.id)
         .eq("user_email", memberEmail);
       const { data: members } = await supabase
-        .from("org_members").select("user_email, role, status, joined_at, created_at")
+        .from("org_members").select("user_email, role, status, joined_at, created_at, data_access")
         .eq("org_id", orgData.id);
       setOrgMembers(members || []);
-      setTeamEmails((members || []).filter(m => m.status === "active").map(m => m.user_email.toLowerCase()));
+      const active = (members || []).filter(m => m.status === "active");
+      setTeamEmails(active.map(m => m.user_email.toLowerCase()));
     } catch (err) { console.error("Error removing member:", err); }
+  };
+
+  // ── Update a member's data access level ──
+  const handleUpdateDataAccess = async (memberEmail, newAccess) => {
+    if (!orgData) return;
+    try {
+      await supabase.from("org_members")
+        .update({ data_access: newAccess })
+        .eq("org_id", orgData.id)
+        .eq("user_email", memberEmail);
+      // Reload members
+      const { data: members } = await supabase
+        .from("org_members").select("user_email, role, status, joined_at, created_at, data_access")
+        .eq("org_id", orgData.id);
+      setOrgMembers(members || []);
+      // If we just changed our own access, update hasFullAccess
+      const email = session?.user?.email?.toLowerCase();
+      if (memberEmail.toLowerCase() === email) {
+        setHasFullAccess(newAccess === "full");
+      }
+    } catch (err) { console.error("Error updating data access:", err); }
   };
 
   // ── Toggle a feature override for the org ──
@@ -14607,7 +14645,7 @@ export default function ReapApp() {
         marketplace_price: r.marketplace_price || null,
       })).filter(d => d.address);
 
-      const userDeals = parsed.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
+      const userDeals = hasFullAccess ? parsed : parsed.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
       setDeals(userDeals);
     } catch (err) {
       setError(err.message);
@@ -15076,7 +15114,7 @@ export default function ReapApp() {
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 70 : 0, paddingTop: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : (!isSubscribed && trialDaysLeft > 0 ? 42 : 0), position: "relative" }}>
           {isMobile ? (
             showProfile ? (
-              <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
+              <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} onUpdateDataAccess={handleUpdateDataAccess} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
             ) : activeNav === "command" ? (
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} />
             ) : activeNav === "contacts" ? (
@@ -15084,8 +15122,8 @@ export default function ReapApp() {
                 <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {contactsTab === "investors"
-                    ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} />
-                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : null} />
+                    ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
+                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : null} hasFullAccess={hasFullAccess} />
                   }
                 </div>
               </div>
@@ -15105,7 +15143,7 @@ export default function ReapApp() {
             <>
               {selectedDeal ? (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                  <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} />
+                  <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
                 </div>
               ) : selectedMLSListing ? (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -15136,11 +15174,11 @@ export default function ReapApp() {
             ) : null
           ) : (
             showProfile
-              ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
+              ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} onUpdateDataAccess={handleUpdateDataAccess} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
               : activeNav === "command"
               ? <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} teamEmails={teamEmails} />
               : activeNav === "realestate" && selectedDeal
-              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} />
+              ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
               : activeNav === "realestate" && selectedMLSListing
               ? <MLSListingDetailView listing={selectedMLSListing} onBack={handleMLSBack} isMobile={false} session={session} updateHash={updateHash} />
               : activeNav === "realestate"
@@ -15166,8 +15204,8 @@ export default function ReapApp() {
                   <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {contactsTab === "investors"
-                      ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} />
-                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : null} />
+                      ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
+                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : null} hasFullAccess={hasFullAccess} />
                     }
                   </div>
                 </div>
