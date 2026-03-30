@@ -7555,6 +7555,160 @@ function BuyerModal({ isOpen, onClose, onSave, saving, isMobile, buyer }) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════
+   CONTACTS DASHBOARD — Overview stats for all contacts
+   ═══════════════════════════════════════════════════════════ */
+function ContactsDashboardView({ session, isMobile, teamEmails: teamEmailsProp, hasFullAccess }) {
+  const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const { data: rows } = await supabase.from("contacts").select("*").order("date_added", { ascending: false });
+        const parsed = (rows || []).map(r => ({
+          name: r.contact_name || "", contactType: r.contact_type || "",
+          buyerStatus: r.buyer_status || "", temperature: r.temperature || "",
+          leadSource: r.lead_source || "", company: r.company || "",
+          dateAdded: r.date_added || "", lastContact: r.last_contact || "",
+          email: r.email || "", phone: r.phone || "",
+          user: r.user_email || "",
+        })).filter(c => c.name && c.name.trim() !== "");
+        const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
+        const filtered = hasFullAccess ? parsed : (teamList.length > 0
+          ? parsed.filter(c => { const u = (c.user || "").toLowerCase().trim(); return u && teamList.includes(u); })
+          : parsed);
+        setContacts(filtered);
+      } catch (err) { console.error(err); }
+      finally { setLoading(false); }
+    })();
+  }, [teamEmailsProp, hasFullAccess]);
+
+  if (loading) return (
+    <div style={{ padding: 40, textAlign: "center" }}>
+      <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+    </div>
+  );
+
+  // ── Stats ──
+  const total = contacts.length;
+  const withEmail = contacts.filter(c => c.email).length;
+  const withPhone = contacts.filter(c => c.phone).length;
+  const recentlyAdded = contacts.filter(c => {
+    if (!c.dateAdded) return false;
+    const d = new Date(c.dateAdded);
+    return (Date.now() - d.getTime()) < 30 * 24 * 60 * 60 * 1000;
+  }).length;
+
+  // By type
+  const typeCounts = {};
+  contacts.forEach(c => { const t = c.contactType || "Untagged"; typeCounts[t] = (typeCounts[t] || 0) + 1; });
+  const types = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
+
+  // By status
+  const statusCounts = {};
+  contacts.forEach(c => { const s = c.buyerStatus || "No Status"; statusCounts[s] = (statusCounts[s] || 0) + 1; });
+  const statuses = Object.entries(statusCounts).sort((a, b) => b[1] - a[1]);
+
+  // By temperature
+  const tempCounts = {};
+  contacts.forEach(c => { const t = c.temperature || "Unrated"; tempCounts[t] = (tempCounts[t] || 0) + 1; });
+  const temps = Object.entries(tempCounts).sort((a, b) => b[1] - a[1]);
+
+  // By source
+  const sourceCounts = {};
+  contacts.forEach(c => { const s = c.leadSource || "Unknown"; sourceCounts[s] = (sourceCounts[s] || 0) + 1; });
+  const sources = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]);
+
+  // No contact in 30+ days
+  const stale = contacts.filter(c => {
+    if (!c.lastContact) return true;
+    const d = new Date(c.lastContact);
+    return (Date.now() - d.getTime()) > 30 * 24 * 60 * 60 * 1000;
+  }).length;
+
+  const cardStyle = { background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "20px 24px", boxShadow: "0 1px 4px rgba(0,0,0,0.03)" };
+  const statCard = (label, value, color, icon) => (
+    <div style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: isMobile ? "calc(50% - 8px)" : 180 }}>
+      <div style={{ width: 42, height: 42, borderRadius: 12, background: color + "12", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {icon}
+      </div>
+      <div>
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{typeof value === "number" ? value.toLocaleString() : value}</div>
+        <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, marginTop: 2 }}>{label}</div>
+      </div>
+    </div>
+  );
+
+  const TEMP_COLORS = { "Hot": "#dc2626", "Warm": "#d97706", "Cold": "#3b82f6", "Unrated": "#94a3b8" };
+  const TYPE_COLORS = { "buyer": "#16a34a", "seller": "#7c3aed", "investor": "#2563eb", "lender": "#d97706", "vendor": "#0891b2", "broker": "#ec4899", "Untagged": "#94a3b8" };
+
+  const breakdownSection = (title, items, colorMap) => (
+    <div style={cardStyle}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 14 }}>{title}</div>
+      {items.length === 0 ? <div style={{ fontSize: 12, color: "#94a3b8" }}>No data</div> : items.slice(0, 8).map(([label, count]) => {
+        const pct = total > 0 ? (count / total * 100) : 0;
+        const color = (colorMap && colorMap[label.toLowerCase()]) || colorMap?.[label] || "#64748b";
+        return (
+          <div key={label} style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", fontFamily: "'DM Sans', sans-serif" }}>{label}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{count.toLocaleString()} <span style={{ fontWeight: 400, fontSize: 10 }}>({pct.toFixed(0)}%)</span></span>
+            </div>
+            <div style={{ height: 6, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: pct + "%", background: color, borderRadius: 3, transition: "width 0.4s ease" }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 12 : 20, background: "#f8fafc" }}>
+      {/* Top stat cards */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+        {statCard("Total Contacts", total, "#16a34a",
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        )}
+        {statCard("With Email", withEmail, "#3b82f6",
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth={2}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        )}
+        {statCard("With Phone", withPhone, "#7c3aed",
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth={2}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        )}
+        {statCard("Added (30d)", recentlyAdded, "#d97706",
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={2}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        )}
+      </div>
+
+      {/* Needs Attention */}
+      <div style={{ ...cardStyle, marginBottom: 16, background: stale > 0 ? "#fffbeb" : "#f0fdf4", border: "1px solid " + (stale > 0 ? "#fde68a" : "#bbf7d0") }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={stale > 0 ? "#d97706" : "#16a34a"} strokeWidth={2}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: stale > 0 ? "#92400e" : "#166534", fontFamily: "'DM Sans', sans-serif" }}>
+              {stale > 0 ? `${stale.toLocaleString()} contacts haven't been reached in 30+ days` : "All contacts are up to date"}
+            </div>
+            <div style={{ fontSize: 11, color: stale > 0 ? "#a16207" : "#15803d", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>
+              {stale > 0 ? "Consider running a re-engagement campaign or updating their status." : "Great job keeping up with your pipeline."}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Breakdowns */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+        {breakdownSection("By Contact Type", types, TYPE_COLORS)}
+        {breakdownSection("By Status", statuses, {})}
+        {breakdownSection("By Temperature", temps, TEMP_COLORS)}
+        {breakdownSection("By Lead Source", sources, {})}
+      </div>
+    </div>
+  );
+}
+
 function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp, deals, updateHash, refreshKey, orgData, orgMembers, contactTypeFilter, hasFullAccess }) {
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13940,7 +14094,7 @@ export default function ReapApp() {
   const [activeNav, setActiveNav] = useState("command");
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [realEstateTab, setRealEstateTab] = useState("dashboard");
-  const [contactsTab, setContactsTab] = useState("contacts");
+  const [contactsTab, setContactsTab] = useState("dashboard");
   const [marketplaceTab, setMarketplaceTab] = useState("listings");
   const [mlsTab, setMlsTab] = useState("feed");
   const [selectedMLSListing, setSelectedMLSListing] = useState(null);
@@ -14014,6 +14168,8 @@ export default function ReapApp() {
       setPendingPortfolioId(id);
     } else if (hash === "profile") {
       setShowProfile(true);
+    } else if (hash === "contacts/dashboard") {
+      setActiveNav("contacts"); setContactsTab("dashboard");
     } else if (hash === "contacts/investors") {
       setActiveNav("contacts"); setContactsTab("investors");
     } else if (hash === "contacts/lenders") {
@@ -14115,6 +14271,8 @@ export default function ReapApp() {
         setPendingPortfolioId(decodeURIComponent(hash.replace("portfolio/", "")));
       } else if (hash === "profile") {
         setShowProfile(true);
+      } else if (hash === "contacts/dashboard") {
+        setActiveNav("contacts"); setContactsTab("dashboard"); setShowProfile(false);
       } else if (hash === "contacts/investors") {
         setActiveNav("contacts"); setContactsTab("investors"); setShowProfile(false);
       } else if (hash === "contacts/lenders") {
@@ -15119,9 +15277,11 @@ export default function ReapApp() {
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
+                <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
-                  {contactsTab === "investors"
+                  {contactsTab === "dashboard"
+                    ? <ContactsDashboardView session={session} isMobile={true} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
+                    : contactsTab === "investors"
                     ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
                     : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : null} hasFullAccess={hasFullAccess} />
                   }
@@ -15201,9 +15361,11 @@ export default function ReapApp() {
                 </div>
               : activeNav === "contacts"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
-                    {contactsTab === "investors"
+                    {contactsTab === "dashboard"
+                      ? <ContactsDashboardView session={session} isMobile={false} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
+                      : contactsTab === "investors"
                       ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
                       : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : null} hasFullAccess={hasFullAccess} />
                     }
