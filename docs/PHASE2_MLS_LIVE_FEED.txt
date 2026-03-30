@@ -1,0 +1,405 @@
+═══════════════════════════════════════════════════════════════════════════════
+REAP — Phase 2: Live MLS Feed via RESO Web API
+Reference Document · REAP Technologies (Suarez Global)
+═══════════════════════════════════════════════════════════════════════════════
+
+STATUS: Planning / Not Yet Started
+CREATED: March 29, 2026
+LAST UPDATED: March 29, 2026
+
+═══════════════════════════════════════════════════════════════════════════════
+1. OVERVIEW
+═══════════════════════════════════════════════════════════════════════════════
+
+Phase 1 (COMPLETE):
+  - Manual CSV upload from Stellar MLS exports
+  - PapaParse parsing in browser
+  - Dedup by MLS number against Supabase
+  - Bulk insert/update with progress UI
+  - Up to 500 rows per CSV export (Stellar MLS limit)
+
+Phase 2 (THIS DOCUMENT):
+  - Direct API connection to Stellar MLS via RESO Web API
+  - Automated listing sync (new, updated, status changes)
+  - Real-time or near-real-time feed
+  - Eliminates manual CSV export/upload workflow entirely
+
+═══════════════════════════════════════════════════════════════════════════════
+2. STELLAR MLS — PROVIDER DETAILS
+═══════════════════════════════════════════════════════════════════════════════
+
+Provider:         Stellar MLS (Florida)
+Website:          https://www.stellarmls.com
+Coverage:         Central & Southwest Florida (Orlando, Tampa, etc.)
+RESO Certified:   Yes — RESO Web API v2 compliant
+API Portal:       https://stellar.mlsgrid.com (or Stellar developer portal)
+Data Standard:    RESO Data Dictionary 1.7+
+
+CONTACT / ACCESS:
+  - Javier is in direct conversation with Stellar MLS about API access
+  - Access typically requires:
+    * Active MLS membership or IDX/RETS agreement
+    * Signed data license agreement
+    * Developer credentials (client_id / client_secret)
+  - Stellar may provide access through a vendor like:
+    * Bridge Interactive (now part of Zillow)
+    * Trestle (CoreLogic)
+    * Spark API
+    * MLS Grid
+
+═══════════════════════════════════════════════════════════════════════════════
+3. RESO WEB API v2 — TECHNICAL SPEC
+═══════════════════════════════════════════════════════════════════════════════
+
+The RESO Web API is built on OData v4 (Open Data Protocol).
+Base pattern: https://{provider_url}/reso/odata/Property
+
+AUTHENTICATION:
+  - OAuth 2.0 (Client Credentials flow)
+  - POST to token endpoint with client_id + client_secret
+  - Returns access_token (Bearer token), typically expires in 1 hour
+  - Example:
+      POST https://stellar.mlsgrid.com/oauth2/token
+      Content-Type: application/x-www-form-urlencoded
+      grant_type=client_credentials&client_id=XXX&client_secret=YYY
+
+CORE ENDPOINTS:
+  - GET /Property           — Residential/commercial listings
+  - GET /Member             — Agent/broker info
+  - GET /Office             — Brokerage office info
+  - GET /Media              — Photos and media
+  - GET /OpenHouse          — Open house schedules
+
+QUERY PARAMETERS (OData):
+  - $filter    — Filter results (e.g., $filter=StandardStatus eq 'Active')
+  - $select    — Choose specific fields
+  - $top       — Limit results (max usually 200-1000 per page)
+  - $skip      — Pagination offset
+  - $orderby   — Sort results
+  - $count     — Include total count
+  - $expand    — Include related resources (e.g., Media)
+
+EXAMPLE QUERIES:
+  # Get active listings in Orlando
+  GET /Property?$filter=StandardStatus eq 'Active' and City eq 'Orlando'
+      &$select=ListingKey,ListPrice,StreetNumber,StreetName,City,StateOrProvince
+      &$top=200&$orderby=ModificationTimestamp desc
+
+  # Get listings modified since last sync
+  GET /Property?$filter=ModificationTimestamp gt 2026-03-29T00:00:00Z
+      &$top=200&$orderby=ModificationTimestamp asc
+
+  # Get photos for a listing
+  GET /Media?$filter=ResourceRecordKey eq 'ABC123' and ResourceName eq 'Property'
+
+PAGINATION:
+  - Response includes @odata.nextLink if more pages exist
+  - Follow nextLink until no more pages
+  - Typical page size: 200 records
+
+RATE LIMITS (varies by provider):
+  - Usually 1-5 requests per second
+  - Daily limits may apply (10,000-100,000 requests/day)
+  - Implement exponential backoff on 429 responses
+
+═══════════════════════════════════════════════════════════════════════════════
+4. RESO DATA DICTIONARY — KEY FIELDS
+═══════════════════════════════════════════════════════════════════════════════
+
+Mapping from RESO Data Dictionary fields to our Supabase mls_listings table:
+
+RESO Field                    → Supabase Column        → Current CSV Column
+─────────────────────────────────────────────────────────────────────────────
+ListingKey / ListingId        → mls_number             → MLS #
+StandardStatus                → status                 → Status
+ListPrice                     → price                  → Price
+StreetNumberNumeric +
+  StreetName + StreetSuffix   → address                → Address
+City                          → city                   → City
+StateOrProvince               → state                  → State
+PostalCode                    → zip                    → Zip
+CountyOrParish                → county                 → County
+PropertyType                  → prop_type              → Prop Type
+PropertySubType / Style       → style                  → Style
+Ownership                     → ownership              → Ownership
+BedroomsTotal                 → beds                   → Beds
+BathroomsTotalInteger         → baths                  → Baths
+LivingArea / BuildingAreaTotal→ heated_area             → Heated Area
+LotSizeAcres                  → lot_acres              → Lot Acres
+YearBuilt                     → year_built             → Year Built
+DaysOnMarket / CDOM           → cdom                   → CDOM
+OriginalListPrice / ADOM calc → adom                   → ADOM
+ListPricePerSquareFoot        → ppsf                   → PPSF
+NumberOfUnitsTotal             → units                  → Units
+ListAgentFullName             → agent                  → Agent
+PublicRemarks                 → public_remarks         → Public Remarks
+PrivateRemarks                → realtor_remarks        → Realtor Remarks
+ModificationTimestamp         → (new) last_modified_at → (N/A - new field)
+ListingContractDate           → (new) list_date        → (N/A - new field)
+CloseDate                     → (new) close_date       → (N/A - new field)
+ClosePrice                    → (new) close_price      → (N/A - new field)
+Latitude                      → (new) latitude         → (N/A - new field)
+Longitude                     → (new) longitude        → (N/A - new field)
+Media[0].MediaURL             → (new) photo_url        → (N/A - new field)
+
+═══════════════════════════════════════════════════════════════════════════════
+5. ARCHITECTURE — SYNC STRATEGY
+═══════════════════════════════════════════════════════════════════════════════
+
+OPTION A: Server-Side Cron (RECOMMENDED)
+  - Supabase Edge Function or external worker (Vercel/Railway/Fly.io)
+  - Runs every 15-60 minutes
+  - Queries: $filter=ModificationTimestamp gt {lastSyncTimestamp}
+  - Upserts into mls_listings table by mls_number
+  - Stores lastSyncTimestamp in a sync_metadata table
+  - Pros: Reliable, no client-side API keys exposed, handles pagination
+  - Cons: Requires server/edge function hosting
+
+OPTION B: Supabase Edge Function (Deno)
+  - Deploy as Supabase Edge Function
+  - Trigger via pg_cron or external cron (cron-job.org)
+  - Native Supabase client access (no extra auth needed)
+  - Pros: Stays within Supabase ecosystem
+  - Cons: 60s execution limit on free tier (may need Pro for large syncs)
+
+OPTION C: Client-Side Sync (NOT RECOMMENDED)
+  - Browser fetches directly from MLS API
+  - Pros: Simple
+  - Cons: Exposes API credentials, CORS issues, rate limit risks
+
+RECOMMENDED APPROACH:
+  → Supabase Edge Function (Option B) with fallback to Option A
+
+SYNC FLOW:
+  1. Edge function wakes up (cron trigger)
+  2. Read last_sync_timestamp from sync_metadata table
+  3. Query RESO API: ModificationTimestamp > last_sync_timestamp
+  4. Page through all results (follow @odata.nextLink)
+  5. For each listing:
+     a. Map RESO fields → mls_listings columns
+     b. Upsert by mls_number (INSERT ON CONFLICT UPDATE)
+  6. Update last_sync_timestamp
+  7. Log sync stats (new/updated/total)
+  8. App auto-refreshes on next load (existing Supabase query)
+
+═══════════════════════════════════════════════════════════════════════════════
+6. DATABASE CHANGES NEEDED
+═══════════════════════════════════════════════════════════════════════════════
+
+-- New columns for mls_listings (to support API-sourced data)
+ALTER TABLE mls_listings ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMPTZ;
+ALTER TABLE mls_listings ADD COLUMN IF NOT EXISTS list_date DATE;
+ALTER TABLE mls_listings ADD COLUMN IF NOT EXISTS close_date DATE;
+ALTER TABLE mls_listings ADD COLUMN IF NOT EXISTS close_price NUMERIC;
+ALTER TABLE mls_listings ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+ALTER TABLE mls_listings ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+ALTER TABLE mls_listings ADD COLUMN IF NOT EXISTS photo_url TEXT;
+ALTER TABLE mls_listings ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'csv';
+  -- 'csv' = Phase 1 upload, 'api' = Phase 2 live feed
+
+-- Sync metadata table
+CREATE TABLE IF NOT EXISTS sync_metadata (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  sync_type TEXT NOT NULL,              -- 'mls_feed'
+  last_sync_at TIMESTAMPTZ,
+  last_sync_timestamp TEXT,             -- RESO ModificationTimestamp cursor
+  records_synced INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'idle',           -- 'idle', 'running', 'error'
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+═══════════════════════════════════════════════════════════════════════════════
+7. EDGE FUNCTION SKELETON (Supabase / Deno)
+═══════════════════════════════════════════════════════════════════════════════
+
+// supabase/functions/mls-sync/index.ts
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const RESO_TOKEN_URL = Deno.env.get("RESO_TOKEN_URL");     // e.g., https://stellar.mlsgrid.com/oauth2/token
+const RESO_API_URL   = Deno.env.get("RESO_API_URL");       // e.g., https://stellar.mlsgrid.com/reso/odata
+const RESO_CLIENT_ID = Deno.env.get("RESO_CLIENT_ID");
+const RESO_SECRET    = Deno.env.get("RESO_SECRET");
+
+serve(async (req) => {
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  // 1. Get OAuth token
+  const tokenRes = await fetch(RESO_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=client_credentials&client_id=${RESO_CLIENT_ID}&client_secret=${RESO_SECRET}`,
+  });
+  const { access_token } = await tokenRes.json();
+
+  // 2. Get last sync cursor
+  const { data: meta } = await supabase
+    .from("sync_metadata")
+    .select("*")
+    .eq("sync_type", "mls_feed")
+    .single();
+
+  const lastSync = meta?.last_sync_timestamp || "1970-01-01T00:00:00Z";
+
+  // 3. Fetch modified listings
+  let url = `${RESO_API_URL}/Property?$filter=ModificationTimestamp gt ${lastSync}&$top=200&$orderby=ModificationTimestamp asc`;
+  let totalSynced = 0;
+  let latestTimestamp = lastSync;
+
+  while (url) {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
+    const data = await res.json();
+    const listings = data.value || [];
+
+    for (const l of listings) {
+      await supabase.from("mls_listings").upsert({
+        mls_number:      l.ListingKey || l.ListingId,
+        status:          l.StandardStatus,
+        price:           l.ListPrice,
+        address:         [l.StreetNumberNumeric, l.StreetName, l.StreetSuffix].filter(Boolean).join(" "),
+        city:            l.City,
+        state:           l.StateOrProvince,
+        zip:             l.PostalCode,
+        county:          l.CountyOrParish,
+        prop_type:       l.PropertyType,
+        style:           l.PropertySubType,
+        ownership:       l.Ownership,
+        beds:            l.BedroomsTotal,
+        baths:           l.BathroomsTotalInteger,
+        heated_area:     l.LivingArea,
+        lot_acres:       l.LotSizeAcres,
+        year_built:      l.YearBuilt,
+        units:           l.NumberOfUnitsTotal,
+        cdom:            l.CumulativeDaysOnMarket,
+        agent:           l.ListAgentFullName,
+        public_remarks:  l.PublicRemarks,
+        realtor_remarks: l.PrivateRemarks,
+        latitude:        l.Latitude,
+        longitude:       l.Longitude,
+        last_modified_at:l.ModificationTimestamp,
+        source:          "api",
+      }, { onConflict: "mls_number" });
+
+      if (l.ModificationTimestamp > latestTimestamp) {
+        latestTimestamp = l.ModificationTimestamp;
+      }
+      totalSynced++;
+    }
+
+    url = data["@odata.nextLink"] || null;
+  }
+
+  // 4. Update sync metadata
+  await supabase.from("sync_metadata").upsert({
+    sync_type: "mls_feed",
+    last_sync_at: new Date().toISOString(),
+    last_sync_timestamp: latestTimestamp,
+    records_synced: totalSynced,
+    status: "idle",
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "sync_type" });
+
+  return new Response(JSON.stringify({ success: true, synced: totalSynced }), {
+    headers: { "Content-Type": "application/json" },
+  });
+});
+
+═══════════════════════════════════════════════════════════════════════════════
+8. ENVIRONMENT VARIABLES NEEDED
+═══════════════════════════════════════════════════════════════════════════════
+
+# Supabase (already have these)
+SUPABASE_URL=https://cpgwnrpaflaftlxrzlar.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service role key — NOT the anon key>
+
+# RESO / Stellar MLS API (obtain from Stellar MLS)
+RESO_TOKEN_URL=<Stellar MLS OAuth2 token endpoint>
+RESO_API_URL=<Stellar MLS RESO OData base URL>
+RESO_CLIENT_ID=<your client ID>
+RESO_SECRET=<your client secret>
+
+═══════════════════════════════════════════════════════════════════════════════
+9. IMPLEMENTATION CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] 1. Obtain RESO API credentials from Stellar MLS
+       - Contact Stellar MLS developer support
+       - Sign data license agreement
+       - Receive client_id + client_secret + endpoint URLs
+
+[ ] 2. Test API access
+       - Verify OAuth2 token flow works
+       - Test basic Property query
+       - Confirm available fields match RESO Data Dictionary
+
+[ ] 3. Run database migration
+       - Add new columns to mls_listings
+       - Create sync_metadata table
+       - Add unique constraint on sync_type
+
+[ ] 4. Build Edge Function
+       - Implement OAuth2 token fetch
+       - Implement paginated Property query
+       - Implement upsert logic
+       - Add error handling + logging
+
+[ ] 5. Deploy Edge Function
+       - supabase functions deploy mls-sync
+       - Set environment variables (secrets)
+       - Test with manual invocation
+
+[ ] 6. Set up cron schedule
+       - pg_cron: SELECT cron.schedule('mls-sync', '*/30 * * * *', ...)
+       - Or external: cron-job.org hitting the function URL
+
+[ ] 7. Update REAP app UI
+       - Show "Last synced: X minutes ago" in MLS Feed header
+       - Add manual "Sync Now" button for admins
+       - Show source badge on listings (CSV vs API)
+       - Leverage lat/lng from API for map (skip geocoding)
+
+[ ] 8. Monitor & optimize
+       - Track sync duration and record counts
+       - Set up alerts for sync failures
+       - Optimize query filters as needed
+
+═══════════════════════════════════════════════════════════════════════════════
+10. NOTES & CONSIDERATIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+- CSV upload (Phase 1) should continue to work alongside API sync
+  Listings from CSV have source='csv', API listings have source='api'
+  Both coexist in the same mls_listings table
+
+- Photos: RESO Media resource provides photo URLs
+  Can be fetched separately and stored as photo_url
+  Eliminates need for Street View as primary image
+
+- Lat/Lng: RESO provides coordinates directly
+  Eliminates need for Google Geocoding API on API-sourced listings
+  Saves geocoding costs and improves map performance
+
+- Status tracking: RESO provides real-time status changes
+  Active → Pending → Sold transitions happen automatically
+  No more stale data from old CSV exports
+
+- Compliance: MLS data has strict display rules
+  Must display MLS attribution/logo
+  Must honor listing broker attribution
+  Check Stellar MLS IDX display rules
+
+- Rate limiting: Implement proper backoff
+  Store last successful timestamp to resume on failure
+  Don't re-fetch entire dataset on each sync
+
+═══════════════════════════════════════════════════════════════════════════════
+END OF DOCUMENT
+═══════════════════════════════════════════════════════════════════════════════
