@@ -11388,6 +11388,339 @@ function OfferingsView({ deals, isMobile, session, userEmail, updateHash }) {
    FILE UPLOADER VIEW
    ═══════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════
+   CONTACT CSV IMPORTER — Smart import with dedup & auto-tagging
+   ═══════════════════════════════════════════════════════════ */
+function ContactImporterView({ session, isMobile, onImported }) {
+  const [processing, setProcessing] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [parsedRows, setParsedRows] = useState(null);
+  const [colMapping, setColMapping] = useState({});
+  const [detectedCols, setDetectedCols] = useState([]);
+  const [results, setResults] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [defaultType, setDefaultType] = useState("");
+  const [defaultStage, setDefaultStage] = useState("Lead");
+  const [defaultSource, setDefaultSource] = useState("");
+  const fileInputRef = useRef(null);
+
+  // Target contact fields
+  const CONTACT_FIELDS = [
+    { key: "contact_name", label: "Full Name", required: true },
+    { key: "first_name", label: "First Name" },
+    { key: "email", label: "Email" },
+    { key: "phone", label: "Phone" },
+    { key: "company", label: "Company" },
+    { key: "contact_type", label: "Contact Type" },
+    { key: "buyer_status", label: "Status" },
+    { key: "temperature", label: "Temperature" },
+    { key: "lead_source", label: "Lead Source" },
+    { key: "notes", label: "Notes" },
+    { key: "asset_preference", label: "Asset Preference" },
+    { key: "manager", label: "Manager / Assigned To" },
+  ];
+
+  // Common CSV column name aliases for auto-mapping
+  const ALIASES = {
+    contact_name: ["name", "full name", "contact name", "contact_name", "fullname", "display name"],
+    first_name: ["first name", "first_name", "firstname", "given name"],
+    email: ["email", "email address", "e-mail", "email_address", "contact email"],
+    phone: ["phone", "phone number", "mobile", "cell", "telephone", "phone_number", "mobile phone", "cell phone", "home phone", "work phone"],
+    company: ["company", "company name", "organization", "business", "company_name", "org"],
+    contact_type: ["type", "contact type", "contact_type", "category", "role"],
+    buyer_status: ["status", "buyer status", "buyer_status", "lead status", "stage"],
+    temperature: ["temperature", "temp", "rating", "score", "lead score"],
+    lead_source: ["source", "lead source", "lead_source", "origin", "campaign", "list name", "list"],
+    notes: ["notes", "note", "comments", "description", "memo"],
+    asset_preference: ["asset preference", "asset_preference", "preference", "interest"],
+    manager: ["manager", "assigned to", "owner", "rep", "agent"],
+  };
+
+  const autoMap = (csvCols) => {
+    const mapping = {};
+    const lowerCols = csvCols.map(c => c.toLowerCase().trim());
+    CONTACT_FIELDS.forEach(f => {
+      const aliases = ALIASES[f.key] || [f.key];
+      const match = csvCols.find((col, i) => aliases.includes(lowerCols[i]));
+      if (match) mapping[f.key] = match;
+    });
+    // Special: if no full name but has first + last
+    if (!mapping.contact_name) {
+      const firstIdx = lowerCols.findIndex(c => ["first name", "first_name", "firstname"].includes(c));
+      const lastIdx = lowerCols.findIndex(c => ["last name", "last_name", "lastname", "surname"].includes(c));
+      if (firstIdx >= 0 && lastIdx >= 0) {
+        mapping._firstName = csvCols[firstIdx];
+        mapping._lastName = csvCols[lastIdx];
+        mapping.contact_name = "__composite__";
+      } else if (firstIdx >= 0) {
+        mapping.contact_name = csvCols[firstIdx];
+      }
+    }
+    return mapping;
+  };
+
+  const handleFileSelected = (file) => {
+    if (!file) return;
+    setSelectedFile(file); setResults(null); setParsedRows(null); setColMapping({});
+    Papa.parse(file, {
+      header: true, skipEmptyLines: true, encoding: "UTF-8",
+      complete: (result) => {
+        const cols = result.meta.fields || [];
+        setDetectedCols(cols);
+        setColMapping(autoMap(cols));
+        setParsedRows(result.data.filter(r => {
+          const vals = Object.values(r).filter(v => v && String(v).trim());
+          return vals.length >= 1;
+        }));
+      },
+      error: () => { alert("Error parsing CSV."); },
+    });
+  };
+
+  const buildContact = (csvRow) => {
+    const c = { user_email: session?.user?.email || "", date_added: new Date().toLocaleDateString("en-US") };
+    CONTACT_FIELDS.forEach(f => {
+      if (f.key === "contact_name" && colMapping.contact_name === "__composite__") {
+        const fn = (csvRow[colMapping._firstName] || "").trim();
+        const ln = (csvRow[colMapping._lastName] || "").trim();
+        c.contact_name = [fn, ln].filter(Boolean).join(" ");
+        c.first_name = fn;
+      } else if (colMapping[f.key]) {
+        c[f.key] = (csvRow[colMapping[f.key]] || "").trim();
+      }
+    });
+    // Apply defaults where empty
+    if (!c.contact_type && defaultType) c.contact_type = defaultType;
+    if (!c.buyer_status && defaultStage) c.buyer_status = defaultStage;
+    if (!c.lead_source && defaultSource) c.lead_source = defaultSource;
+    // Auto-detect type from data clues
+    if (!c.contact_type && c.company) {
+      const comp = c.company.toLowerCase();
+      if (comp.includes("bank") || comp.includes("lending") || comp.includes("capital") || comp.includes("mortgage")) c.contact_type = "lender";
+      else if (comp.includes("brokerage") || comp.includes("realty") || comp.includes("real estate")) c.contact_type = "broker";
+    }
+    if (!c.contact_name) c.contact_name = c.email || "";
+    return c;
+  };
+
+  const handleProcess = async () => {
+    if (!parsedRows || parsedRows.length === 0) return;
+    setProcessing(true); setResults(null);
+    setProgress({ current: 0, total: parsedRows.length, phase: "Preparing contacts..." });
+    try {
+      const mapped = parsedRows.map(buildContact).filter(c => c.contact_name || c.email);
+      // Fetch existing contacts by email for dedup
+      setProgress(p => ({ ...p, phase: "Checking for duplicates..." }));
+      const emails = mapped.map(c => (c.email || "").toLowerCase()).filter(Boolean);
+      let existingEmails = new Set();
+      if (emails.length > 0) {
+        // Batch fetch in chunks of 500
+        for (let i = 0; i < emails.length; i += 500) {
+          const batch = emails.slice(i, i + 500);
+          const { data } = await supabase.from("contacts").select("email").in("email", batch);
+          (data || []).forEach(r => { if (r.email) existingEmails.add(r.email.toLowerCase()); });
+        }
+      }
+
+      const toInsert = [];
+      let dupeCount = 0;
+      let noNameCount = 0;
+      mapped.forEach(c => {
+        if (!c.contact_name && !c.email) { noNameCount++; return; }
+        if (c.email && existingEmails.has(c.email.toLowerCase())) { dupeCount++; return; }
+        toInsert.push(c);
+      });
+
+      // Batch insert
+      let insertedCount = 0;
+      if (toInsert.length > 0) {
+        setProgress(p => ({ ...p, phase: `Importing ${toInsert.length} contacts...`, current: 0, total: toInsert.length }));
+        for (let i = 0; i < toInsert.length; i += 50) {
+          const batch = toInsert.slice(i, i + 50);
+          const { error } = await supabase.from("contacts").insert(batch);
+          if (error) console.error("Insert error:", error.message);
+          else insertedCount += batch.length;
+          setProgress(p => ({ ...p, current: Math.min(i + 50, toInsert.length) }));
+        }
+      }
+
+      setResults({ inserted: insertedCount, duplicates: dupeCount, skipped: noNameCount, total: mapped.length });
+      setProgress(null);
+      if (onImported) onImported();
+    } catch (err) {
+      alert("Import error: " + err.message);
+      setProgress(null);
+    } finally { setProcessing(false); }
+  };
+
+  const cardStyle = { background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? 16 : 24, marginBottom: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.03)" };
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: isMobile ? 12 : 20, background: "#f8fafc" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto" }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Import Contacts</h2>
+        <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 20px" }}>Upload a CSV to bulk-import contacts. Duplicates are detected by email address.</p>
+
+        {/* Drop zone */}
+        {!parsedRows && (
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={e => { e.preventDefault(); setDragOver(false); handleFileSelected(e.dataTransfer.files[0]); }}
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              ...cardStyle, cursor: "pointer", textAlign: "center", padding: "48px 20px",
+              border: `2px dashed ${dragOver ? "#16a34a" : "#e2e8f0"}`,
+              background: dragOver ? "#f0fdf4" : "#fff", transition: "all 0.2s",
+            }}>
+            <input ref={fileInputRef} type="file" accept=".csv,.txt,.tsv" style={{ display: "none" }} onChange={e => handleFileSelected(e.target.files[0])} />
+            <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke={dragOver ? "#16a34a" : "#94a3b8"} strokeWidth={1.5} style={{ marginBottom: 12 }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Drop a CSV file here or click to browse</p>
+            <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Supports Constant Contact exports, Google Contacts, or any CSV with name/email columns</p>
+          </div>
+        )}
+
+        {/* Column mapping + preview */}
+        {parsedRows && !results && (
+          <>
+            <div style={cardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{selectedFile?.name}</div>
+                  <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{parsedRows.length.toLocaleString()} rows detected · {detectedCols.length} columns</div>
+                </div>
+                <button onClick={() => { setSelectedFile(null); setParsedRows(null); setColMapping({}); setDetectedCols([]); }} style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, color: "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Change File</button>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 10 }}>Column Mapping</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 14px" }}>
+                {CONTACT_FIELDS.map(f => (
+                  <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{f.label}{f.required ? " *" : ""}</label>
+                    <select value={colMapping[f.key] || ""} onChange={e => setColMapping(prev => ({ ...prev, [f.key]: e.target.value || undefined }))}
+                      style={{ padding: "8px 10px", fontSize: 12, border: "1.5px solid " + (colMapping[f.key] ? "#bbf7d0" : "#e2e8f0"), borderRadius: 8, fontFamily: "'DM Sans', sans-serif", color: colMapping[f.key] ? "#0f172a" : "#94a3b8", background: colMapping[f.key] ? "#f0fdf4" : "#fff", outline: "none" }}>
+                      <option value="">— Skip —</option>
+                      {detectedCols.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Import defaults */}
+            <div style={cardStyle}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 10 }}>Import Defaults</div>
+              <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "0 0 12px" }}>Applied to contacts that don't have these fields in the CSV.</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Contact Type</label>
+                  <select value={defaultType} onChange={e => setDefaultType(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: 12, border: "1.5px solid #e2e8f0", borderRadius: 8, fontFamily: "'DM Sans', sans-serif", outline: "none" }}>
+                    <option value="">Auto-detect</option>
+                    <option value="investor">Investor</option>
+                    <option value="buyer">Buyer</option>
+                    <option value="seller">Seller</option>
+                    <option value="lender">Lender</option>
+                    <option value="broker">Broker</option>
+                    <option value="vendor">Vendor</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Lifecycle Stage</label>
+                  <select value={defaultStage} onChange={e => setDefaultStage(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: 12, border: "1.5px solid #e2e8f0", borderRadius: 8, fontFamily: "'DM Sans', sans-serif", outline: "none" }}>
+                    <option value="Lead">Lead</option>
+                    <option value="Prospect">Prospect</option>
+                    <option value="Qualified">Qualified</option>
+                    <option value="Active">Active</option>
+                    <option value="Client">Client</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif", display: "block", marginBottom: 4 }}>Lead Source</label>
+                  <input value={defaultSource} onChange={e => setDefaultSource(e.target.value)} placeholder="e.g. Constant Contact" style={{ width: "100%", padding: "8px 10px", fontSize: 12, border: "1.5px solid #e2e8f0", borderRadius: 8, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} />
+                </div>
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div style={cardStyle}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 10 }}>Preview (first 5 rows)</div>
+              <div style={{ overflow: "auto", borderRadius: 8, border: "1px solid #f1f5f9" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif", fontSize: 11, minWidth: 500 }}>
+                  <thead><tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                    {CONTACT_FIELDS.filter(f => colMapping[f.key]).map(f => <th key={f.key} style={{ padding: "8px 10px", textAlign: "left", fontWeight: 700, color: "#64748b", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>{f.label}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {parsedRows.slice(0, 5).map((row, i) => {
+                      const c = buildContact(row);
+                      return (
+                        <tr key={i} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          {CONTACT_FIELDS.filter(f => colMapping[f.key]).map(f => <td key={f.key} style={{ padding: "8px 10px", color: "#374151", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c[f.key] || "—"}</td>)}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Progress */}
+            {progress && (
+              <div style={cardStyle}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>{progress.phase}</div>
+                <div style={{ height: 8, background: "#f1f5f9", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: (progress.total > 0 ? (progress.current / progress.total * 100) : 0) + "%", background: "linear-gradient(135deg, #16a34a, #15803d)", borderRadius: 4, transition: "width 0.3s" }} />
+                </div>
+                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, fontFamily: "'DM Mono', monospace" }}>{progress.current.toLocaleString()} / {progress.total.toLocaleString()}</div>
+              </div>
+            )}
+
+            {/* Import button */}
+            {!processing && !progress && (
+              <button onClick={handleProcess} disabled={!colMapping.contact_name && !colMapping.email} style={{
+                width: "100%", padding: "14px", fontSize: 15, fontWeight: 700, color: "#fff",
+                background: (!colMapping.contact_name && !colMapping.email) ? "#94a3b8" : "linear-gradient(135deg, #16a34a, #15803d)",
+                border: "none", borderRadius: 12, cursor: (!colMapping.contact_name && !colMapping.email) ? "not-allowed" : "pointer",
+                fontFamily: "'DM Sans', sans-serif",
+                boxShadow: (!colMapping.contact_name && !colMapping.email) ? "none" : "0 4px 14px rgba(22,163,74,0.3)",
+              }}>Import {parsedRows.length.toLocaleString()} Contacts</button>
+            )}
+          </>
+        )}
+
+        {/* Results */}
+        {results && (
+          <div style={cardStyle}>
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
+              <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2} style={{ marginBottom: 12 }}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Import Complete</div>
+              <div style={{ display: "flex", justifyContent: "center", gap: 20, marginTop: 16, flexWrap: "wrap" }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>{results.inserted.toLocaleString()}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Imported</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: "#d97706", fontFamily: "'DM Mono', monospace" }}>{results.duplicates.toLocaleString()}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Duplicates Skipped</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{results.skipped.toLocaleString()}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Invalid / Skipped</div>
+                </div>
+              </div>
+              <button onClick={() => { setSelectedFile(null); setParsedRows(null); setResults(null); setColMapping({}); }} style={{
+                marginTop: 20, padding: "10px 24px", fontSize: 13, fontWeight: 600, color: "#16a34a",
+                background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif",
+              }}>Import Another File</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FileUploaderView({ session, isMobile, onProcessed }) {
   const [uploads, setUploads] = useState([]);
   const [uploadsLoading, setUploadsLoading] = useState(true);
@@ -15277,9 +15610,11 @@ export default function ReapApp() {
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
+                <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
-                  {contactsTab === "dashboard"
+                  {contactsTab === "import"
+                    ? <ContactImporterView session={session} isMobile={true} onImported={() => setContactsTab("dashboard")} />
+                    : contactsTab === "dashboard"
                     ? <ContactsDashboardView session={session} isMobile={true} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
                     : contactsTab === "investors"
                     ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
@@ -15361,9 +15696,11 @@ export default function ReapApp() {
                 </div>
               : activeNav === "contacts"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
-                    {contactsTab === "dashboard"
+                    {contactsTab === "import"
+                      ? <ContactImporterView session={session} isMobile={false} onImported={() => setContactsTab("dashboard")} />
+                      : contactsTab === "dashboard"
                       ? <ContactsDashboardView session={session} isMobile={false} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
                       : contactsTab === "investors"
                       ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
