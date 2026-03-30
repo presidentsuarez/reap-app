@@ -7173,8 +7173,8 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
   );
 
   return (
-    <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif" }}>
-      <div style={{ padding: isMobile ? "0 0 100px" : "0 0 40px", maxWidth: 1100, margin: "0 auto" }}>
+    <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif", maxWidth: "100%", minWidth: 0 }}>
+      <div style={{ padding: isMobile ? "0 0 100px" : "0 0 40px", maxWidth: isMobile ? "100%" : 1100, margin: "0 auto", overflowX: "hidden" }}>
 
       {/* Hero Header */}
       <div style={{
@@ -7193,10 +7193,10 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
             <span style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{qLabel}</span>
             <span style={{ background: "rgba(22,163,74,0.2)", color: "#4ade80", fontSize: 11, padding: "2px 10px", borderRadius: 20, fontWeight: 600 }}>{daysLeft}d left</span>
           </div>
-          <div style={{ display: "flex", gap: isMobile ? 12 : 20 }}>
-            <span style={{ fontSize: 12, color: "#cbd5e1" }}>📊 {deals.length} deals</span>
-            <span style={{ fontSize: 12, color: "#cbd5e1" }}>💼 {fmtK(totalPipelineValue)} pipeline</span>
-            <span style={{ fontSize: 12, color: "#cbd5e1" }}>👥 {contactsCount} contacts</span>
+          <div style={{ display: "flex", gap: isMobile ? 8 : 20, flexWrap: "wrap" }}>
+            <span style={{ fontSize: isMobile ? 11 : 12, color: "#cbd5e1" }}>📊 {deals.length} deals</span>
+            <span style={{ fontSize: isMobile ? 11 : 12, color: "#cbd5e1" }}>💼 {fmtK(totalPipelineValue)} pipeline</span>
+            <span style={{ fontSize: isMobile ? 11 : 12, color: "#cbd5e1" }}>👥 {contactsCount} contacts</span>
             {!isMobile && <span style={{ fontSize: 12, color: "#cbd5e1" }}>💰 {fmtK(capitalCommitted)} committed</span>}
           </div>
         </div>
@@ -7273,8 +7273,8 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
                       background: pct >= 100 ? "linear-gradient(90deg, #16a34a, #22c55e)" : pct >= 60 ? "linear-gradient(90deg, " + g.color + ", " + g.color + "cc)" : g.color,
                     }} />
                   </div>
-                  <p style={{ fontSize: 11, margin: "4px 0 0", fontWeight: 500, color: pct >= 100 ? "#16a34a" : pct >= 80 ? "#16a34a" : pct >= 50 ? "#d97706" : "#94a3b8" }}>
-                    {pct >= 100 ? "🎉 Goal reached!" : pct >= 80 ? "🔥 Almost there — " + remaining + " to go" : "📈 Need " + perWeek + "/wk · " + daysLeft + "d left"}
+                  <p style={{ fontSize: 11, margin: "4px 0 0", fontWeight: 500, color: pct >= 100 ? "#16a34a" : pct >= 80 ? "#16a34a" : pct >= 50 ? "#d97706" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {pct >= 100 ? "🎉 Goal reached!" : pct >= 80 ? "🔥 Almost there — " + remaining + " to go" : "📈 Need " + (g.isCurrency ? fmtK(parseFloat(perWeek)) : perWeek) + "/wk · " + daysLeft + "d left"}
                   </p>
                 </div>
               );
@@ -15466,14 +15466,14 @@ export default function ReapApp() {
       });
 
   const SubTabBar = ({ tabs, active, onChange, title }) => (
-    <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "0 20px", flexShrink: 0 }}>
-      {title && <h1 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, padding: "16px 0 8px", letterSpacing: "-0.02em" }}>{title}</h1>}
-      <div style={{ display: "flex", gap: 0 }}>
+    <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "0 12px" : "0 20px", flexShrink: 0, maxWidth: "100vw", overflow: "hidden" }}>
+      {title && <h1 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, padding: isMobile ? "12px 0 6px" : "16px 0 8px", letterSpacing: "-0.02em" }}>{title}</h1>}
+      <div style={{ display: "flex", gap: 0, overflowX: "auto", WebkitOverflowScrolling: "touch", msOverflowStyle: "none", scrollbarWidth: "none" }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => onChange(t.id)} style={{
             background: "transparent", border: "none", borderBottom: active === t.id ? "2px solid #16a34a" : "2px solid transparent",
-            padding: "10px 18px", color: active === t.id ? "#16a34a" : "#94a3b8", fontSize: 13, fontWeight: 600,
-            cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", marginBottom: -1
+            padding: isMobile ? "8px 12px" : "10px 18px", color: active === t.id ? "#16a34a" : "#94a3b8", fontSize: isMobile ? 12 : 13, fontWeight: 600,
+            cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", marginBottom: -1, whiteSpace: "nowrap", flexShrink: 0
           }}>{t.label}</button>
         ))}
       </div>
@@ -15518,6 +15518,8 @@ export default function ReapApp() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body, #root { overflow-x: hidden; max-width: 100vw; }
+        body { -webkit-text-size-adjust: 100%; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -15548,7 +15550,7 @@ export default function ReapApp() {
         deal={selectedDeal}
       />
 
-      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", background: "#f8fafc", overflow: "hidden" }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", width: "100%", maxWidth: "100vw", background: "#f8fafc", overflow: "hidden" }}>
 
         {/* Trial Banner */}
         {!isSubscribed && trialDaysLeft > 0 && (
@@ -15602,7 +15604,7 @@ export default function ReapApp() {
         )}
 
         {/* Main Content */}
-        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 70 : 0, paddingTop: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : (!isSubscribed && trialDaysLeft > 0 ? 42 : 0), position: "relative" }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 70 : 0, paddingTop: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : (!isSubscribed && trialDaysLeft > 0 ? 42 : 0), position: "relative", maxWidth: "100%", minWidth: 0 }}>
           {isMobile ? (
             showProfile ? (
               <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} onUpdateDataAccess={handleUpdateDataAccess} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
