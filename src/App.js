@@ -6065,6 +6065,57 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
   );
 }
 
+function PasswordResetScreen({ onDone }) {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handleReset = async () => {
+    setError(""); setSuccess("");
+    if (!newPassword || newPassword.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (newPassword !== confirmPassword) { setError("Passwords do not match."); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) { setError(error.message); }
+    else { setSuccess("Password updated successfully! Redirecting..."); setTimeout(() => onDone(), 2000); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f0fdf4 0%, #f8fafc 50%, #ecfdf5 100%)", fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ width: "100%", maxWidth: 420, padding: 32, background: "#fff", borderRadius: 20, boxShadow: "0 8px 32px rgba(0,0,0,0.08)", margin: "0 16px" }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 700, color: "#0B3D2C", fontFamily: "'Playfair Display', serif", margin: "0 0 8px" }}>Set New Password</h1>
+          <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>Enter your new password below.</p>
+        </div>
+        {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#DC2626" }}>{error}</div>}
+        {success && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#16a34a" }}>{success}</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6, display: "block" }}>New Password</label>
+            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleReset()}
+              style={{ width: "100%", padding: "13px 16px", fontSize: 15, border: "1.5px solid #DCE4DF", borderRadius: 10, outline: "none", background: "#fff", color: "#1A2E22", boxSizing: "border-box", fontFamily: "'DM Sans', sans-serif" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6, display: "block" }}>Confirm Password</label>
+            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleReset()}
+              style={{ width: "100%", padding: "13px 16px", fontSize: 15, border: "1.5px solid #DCE4DF", borderRadius: 10, outline: "none", background: "#fff", color: "#1A2E22", boxSizing: "border-box", fontFamily: "'DM Sans', sans-serif" }} />
+          </div>
+          <button onClick={handleReset} disabled={loading} style={{
+            width: "100%", padding: "14px", fontSize: 15, fontWeight: 700, color: "#fff",
+            background: loading ? "#86EFAC" : "linear-gradient(135deg, #0B3D2C, #16a34a)",
+            border: "none", borderRadius: 12, cursor: loading ? "not-allowed" : "pointer",
+            fontFamily: "'DM Sans', sans-serif", marginTop: 4,
+            boxShadow: "0 4px 14px rgba(11,61,44,0.25)", transition: "all 0.2s",
+          }}>{loading ? "Updating..." : "Update Password"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AuthScreen({ onAuth }) {
   const [mode, setMode] = useState(() => {
     const params = window.location.search;
@@ -6109,9 +6160,11 @@ function AuthScreen({ onAuth }) {
   const handleForgot = async () => {
     if (!email) { setError("Enter your email first"); return; }
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
     if (error) setError(error.message);
-    else setSuccess("Password reset email sent.");
+    else setSuccess("Password reset email sent. Check your inbox and click the link.");
     setLoading(false);
   };
 
@@ -13869,6 +13922,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
 export default function ReapApp() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -14158,8 +14212,11 @@ export default function ReapApp() {
       setSession(session);
       setAuthLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecovery(true);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -14900,6 +14957,8 @@ export default function ReapApp() {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
+
+  if (passwordRecovery) return <PasswordResetScreen onDone={() => setPasswordRecovery(false)} />;
 
   if (!session) return <AuthScreen onAuth={(user) => setSession({ user })} />;
 
