@@ -9689,6 +9689,8 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
   const [activeTab, setActiveTab] = useState("table");
   const [statusFilter, setStatusFilter] = useState(null);
   const [reviewFilter, setReviewFilter] = useState(null);
+  const [styleFilter, setStyleFilter] = useState(null);
+  const [propTypeFilter, setPropTypeFilter] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
   const searchRef = useRef(null);
@@ -9792,7 +9794,9 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
     (l.propType || "").toLowerCase().includes(search.toLowerCase())
   );
   const statusFiltered = statusFilter ? textFiltered.filter(l => l.status === statusFilter) : textFiltered;
-  const filtered = reviewFilter ? statusFiltered.filter(l => l.reviewStatus === reviewFilter) : statusFiltered;
+  const reviewFiltered = reviewFilter ? statusFiltered.filter(l => l.reviewStatus === reviewFilter) : statusFiltered;
+  const styleFiltered = styleFilter ? reviewFiltered.filter(l => l.style === styleFilter) : reviewFiltered;
+  const filtered = propTypeFilter ? styleFiltered.filter(l => l.propType === propTypeFilter) : styleFiltered;
 
   // Sort for table
   const sorted = [...filtered].sort((a, b) => {
@@ -9828,6 +9832,10 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
   const propTypeCounts = {};
   listings.forEach(l => { const t = l.propType || "Unknown"; propTypeCounts[t] = (propTypeCounts[t] || 0) + 1; });
   const propTypes = Object.entries(propTypeCounts).sort((a, b) => b[1] - a[1]);
+  const propTypeList = Object.keys(propTypeCounts).sort((a, b) => propTypeCounts[b] - propTypeCounts[a]);
+  const styleCounts = {};
+  listings.forEach(l => { if (l.style) { styleCounts[l.style] = (styleCounts[l.style] || 0) + 1; } });
+  const styleList = Object.keys(styleCounts).sort((a, b) => styleCounts[b] - styleCounts[a]);
   const avgDOM = (() => { const vals = listings.map(l => parseInt(l.cdom || l.adom)).filter(n => !isNaN(n)); return vals.length > 0 ? Math.round(vals.reduce((s, n) => s + n, 0) / vals.length) : 0; })();
 
   // MLS Map state
@@ -10003,7 +10011,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
           <div>
             <h1 style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>MLS Feed</h1>
             <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "4px 0 0" }}>
-              {loading ? "Loading listings..." : `${filtered.length} listing${filtered.length !== 1 ? "s" : ""}${statusFilter ? " · " + statusFilter : ""}${reviewFilter ? " · " + reviewFilter : ""}`}
+              {loading ? "Loading listings..." : `${filtered.length} listing${filtered.length !== 1 ? "s" : ""}${statusFilter ? " · " + statusFilter : ""}${reviewFilter ? " · " + reviewFilter : ""}${propTypeFilter ? " · " + propTypeFilter : ""}${styleFilter ? " · " + styleFilter : ""}`}
             </p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -10075,6 +10083,46 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.color, flexShrink: 0 }} />
                     {rs} ({reviewCounts[rs]})
                   </button>
+                );
+              })}
+            </div>
+          )}
+          {/* Property Type filter row */}
+          {activeTab !== "dashboard" && propTypeList.length > 1 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "auto", paddingBottom: 2 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", flexShrink: 0 }}>Type</span>
+              <button onClick={() => setPropTypeFilter(null)} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (!propTypeFilter ? "#7c3aed" : "#e2e8f0"), background: !propTypeFilter ? "rgba(124,58,237,0.06)" : "#fff", color: !propTypeFilter ? "#7c3aed" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>All</button>
+              {propTypeList.map(pt => {
+                const isActive = propTypeFilter === pt;
+                return (
+                  <button key={pt} onClick={() => setPropTypeFilter(isActive ? null : pt)} style={{
+                    padding: "5px 12px", borderRadius: 20,
+                    border: "1px solid " + (isActive ? "#7c3aed" : "#e2e8f0"),
+                    background: isActive ? "rgba(124,58,237,0.06)" : "#fff",
+                    color: isActive ? "#7c3aed" : "#64748b",
+                    fontSize: 11, fontWeight: 600, cursor: "pointer",
+                    fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap",
+                  }}>{pt} ({propTypeCounts[pt]})</button>
+                );
+              })}
+            </div>
+          )}
+          {/* Style filter row */}
+          {activeTab !== "dashboard" && styleList.length > 1 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "auto", paddingBottom: 2 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", flexShrink: 0 }}>Style</span>
+              <button onClick={() => setStyleFilter(null)} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (!styleFilter ? "#0891b2" : "#e2e8f0"), background: !styleFilter ? "rgba(8,145,178,0.06)" : "#fff", color: !styleFilter ? "#0891b2" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>All</button>
+              {styleList.map(st => {
+                const isActive = styleFilter === st;
+                return (
+                  <button key={st} onClick={() => setStyleFilter(isActive ? null : st)} style={{
+                    padding: "5px 12px", borderRadius: 20,
+                    border: "1px solid " + (isActive ? "#0891b2" : "#e2e8f0"),
+                    background: isActive ? "rgba(8,145,178,0.06)" : "#fff",
+                    color: isActive ? "#0891b2" : "#64748b",
+                    fontSize: 11, fontWeight: 600, cursor: "pointer",
+                    fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap",
+                  }}>{st} ({styleCounts[st]})</button>
                 );
               })}
             </div>
