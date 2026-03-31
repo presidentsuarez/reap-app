@@ -10367,7 +10367,7 @@ function buildZillowUrl(address, city, state, zip) {
   return `https://www.zillow.com/homes/${slug}_rb/`;
 }
 
-function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, updateHash }) {
+function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, updateHash, onAddToPipeline }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [reviewStatus, setReviewStatus] = useState(listing.reviewStatus || "New");
   const [reviewSaving, setReviewSaving] = useState(false);
@@ -10379,6 +10379,8 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
   const [editing, setEditing] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editFields, setEditFields] = useState({});
+  const [addingToPipeline, setAddingToPipeline] = useState(false);
+  const [addedToPipeline, setAddedToPipeline] = useState(false);
   // Quick Underwrite state
   const [uwOfferPrice, setUwOfferPrice] = useState("");
   const [uwCapRate, setUwCapRate] = useState("7");
@@ -10482,6 +10484,39 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
     </div>
   );
 
+  const handleAddToPipelineDetail = async () => {
+    setAddingToPipeline(true);
+    try {
+      const clean = (v) => v ? String(v).replace(/[$,]/g, "") : "";
+      const { error: insertErr } = await supabase.from("deals").insert({
+        user_email: session?.user?.email || "",
+        deal_name: listing.address || "MLS " + listing.mlsNumber,
+        property_address: listing.address,
+        city: listing.city,
+        state: "",
+        zip_code: listing.zip,
+        type: listing.propType || "",
+        asking_price: parseFloat(clean(listing.price)) || null,
+        sqft_net: parseFloat(clean(listing.heatedArea || listing.sqftTotal)) || null,
+        units: parseInt(clean(listing.units)) || null,
+        lot_acres: parseFloat(clean(listing.lotAcres)) || null,
+        year_built: listing.yearBuilt || null,
+        deal_status: "New",
+        source: "MLS Feed",
+      });
+      if (insertErr) throw new Error(insertErr.message);
+      // Mark review status as Added to Pipeline
+      await supabase.from("mls_listings").update({ review_status: "Added to Pipeline" }).eq("id", listing._id);
+      setReviewStatus("Added to Pipeline");
+      setAddedToPipeline(true);
+      if (onAddToPipeline) onAddToPipeline();
+    } catch (err) {
+      alert("Error adding to pipeline: " + err.message);
+    } finally {
+      setAddingToPipeline(false);
+    }
+  };
+
   const zillowUrl = buildZillowUrl(listing.address, listing.city, listing.state, listing.zip);
   const streetViewUrl = listing.address ? `https://maps.googleapis.com/maps/api/streetview?size=1200x220&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}` : null;
 
@@ -10511,7 +10546,26 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
               {listing.mlsNumber && <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>MLS# {listing.mlsNumber}</span>}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignSelf: isMobile ? "stretch" : "auto" }}>
+          <div style={{ display: "flex", gap: 8, alignSelf: isMobile ? "stretch" : "auto", flexWrap: "wrap" }}>
+            <button onClick={handleAddToPipelineDetail} disabled={addingToPipeline || addedToPipeline} style={{
+              background: addedToPipeline ? "#f0fdf4" : "linear-gradient(135deg, #16a34a, #15803d)",
+              border: addedToPipeline ? "1px solid #bbf7d0" : "none", borderRadius: 8,
+              padding: "10px 18px", color: addedToPipeline ? "#16a34a" : "#fff",
+              fontSize: 12, fontWeight: 700, cursor: addedToPipeline ? "default" : "pointer",
+              fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap",
+              display: "flex", alignItems: "center", gap: 6, flex: isMobile ? 1 : "none",
+              boxShadow: addedToPipeline ? "none" : "0 2px 8px rgba(22,163,74,0.3)",
+              transition: "all 0.2s", opacity: addingToPipeline ? 0.7 : 1,
+            }}>
+              {addingToPipeline ? (
+                <svg width={14} height={14} viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle cx={12} cy={12} r={10} fill="none" stroke="currentColor" strokeWidth={3} opacity={0.3} /><path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" /></svg>
+              ) : addedToPipeline ? (
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="20 6 9 17 4 12"/></svg>
+              ) : (
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              )}
+              {addingToPipeline ? "Adding..." : addedToPipeline ? "Added to Pipeline" : "Add to Pipeline"}
+            </button>
             <button onClick={startEditing} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 18px", color: "#475569", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, flex: isMobile ? 1 : "none" }}>
               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit
@@ -15660,7 +15714,7 @@ export default function ReapApp() {
                 </div>
               ) : selectedMLSListing ? (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                  <MLSListingDetailView listing={selectedMLSListing} onBack={handleMLSBack} isMobile={true} session={session} updateHash={updateHash} />
+                  <MLSListingDetailView listing={selectedMLSListing} onBack={handleMLSBack} isMobile={true} session={session} updateHash={updateHash} onAddToPipeline={fetchDeals} />
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -15693,7 +15747,7 @@ export default function ReapApp() {
               : activeNav === "realestate" && selectedDeal
               ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
               : activeNav === "realestate" && selectedMLSListing
-              ? <MLSListingDetailView listing={selectedMLSListing} onBack={handleMLSBack} isMobile={false} session={session} updateHash={updateHash} />
+              ? <MLSListingDetailView listing={selectedMLSListing} onBack={handleMLSBack} isMobile={false} session={session} updateHash={updateHash} onAddToPipeline={fetchDeals} />
               : activeNav === "realestate"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                   <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }, { id: "offerings", label: "Offerings" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
