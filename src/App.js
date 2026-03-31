@@ -7029,7 +7029,7 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
    COMMAND CENTER — Cross-platform cockpit
    ═══════════════════════════════════════════════════════════ */
 
-function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, teamEmails }) {
+function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, teamEmails, hasFullAccess }) {
   const [contactsCount, setContactsCount] = useState(0);
   const [hotContactsCount, setHotContactsCount] = useState(0);
   const [investorsData, setInvestorsData] = useState([]);
@@ -7053,13 +7053,13 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
       try {
         const { data: contacts } = await supabase.from("contacts").select("id, temperature, user_email");
         if (contacts) {
-          const mine = contacts.filter(c => emailsToShow.includes((c.user_email || "").toLowerCase()));
+          const mine = hasFullAccess ? contacts : contacts.filter(c => emailsToShow.includes((c.user_email || "").toLowerCase()));
           setContactsCount(mine.length);
           setHotContactsCount(mine.filter(c => (c.temperature || "").toLowerCase().includes("hot")).length);
         }
         const { data: investors } = await supabase.from("investors").select("id, investor_name, capital_committed, pipeline_stage, next_follow_up, user_email, date_last_contact");
         if (investors) {
-          const mine = investors.filter(inv => emailsToShow.includes((inv.user_email || "").toLowerCase()));
+          const mine = hasFullAccess ? investors : investors.filter(inv => emailsToShow.includes((inv.user_email || "").toLowerCase()));
           setInvestorsData(mine);
           setCapitalCommitted(mine.reduce((s, inv) => s + (parseFloat(inv.capital_committed) || 0), 0));
         }
@@ -7068,7 +7068,7 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
       } catch (err) { console.error("Command center data fetch:", err); }
     }
     if (session) fetchExtras();
-  }, [session]);
+  }, [session, hasFullAccess]);
 
   useEffect(() => {
     try { localStorage.setItem("reap_goals", JSON.stringify(goals)); } catch {}
@@ -11828,13 +11828,14 @@ function FileUploaderView({ session, isMobile, onProcessed }) {
 
       // Batch insert new listings
       let insertedCount = 0;
+      let insertErrors = [];
       if (toInsert.length > 0) {
         setProgress(p => ({ ...p, phase: `Inserting ${toInsert.length} new listings...`, current: 0 }));
         // Insert in batches of 50
         for (let i = 0; i < toInsert.length; i += 50) {
           const batch = toInsert.slice(i, i + 50);
           const { error } = await supabase.from("mls_listings").insert(batch);
-          if (error) console.error("Insert batch error:", error);
+          if (error) { console.error("Insert batch error:", error); insertErrors.push(error.message); }
           else insertedCount += batch.length;
           setProgress(p => ({ ...p, current: Math.min(i + 50, toInsert.length) }));
         }
@@ -11842,6 +11843,7 @@ function FileUploaderView({ session, isMobile, onProcessed }) {
 
       // Batch update existing listings
       let updatedCount = 0;
+      let updateErrors = [];
       if (toUpdate.length > 0) {
         setProgress(p => ({ ...p, phase: `Updating ${toUpdate.length} existing listings...`, current: 0, total: toUpdate.length }));
         for (let i = 0; i < toUpdate.length; i += 50) {
@@ -11850,9 +11852,16 @@ function FileUploaderView({ session, isMobile, onProcessed }) {
             const { id, ...updates } = row;
             const { error } = await supabase.from("mls_listings").update(updates).eq("id", id);
             if (!error) updatedCount++;
+            else if (updateErrors.length < 3) updateErrors.push(error.message);
           }
           setProgress(p => ({ ...p, current: Math.min(i + 50, toUpdate.length) }));
         }
+      }
+
+      // Show errors if insert/update failed
+      if (insertErrors.length > 0 || updateErrors.length > 0) {
+        const errMsg = [...insertErrors, ...updateErrors].slice(0, 3).join("; ");
+        console.error("Upload errors:", errMsg);
       }
 
       // Log to file_uploads
@@ -11862,7 +11871,8 @@ function FileUploaderView({ session, isMobile, onProcessed }) {
         new_count: insertedCount, updated_count: updatedCount, skipped_count: skipped,
       });
 
-      setResults({ inserted: insertedCount, updated: updatedCount, skipped, total: mapped.length });
+      const allErrors = [...insertErrors, ...updateErrors];
+      setResults({ inserted: insertedCount, updated: updatedCount, skipped, total: mapped.length, errors: allErrors.length > 0 ? allErrors.slice(0, 3) : null });
       setSelectedFile(null); setParsedRows(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       fetchUploads();
@@ -11970,6 +11980,12 @@ function FileUploaderView({ session, isMobile, onProcessed }) {
               {statBox("Updated", results.updated, "#3b82f6")}
               {statBox("Unchanged", results.skipped, "#94a3b8")}
             </div>
+            {results.errors && results.errors.length > 0 && (
+              <div style={{ marginTop: 12, padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: "#dc2626", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>Some rows could not be saved:</p>
+                <p style={{ fontSize: 11, color: "#991b1b", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>{results.errors[0]}</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -15145,7 +15161,7 @@ export default function ReapApp() {
     }
   };
 
-  useEffect(() => { if (session) fetchDeals(); }, [session]);
+  useEffect(() => { if (session) fetchDeals(); }, [session, hasFullAccess, teamEmails.length]);
 
   // Keep selectedDeal in sync when deals refresh (e.g. after edit)
   useEffect(() => {
@@ -15609,7 +15625,7 @@ export default function ReapApp() {
             showProfile ? (
               <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} onUpdateDataAccess={handleUpdateDataAccess} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
             ) : activeNav === "command" ? (
-              <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} />
+              <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                 <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
@@ -15629,7 +15645,7 @@ export default function ReapApp() {
                 <SubTabBar tabs={[{ id: "listings", label: "Marketplace" }, { id: "watchlist", label: "Watch List" }, { id: "intelligence", label: "Intelligence" }]} active={marketplaceTab} onChange={(tab) => { setMarketplaceTab(tab); updateHash("marketplace/" + tab); }} title="Marketplace" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {marketplaceTab === "intelligence"
-                    ? <MarketIntelligenceView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} />
+                    ? <MarketIntelligenceView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
                     : marketplaceTab === "watchlist"
                     ? <MarketplaceListingsView deals={deals} isMobile={true} session={session} userEmail={userEmail} updateHash={updateHash} watchlistOnly={true} />
                     : <MarketplaceListingsView deals={deals} isMobile={true} session={session} userEmail={userEmail} updateHash={updateHash} />
@@ -15673,7 +15689,7 @@ export default function ReapApp() {
             showProfile
               ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} onUpdateDataAccess={handleUpdateDataAccess} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
               : activeNav === "command"
-              ? <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} teamEmails={teamEmails} />
+              ? <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
               : activeNav === "realestate" && selectedDeal
               ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
               : activeNav === "realestate" && selectedMLSListing
@@ -15715,7 +15731,7 @@ export default function ReapApp() {
                   <SubTabBar tabs={[{ id: "listings", label: "Marketplace" }, { id: "watchlist", label: "Watch List" }, { id: "intelligence", label: "Intelligence" }]} active={marketplaceTab} onChange={(tab) => { setMarketplaceTab(tab); updateHash("marketplace/" + tab); }} title="Marketplace" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {marketplaceTab === "intelligence"
-                      ? <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} />
+                      ? <MarketIntelligenceView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
                       : marketplaceTab === "watchlist"
                       ? <MarketplaceListingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} watchlistOnly={true} />
                       : <MarketplaceListingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} />
