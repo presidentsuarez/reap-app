@@ -14920,7 +14920,17 @@ export default function ReapApp() {
   // Check subscription + trial status
   useEffect(() => {
     if (session?.user) {
-      const email = session.user.email;
+      const email = session.user.email.toLowerCase();
+
+      // Platform admin never sees paywall
+      if (email === PLATFORM_ADMIN_EMAIL.toLowerCase()) {
+        setIsSubscribed(true);
+        setShowPaywall(false);
+        const onboarded = localStorage.getItem("reap_onboarded");
+        if (!onboarded) setShowOnboarding(true);
+        return;
+      }
+
       supabase.from("subscriptions").select("status").eq("user_email", email).eq("status", "active").single().then(({ data }) => {
         const subscribed = !!data;
         setIsSubscribed(subscribed);
@@ -14930,9 +14940,17 @@ export default function ReapApp() {
         const daysLeft = Math.max(0, TRIAL_DAYS - daysSinceSignup);
         setTrialDaysLeft(daysLeft);
         if (daysLeft <= 0 && !subscribed) {
-          supabase.from("org_members").select("id").eq("user_email", email.toLowerCase()).eq("status", "active").then(({ data: memberRows }) => {
-            if (memberRows && memberRows.length > 0) { setShowPaywall(false); }
-            else { setShowPaywall(true); }
+          // Check if user is an org owner OR active org member (either bypasses paywall)
+          Promise.all([
+            supabase.from("org_members").select("id, org_id").eq("user_email", email).eq("status", "active"),
+            supabase.from("organizations").select("id").eq("owner_email", email)
+          ]).then(([{ data: memberRows }, { data: ownedOrgs }]) => {
+            if ((memberRows && memberRows.length > 0) || (ownedOrgs && ownedOrgs.length > 0)) {
+              setShowPaywall(false);
+              setIsSubscribed(true); // Treat org members/owners as subscribed
+            } else {
+              setShowPaywall(true);
+            }
           });
         } else {
           setShowPaywall(false);
