@@ -15,7 +15,7 @@
 ## Supabase
 - **Project Ref:** cpgwnrpaflaftlxrzlar
 - **URL:** https://cpgwnrpaflaftlxrzlar.supabase.co
-- **Anon Key:** `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwZ3ducnBhZmxhZnRseHJ6bGFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY5NjE3NTUsImV4cCI6MjA1MjUzNzc1NX0.kVOEjKIKAzmqSbGYGi6FBzo3iSlbf0FYmMGBfwMFhC8`
+- **Anon Key:** `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwZ3ducnBhZmxhZnRseHJ6bGFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3NTY3MzIsImV4cCI6MjA4ODMzMjczMn0.VHU2LCWEIwsLMc7JOeNCLOfIgrzM1b9brfesk9NFFP0`
 - **Access Token (Management API):** `sbp_8332909c8627956a7bbef27fa22fea35e02850d9`
 
 ## API Keys
