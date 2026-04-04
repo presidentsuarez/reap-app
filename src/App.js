@@ -545,6 +545,9 @@ function EditDealModal({ isOpen, onClose, onSave, saving, isMobile, deal }) {
         acqCostToClose: deal.acqCostToClose || "",
         dispCostOfSale: deal.dispCostOfSale || "",
         status: deal.status || "New",
+        manager: deal.manager || "",
+        assignee: deal.assignee || "",
+        organization: deal.organization || "",
       });
     }
   }, [deal, isOpen]);
@@ -618,6 +621,13 @@ function EditDealModal({ isOpen, onClose, onSave, saving, isMobile, deal }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {field("Deal Status", "status", null, null, ["New", "Review", "Underwriting", "Offer", "Under Contract", "Closed", "Dead", "On Hold"])}
             {field("Property Type", "type", null, null, ["Multifamily", "Single Family", "Mixed Use", "Office", "Retail", "Commercial", "Industrial", "Land"])}
+          </div>
+
+          <p style={sectionStyle}>Team & Assignment <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            {field("Manager", "manager", null, "Team lead name")}
+            {field("Assignee", "assignee", null, "Assigned to...")}
+            {field("Organization", "organization", null, "Company / Org")}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
             {field("Sq Ft", "sqft", "number")}
@@ -1466,6 +1476,16 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   useEffect(() => {
     if (onFilterChange) onFilterChange({ statusFilter, sortCol, sortDir, search });
   }, [statusFilter, sortCol, sortDir, search]);
+  const [editingAssigneeId, setEditingAssigneeId] = useState(null);
+  const [assigneeInput, setAssigneeInput] = useState("");
+  const handleAssigneeSave = async (deal, newAssignee) => {
+    try {
+      await supabase.from("deals").update({ assignee: newAssignee }).eq("id", deal._id);
+      // Update local deal in parent via re-fetch (deal list is from parent)
+      if (onRetry) onRetry();
+    } catch (e) { console.error("Assignee update failed:", e); }
+    setEditingAssigneeId(null);
+  };
   const [mapReady, setMapReady] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
   const [geocodingProgress, setGeocodingProgress] = useState("");
@@ -1687,6 +1707,9 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
     "Units":     { key: d => parseFloat(String(d.units || "0").replace(/[,]/g, "")) || 0, type: "number" },
     "$/Unit":    { key: d => { const a = parseFloat(String(d.askingPrice || "0").replace(/[$,]/g, "")) || 0; const u = parseFloat(String(d.units || "0").replace(/[,]/g, "")) || 0; return a > 0 && u > 0 ? a / u : 0; }, type: "number" },
     "Source":    { key: d => (d.source || "Manual").toLowerCase(), type: "string" },
+    "Manager":   { key: d => (d.manager || "").toLowerCase(), type: "string" },
+    "Assignee":  { key: d => (d.assignee || "").toLowerCase(), type: "string" },
+    "Organization": { key: d => (d.organization || "").toLowerCase(), type: "string" },
   };
 
   const handleSort = (col) => {
@@ -1842,7 +1865,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                   <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
-                  {["User", "Date", "Status", "Address", "City", "Type", "Asking Price", "Our Offer", "$/sqft", "Sq Ft", "Units", "$/Unit", "Source"].map(h => (
+                  {["User", "Manager", "Assignee", "Organization", "Date", "Status", "Address", "City", "Type", "Asking Price", "Our Offer", "$/sqft", "Sq Ft", "Units", "$/Unit", "Source"].map(h => (
                     <th key={h} onClick={() => handleSort(h)} style={{
                       padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
                       fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
@@ -1862,7 +1885,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={14} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
+                  <tr><td colSpan={17} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
                 ) : filtered.map((deal, i) => (
                   <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
                     <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
@@ -1876,6 +1899,22 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                       </div>
                     </td>
                     <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", background: "#f1f5f9", padding: "3px 8px", borderRadius: 6, fontWeight: 500 }}>{fmtUserName(deal.user)}</span></td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.manager || "—"}</td>
+                    <td style={{ padding: "13px 10px" }} onClick={e => e.stopPropagation()}>
+                      {editingAssigneeId === deal._id ? (
+                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                          <input autoFocus value={assigneeInput} onChange={e => setAssigneeInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleAssigneeSave(deal, assigneeInput); if (e.key === "Escape") setEditingAssigneeId(null); }} style={{ width: 100, padding: "4px 8px", fontSize: 12, border: "1px solid #16a34a", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif" }} />
+                          <button onClick={() => handleAssigneeSave(deal, assigneeInput)} style={{ padding: "3px 8px", fontSize: 10, fontWeight: 700, background: "#16a34a", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer" }}>Save</button>
+                          <button onClick={() => setEditingAssigneeId(null)} style={{ padding: "3px 8px", fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 5, cursor: "pointer" }}>X</button>
+                        </div>
+                      ) : (
+                        <span onClick={e => { e.stopPropagation(); setEditingAssigneeId(deal._id); setAssigneeInput(deal.assignee || ""); }} style={{ fontSize: 12, color: deal.assignee ? "#0f172a" : "#cbd5e1", fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "3px 8px", borderRadius: 6, border: "1px dashed " + (deal.assignee ? "#16a34a55" : "#e2e8f0"), background: deal.assignee ? "#f0fdf4" : "transparent", fontWeight: deal.assignee ? 600 : 400, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          {deal.assignee || "Assign"}
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.organization || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtDate(deal.date)}</td>
                     <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
                     <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
@@ -3653,6 +3692,13 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
               {deal.dealName && deal.dealName !== deal.address && (
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
                   <MetricCard label="Deal Name" value={deal.dealName} />
+                </div>
+              )}
+              {(deal.manager || deal.assignee || deal.organization) && (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
+                  <MetricCard label="Manager" value={deal.manager || "—"} />
+                  <MetricCard label="Assignee" value={deal.assignee || "—"} />
+                  <MetricCard label="Organization" value={deal.organization || "—"} />
                 </div>
               )}
             </section>
@@ -10116,7 +10162,49 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
         realtorRemarks: r.realtor_remarks || "",
         zip: r.zip || "",
         sqftTotal: v(r.sqft_total),
-      })).filter(l => l.address || l.mlsNumber);
+        preScore: r.pre_score != null ? Number(r.pre_score) : null,
+      })).map(l => {
+        // Compute $/Unit
+        const priceNum = parseFloat(String(l.price).replace(/[$,]/g, ""));
+        const unitsNum = parseInt(l.units);
+        const ppUnit = (!isNaN(priceNum) && !isNaN(unitsNum) && unitsNum > 0) ? "$" + Math.round(priceNum / unitsNum).toLocaleString() : "";
+        // Compute Pre-Score if not already set
+        let preScore = l.preScore;
+        if (preScore == null) {
+          let score = 50; // base score
+          // Price favorability (lower price = higher score for investment)
+          if (!isNaN(priceNum)) {
+            if (priceNum <= 200000) score += 15;
+            else if (priceNum <= 500000) score += 10;
+            else if (priceNum <= 1000000) score += 5;
+            else score -= 5;
+          }
+          // Multi-unit bonus
+          if (!isNaN(unitsNum) && unitsNum > 1) {
+            score += Math.min(unitsNum * 3, 15);
+          }
+          // Price per sqft efficiency
+          const ppsf = parseFloat(String(l.ppsf).replace(/[$,]/g, ""));
+          if (!isNaN(ppsf)) {
+            if (ppsf <= 100) score += 10;
+            else if (ppsf <= 150) score += 5;
+            else if (ppsf >= 300) score -= 5;
+          }
+          // Price per unit efficiency
+          if (!isNaN(priceNum) && !isNaN(unitsNum) && unitsNum > 0) {
+            const ppu = priceNum / unitsNum;
+            if (ppu <= 100000) score += 10;
+            else if (ppu <= 150000) score += 5;
+          }
+          // Property type bonus (multifamily preferred)
+          const pt = (l.propType || "").toLowerCase();
+          if (pt.includes("multi") || pt.includes("duplex") || pt.includes("triplex") || pt.includes("quadruplex") || pt.includes("apartment")) score += 10;
+          else if (pt.includes("single") || pt.includes("residential")) score += 2;
+          // Clamp 0-100
+          preScore = Math.max(0, Math.min(100, score));
+        }
+        return { ...l, ppUnit, preScore };
+      }).filter(l => l.address || l.mlsNumber);
       setListings(parsed);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, []);
@@ -10624,7 +10712,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
               <div style={{ padding: "10px 16px", background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", borderBottom: "1px solid #bbf7d0", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", flexShrink: 0 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Sans', sans-serif" }}>{selectedListings.size} selected</span>
                 <span style={{ color: "#d1d5db" }}>|</span>
-                {["New", "Watching", "Reviewing", "Added to Pipeline", "Declined"].map(s => {
+                {["New", "Watching", "Reviewing", "Declined"].map(s => {
                   const cfg = MLS_REVIEW_STATUS[s] || MLS_REVIEW_STATUS["New"];
                   return (<button key={s} onClick={() => handleBulkStatusChange(s)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 6, border: `1px solid ${cfg.color}33`, background: cfg.bg, color: cfg.color, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
                     <svg width={7} height={7} viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="6"/></svg>
@@ -10635,7 +10723,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
               </div>
             )}
           <div style={{ overflow: "auto", flex: 1 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif", minWidth: 1000 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif", minWidth: 1400 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #f1f5f9" }}>
                   <th style={{ ...thStyle, width: 36, cursor: "default", padding: "10px 4px 10px 10px" }}><input type="checkbox" checked={selectedListings.size === sorted.length && sorted.length > 0} onChange={toggleSelectAll} style={{ cursor: "pointer", accentColor: "#16a34a" }} /></th>
@@ -10650,8 +10738,11 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                   <th onClick={() => handleSort("heatedArea")} style={{...thStyle, textAlign: "right"}}>SqFt<SortArrow col="heatedArea"/></th>
                   <th onClick={() => handleSort("units")} style={{...thStyle, textAlign: "center"}}>Units<SortArrow col="units"/></th>
                   <th onClick={() => handleSort("ppsf")} style={{...thStyle, textAlign: "right"}}>$/SF<SortArrow col="ppsf"/></th>
+                  <th onClick={() => handleSort("ppUnit")} style={{...thStyle, textAlign: "right"}}>$/Unit<SortArrow col="ppUnit"/></th>
                   <th onClick={() => handleSort("yearBuilt")} style={{...thStyle, textAlign: "center"}}>Built<SortArrow col="yearBuilt"/></th>
-                  <th onClick={() => handleSort("cdom")} style={{...thStyle, textAlign: "center"}}>DOM<SortArrow col="cdom"/></th>
+                  <th onClick={() => handleSort("style")} style={thStyle}>Style<SortArrow col="style"/></th>
+                  <th onClick={() => handleSort("agent")} style={thStyle}>Listing Agent<SortArrow col="agent"/></th>
+                  <th onClick={() => handleSort("preScore")} style={{...thStyle, textAlign: "center"}}>Pre-Score<SortArrow col="preScore"/></th>
                 </tr>
               </thead>
               <tbody>
@@ -10676,7 +10767,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                       </div>
                       {statusDropdownId === listing._id && (
                         <div style={{ position: "absolute", top: "100%", left: 10, zIndex: 50, background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: "6px 0", minWidth: 160 }} onClick={e => e.stopPropagation()}>
-                          {["New", "Watching", "Reviewing", "Added to Pipeline", "Declined"].map(s => {
+                          {["New", "Watching", "Reviewing", "Declined"].map(s => {
                             const cfg = MLS_REVIEW_STATUS[s] || MLS_REVIEW_STATUS["New"];
                             return (<button key={s} onClick={e => { e.stopPropagation(); handleInlineStatusChange(listing, s); }} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 14px", background: rs === s ? cfg.bg : "transparent", border: "none", cursor: "pointer", fontSize: 11, fontWeight: rs === s ? 700 : 500, color: rs === s ? cfg.color : "#475569", fontFamily: "'DM Sans', sans-serif", textAlign: "left" }} onMouseEnter={e => { if (rs !== s) e.currentTarget.style.background = "#f8fafc"; }} onMouseLeave={e => { if (rs !== s) e.currentTarget.style.background = "transparent"; }}>
                               <svg width={8} height={8} viewBox="0 0 24 24" fill={cfg.color} stroke="none"><circle cx="12" cy="12" r="6"/></svg>
@@ -10696,11 +10787,14 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "right", fontFamily: "'DM Mono', monospace" }}>{listing.heatedArea ? fmtNum(listing.heatedArea) : "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.units || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "right", fontFamily: "'DM Mono', monospace" }}>{listing.ppsf || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "right", fontFamily: "'DM Mono', monospace" }}>{listing.ppUnit || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.yearBuilt || "—"}</td>
-                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.cdom || listing.adom || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{listing.style || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{listing.agent || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 700, textAlign: "center", fontFamily: "'DM Mono', monospace", color: (listing.preScore || 0) >= 70 ? "#16a34a" : (listing.preScore || 0) >= 40 ? "#d97706" : "#dc2626" }}>{listing.preScore || "—"}</td>
                   </tr>);
                 })}
-                {sorted.length === 0 && <tr><td colSpan={15} style={{ padding: "40px 14px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match</td></tr>}
+                {sorted.length === 0 && <tr><td colSpan={17} style={{ padding: "40px 14px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match</td></tr>}
               </tbody>
             </table>
           </div>
@@ -15777,6 +15871,9 @@ export default function ReapApp() {
         longitude: r.longitude || null,
         marketplace_published: !!r.marketplace_published,
         marketplace_price: r.marketplace_price || null,
+        manager: r.manager || "",
+        assignee: r.assignee || "",
+        organization: r.organization || "",
       })).filter(d => d.address);
 
       const userDeals = hasFullAccess ? parsed : parsed.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
@@ -15964,6 +16061,9 @@ export default function ReapApp() {
           refi_interest_rate: parseFloat(clean(form.refiInterestRate)) || null,
           refi_points_pct: parseFloat(clean(form.refiPoints)) || null,
           refi_term_years: parseInt(clean(form.refiTerm)) || null,
+          manager: form.manager || "",
+          assignee: form.assignee || "",
+          organization: form.organization || "",
         };
         const { error: updateErr } = await supabase.from("deals").update(dbUpdates).eq("id", selectedDeal._id);
         if (updateErr) throw new Error(updateErr.message);
