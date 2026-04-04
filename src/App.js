@@ -7879,6 +7879,104 @@ function ContactsDashboardView({ session, isMobile, teamEmails: teamEmailsProp, 
   );
 }
 
+// ── Contact Scoring Algorithms ──
+function computeContactScores(contact) {
+  const has = (v) => v && v.trim && v.trim().length > 0;
+  const daysSince = (d) => { if (!d) return 999; const diff = (Date.now() - new Date(d).getTime()) / 86400000; return isNaN(diff) ? 999 : diff; };
+  const types = (contact.contactType || "").toLowerCase();
+
+  // ── CONTACT SCORE (universal, profile completeness + engagement) ──
+  let cs = 0;
+  if (has(contact.name)) cs += 10;
+  if (has(contact.email)) cs += 10;
+  if (has(contact.phone)) cs += 10;
+  if (has(contact.company)) cs += 5;
+  if (has(contact.notes)) cs += 15;
+  if (has(contact.followUpNotes)) cs += 8;
+  if (has(contact.leadSource)) cs += 5;
+  if (has(contact.assetPreference)) cs += 5;
+  if (has(contact.temperature)) cs += 5;
+  if (has(contact.manager)) cs += 5;
+  if (contact.linkedDealAddresses && contact.linkedDealAddresses.length > 0) cs += 7;
+  if (daysSince(contact.lastContact) <= 30) cs += 10;
+  else if (daysSince(contact.lastContact) <= 90) cs += 5;
+  if (has(contact.buyerStatus) && contact.buyerStatus !== "New") cs += 5;
+  cs = Math.min(100, cs);
+
+  // ── BUYER SCORE ──
+  let bs = 0;
+  if (has(contact.assetPreference)) bs += 15;
+  const temp = (contact.temperature || "").toLowerCase();
+  if (temp === "hot") bs += 20; else if (temp === "warm") bs += 12; else if (temp === "cold") bs += 3;
+  const st = (contact.buyerStatus || "").toLowerCase();
+  if (st === "active" || st === "confirmed buyer") bs += 20;
+  else if (st === "contacted" || st === "info gathering") bs += 10;
+  else if (st === "new") bs += 3;
+  if (contact.linkedDealAddresses && contact.linkedDealAddresses.length > 0) bs += 15;
+  if (has(contact.notes)) bs += 10;
+  if (daysSince(contact.lastContact) <= 30) bs += 10;
+  else if (daysSince(contact.lastContact) <= 60) bs += 5;
+  if (has(contact.company)) bs += 5;
+  if (has(contact.phone) && has(contact.email)) bs += 5;
+  bs = Math.min(100, bs);
+
+  // ── LENDER SCORE ──
+  let ls = 0;
+  const notesLower = (contact.notes || "").toLowerCase();
+  if (has(contact.notes)) ls += 15;
+  if (notesLower.includes("hard money") || notesLower.includes("private lend") || notesLower.includes("dscr") || notesLower.includes("bridge") || notesLower.includes("sba") || notesLower.includes("bank") || notesLower.includes("credit union")) ls += 15;
+  if (notesLower.includes("rate") || notesLower.includes("%") || notesLower.includes("ltv") || notesLower.includes("loan")) ls += 10;
+  if (temp === "hot") ls += 20; else if (temp === "warm") ls += 12; else if (temp === "cold") ls += 3;
+  if (st === "active" || st === "confirmed buyer") ls += 15;
+  else if (st === "contacted" || st === "info gathering") ls += 8;
+  if (daysSince(contact.lastContact) <= 30) ls += 10;
+  else if (daysSince(contact.lastContact) <= 60) ls += 5;
+  if (has(contact.company)) ls += 8;
+  if (has(contact.phone) && has(contact.email)) ls += 7;
+  ls = Math.min(100, ls);
+
+  // ── WHOLESALER SCORE ──
+  let ws = 0;
+  if (has(contact.notes)) ws += 15;
+  if (notesLower.includes("deal") || notesLower.includes("assign") || notesLower.includes("contract") || notesLower.includes("wholesale")) ws += 10;
+  if (temp === "hot") ws += 20; else if (temp === "warm") ws += 12; else if (temp === "cold") ws += 3;
+  if (st === "active" || st === "confirmed buyer") ws += 15;
+  else if (st === "contacted" || st === "info gathering") ws += 8;
+  if (contact.linkedDealAddresses && contact.linkedDealAddresses.length > 0) ws += 15;
+  if (daysSince(contact.lastContact) <= 30) ws += 10;
+  else if (daysSince(contact.lastContact) <= 60) ws += 5;
+  if (has(contact.company)) ws += 8;
+  if (has(contact.phone) && has(contact.email)) ws += 7;
+  ws = Math.min(100, ws);
+
+  // ── INVESTOR SCORE ──
+  let is_ = 0;
+  if (has(contact.notes)) is_ += 15;
+  if (notesLower.includes("capital") || notesLower.includes("invest") || notesLower.includes("equity") || notesLower.includes("fund") || notesLower.includes("return") || notesLower.includes("portfolio")) is_ += 10;
+  if (temp === "hot") is_ += 20; else if (temp === "warm") is_ += 12; else if (temp === "cold") is_ += 3;
+  if (st === "active" || st === "confirmed buyer") is_ += 15;
+  else if (st === "contacted" || st === "info gathering") is_ += 8;
+  if (contact.linkedDealAddresses && contact.linkedDealAddresses.length > 0) is_ += 15;
+  if (daysSince(contact.lastContact) <= 30) is_ += 10;
+  else if (daysSince(contact.lastContact) <= 60) is_ += 5;
+  if (has(contact.company)) is_ += 8;
+  if (has(contact.phone) && has(contact.email)) is_ += 7;
+  is_ = Math.min(100, is_);
+
+  return { contactScore: cs, buyerScore: bs, lenderScore: ls, wholesalerScore: ws, investorScore: is_ };
+}
+
+function ScoreBadge({ score, label }) {
+  if (score == null) return <span style={{ fontSize: 11, color: "#cbd5e1" }}>—</span>;
+  const color = score >= 70 ? "#16a34a" : score >= 40 ? "#d97706" : "#dc2626";
+  const bg = score >= 70 ? "#f0fdf4" : score >= 40 ? "#fffbeb" : "#fef2f2";
+  return (
+    <span title={label ? label + ": " + score : score + ""} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: bg, color: color, fontSize: 11, fontWeight: 700, fontFamily: "'DM Mono', monospace", border: "1px solid " + color + "22" }}>
+      {score}
+    </span>
+  );
+}
+
 function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp, deals, updateHash, refreshKey, orgData, orgMembers, contactTypeFilter, hasFullAccess }) {
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -7942,7 +8040,20 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
         user: r.user_email || "",
         linkedDealAddresses: r.linked_deal_addresses ? r.linked_deal_addresses.split("|||").filter(Boolean) : [],
         portalEmail: r.portal_email || "",
-      })).filter(c => c.name && c.name.trim() !== "");
+        dbContactScore: r.contact_score, dbBuyerScore: r.buyer_score,
+        dbLenderScore: r.lender_score, dbWholesalerScore: r.wholesaler_score,
+        dbInvestorScore: r.investor_score,
+      })).map(c => {
+        const computed = computeContactScores(c);
+        return {
+          ...c,
+          contactScore: c.dbContactScore != null ? c.dbContactScore : computed.contactScore,
+          buyerScore: c.dbBuyerScore != null ? c.dbBuyerScore : computed.buyerScore,
+          lenderScore: c.dbLenderScore != null ? c.dbLenderScore : computed.lenderScore,
+          wholesalerScore: c.dbWholesalerScore != null ? c.dbWholesalerScore : computed.wholesalerScore,
+          investorScore: c.dbInvestorScore != null ? c.dbInvestorScore : computed.investorScore,
+        };
+      }).filter(c => c.name && c.name.trim() !== "");
       const teamList = teamEmailsProp && teamEmailsProp.length > 0 ? teamEmailsProp.map(e => e.toLowerCase()) : [];
       let filtered = hasFullAccess ? parsed : (teamList.length > 0
         ? parsed.filter(c => { const contactUser = (c.user || "").toLowerCase().trim(); return contactUser && teamList.includes(contactUser); })
@@ -8323,7 +8434,7 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
                 <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif" }}>
                   <thead><tr style={{ borderBottom: "1px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 10px", width: 36 }}><input type="checkbox" checked={selectedContacts.size === statusFiltered.length && statusFiltered.length > 0} onChange={toggleSelectAllContacts} style={{ cursor: "pointer", accentColor: "#16a34a" }} /></th>
-                    {["Name", "Company", "Type", "Status", "Temp", "Asset Pref", "Phone", "Email", "Manager"].map(h => (<th key={h} style={{ textAlign: "left", padding: "12px 14px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>))}
+                    {["Name", "Company", "Type", "Status", "Temp", "Asset Pref", "Phone", "Email", "Manager", "Contact Score", ...(contactTypeFilter === "buyer" ? ["Buyer Score"] : contactTypeFilter === "lender" ? ["Lender Score"] : contactTypeFilter === "wholesaler" ? ["Wholesaler Score"] : contactTypeFilter === "investor" ? ["Investor Score"] : [])].map(h => (<th key={h} style={{ textAlign: h.includes("Score") ? "center" : "left", padding: "12px 14px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>))}
                   </tr></thead>
                   <tbody>
                     {statusFiltered.map((b, i) => (
@@ -8344,6 +8455,11 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
                         <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{b.phone || "—"}</td>
                         <td style={{ padding: "12px 14px", fontSize: 12, color: "#94a3b8" }}>{b.email || "—"}</td>
                         <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.manager || "—"}</td>
+                        <td style={{ padding: "12px 14px", textAlign: "center" }}><ScoreBadge score={b.contactScore} label="Contact Score" /></td>
+                        {contactTypeFilter === "buyer" && <td style={{ padding: "12px 14px", textAlign: "center" }}><ScoreBadge score={b.buyerScore} label="Buyer Score" /></td>}
+                        {contactTypeFilter === "lender" && <td style={{ padding: "12px 14px", textAlign: "center" }}><ScoreBadge score={b.lenderScore} label="Lender Score" /></td>}
+                        {contactTypeFilter === "wholesaler" && <td style={{ padding: "12px 14px", textAlign: "center" }}><ScoreBadge score={b.wholesalerScore} label="Wholesaler Score" /></td>}
+                        {contactTypeFilter === "investor" && <td style={{ padding: "12px 14px", textAlign: "center" }}><ScoreBadge score={b.investorScore} label="Investor Score" /></td>}
                       </tr>
                     ))}
                   </tbody>
