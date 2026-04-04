@@ -4301,7 +4301,6 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                     </div>
                     <button onClick={() => {
                       if (updateHash) updateHash("mls/" + encodeURIComponent(mlsNum));
-                      window.location.hash = "mls/" + encodeURIComponent(mlsNum);
                     }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid #16a34a33", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, color: "#16a34a", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
                       <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                       View in MLS Feed
@@ -10548,7 +10547,8 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
   const [editSaving, setEditSaving] = useState(false);
   const [editFields, setEditFields] = useState({});
   const [addingToPipeline, setAddingToPipeline] = useState(false);
-  const [addedToPipeline, setAddedToPipeline] = useState(false);
+  const [addedToPipeline, setAddedToPipeline] = useState(listing.reviewStatus === "Added to Pipeline");
+  const [linkedDealAddress, setLinkedDealAddress] = useState(null);
   // Quick Underwrite state
   const [uwOfferPrice, setUwOfferPrice] = useState("");
   const [uwCapRate, setUwCapRate] = useState("7");
@@ -10571,6 +10571,25 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
   const [pfLoanTerm, setPfLoanTerm] = useState("30");
 
   const tabs = ["overview", "quick underwrite", "pro forma"];
+
+  // Look up linked pipeline deal for this MLS listing
+  useEffect(() => {
+    if (!listing.mlsNumber && !listing.address) return;
+    (async () => {
+      try {
+        // Try matching by metadata mls_number first
+        if (listing.mlsNumber) {
+          const { data } = await supabase.from("deals").select("property_address").eq("source", "MLS Feed").contains("metadata", { mls_number: listing.mlsNumber }).limit(1).maybeSingle();
+          if (data) { setLinkedDealAddress(data.property_address); setAddedToPipeline(true); return; }
+        }
+        // Fallback: match by address
+        if (listing.address) {
+          const { data } = await supabase.from("deals").select("property_address").eq("source", "MLS Feed").ilike("property_address", listing.address).limit(1).maybeSingle();
+          if (data) { setLinkedDealAddress(data.property_address); setAddedToPipeline(true); }
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  }, [listing.mlsNumber, listing.address]);
 
   // Load notes from DB
   useEffect(() => {
@@ -10671,12 +10690,14 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
         year_built: listing.yearBuilt || null,
         deal_status: "New",
         source: "MLS Feed",
+        metadata: listing.mlsNumber ? { mls_number: listing.mlsNumber } : {},
       });
       if (insertErr) throw new Error(insertErr.message);
       // Mark review status as Added to Pipeline
       await supabase.from("mls_listings").update({ review_status: "Added to Pipeline" }).eq("id", listing._id);
       setReviewStatus("Added to Pipeline");
       setAddedToPipeline(true);
+      setLinkedDealAddress(listing.address);
       if (onAddToPipeline) onAddToPipeline();
     } catch (err) {
       alert("Error adding to pipeline: " + err.message);
@@ -10734,6 +10755,14 @@ function MLSListingDetailView({ listing, onBack, isMobile, session, onRefresh, u
               )}
               {addingToPipeline ? "Adding..." : addedToPipeline ? "Added to Pipeline" : "Add to Pipeline"}
             </button>
+            {addedToPipeline && linkedDealAddress && (
+              <button onClick={() => {
+                if (updateHash) updateHash("deal/" + encodeURIComponent(linkedDealAddress));
+              }} style={{ background: "#fff", border: "1px solid #16a34a33", borderRadius: 8, padding: "10px 18px", color: "#16a34a", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, flex: isMobile ? 1 : "none", transition: "all 0.2s" }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                View in Pipeline
+              </button>
+            )}
             <button onClick={startEditing} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 18px", color: "#475569", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, flex: isMobile ? 1 : "none" }}>
               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               Edit
@@ -14852,6 +14881,7 @@ export default function ReapApp() {
         if (deal) {
           setActiveNav("realestate"); setRealEstateTab("pipeline");
           setShowProfile(false);
+          setSelectedMLSListing(null); // clear MLS detail if navigating from MLS feed
           setSelectedDeal(deal);
           if (tab) setPendingDealTab(tab);
           if (isMobile) setDealTransition(true);
@@ -14860,8 +14890,10 @@ export default function ReapApp() {
         const slug = decodeURIComponent(hash.replace("mls/", ""));
         setActiveNav("realestate"); setRealEstateTab("mls"); setMlsTab("feed");
         setShowProfile(false);
-        setPendingMLSSlug(slug);
+        setSelectedDeal(null); // clear deal detail if navigating from pipeline
         setSelectedMLSListing(null); // will resolve from pendingMLSSlug
+        setPendingMLSSlug(slug);
+        if (isMobile) setDealTransition(false);
       } else if (hash.startsWith("portfolio/")) {
         setActiveNav("realestate"); setRealEstateTab("portfolios");
         setShowProfile(false);
