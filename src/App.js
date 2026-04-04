@@ -7568,6 +7568,7 @@ const BUYER_STATUS_CONFIG = {
 };
 const BUYER_STATUS_LIST = ["New", "Contacted", "Info Gathering", "Confirmed Buyer", "Active", "Closed"];
 const BUYER_PROPERTY_TYPES = ["Single Family", "Multifamily", "Commercial", "Office", "Industrial", "Mixed Use", "Land", "Retail"];
+const LENDER_TYPES = ["Hard Money", "Private Lender", "Bank/Credit Union", "DSCR Lender", "Bridge Lender", "SBA Lender"];
 const BUYER_MARKETS = ["Tampa", "Orlando", "Miami", "Jacksonville", "St. Petersburg", "Fort Lauderdale", "Clearwater", "Sarasota"];
 
 function BuyerStatusBadge({ status }) {
@@ -7713,9 +7714,20 @@ function ContactsDashboardView({ session, isMobile, teamEmails: teamEmailsProp, 
     return (Date.now() - d.getTime()) < 30 * 24 * 60 * 60 * 1000;
   }).length;
 
-  // By type
+  // By type — normalize comma-separated types into main categories
+  const MAIN_CONTACT_TYPES = ["Buyer", "Investor", "Lender", "Wholesaler"];
   const typeCounts = {};
-  contacts.forEach(c => { const t = c.contactType || "Untagged"; typeCounts[t] = (typeCounts[t] || 0) + 1; });
+  contacts.forEach(c => {
+    const raw = c.contactType || "";
+    const parts = raw.split(",").map(s => s.trim()).filter(Boolean);
+    if (parts.length === 0) { typeCounts["Untagged"] = (typeCounts["Untagged"] || 0) + 1; return; }
+    let matched = false;
+    parts.forEach(p => {
+      const found = MAIN_CONTACT_TYPES.find(mt => p.toLowerCase().includes(mt.toLowerCase()));
+      if (found) { typeCounts[found] = (typeCounts[found] || 0) + 1; matched = true; }
+      else { typeCounts[p] = (typeCounts[p] || 0) + 1; matched = true; }
+    });
+  });
   const types = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
 
   // By status
@@ -7754,7 +7766,7 @@ function ContactsDashboardView({ session, isMobile, teamEmails: teamEmailsProp, 
   );
 
   const TEMP_COLORS = { "Hot": "#dc2626", "Warm": "#d97706", "Cold": "#3b82f6", "Unrated": "#94a3b8" };
-  const TYPE_COLORS = { "buyer": "#16a34a", "seller": "#7c3aed", "investor": "#2563eb", "lender": "#d97706", "vendor": "#0891b2", "broker": "#ec4899", "Untagged": "#94a3b8" };
+  const TYPE_COLORS = { "buyer": "#16a34a", "seller": "#7c3aed", "investor": "#2563eb", "lender": "#d97706", "wholesaler": "#0891b2", "vendor": "#64748b", "broker": "#ec4899", "attorney": "#6366f1", "property manager": "#14b8a6", "other": "#94a3b8", "Untagged": "#94a3b8" };
 
   const breakdownSection = (title, items, colorMap) => (
     <div style={cardStyle}>
@@ -7836,6 +7848,16 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
   const [allFunds, setAllFunds] = useState([]);
   const [contactComms, setContactComms] = useState([]);
   const [contactActivities, setContactActivities] = useState([]);
+  const [viewTab, setViewTab] = useState("table");
+  const [selectedContacts, setSelectedContacts] = useState(new Set());
+  const [subtypeFilter, setSubtypeFilter] = useState("");
+  const [investorPipelineStats, setInvestorPipelineStats] = useState({ total: 0, pipeline: 0, committed: 0, funded: 0 });
+
+  const WHOLESALER_TYPES = ["Assignment", "Double Close", "Novation", "Subject To", "Lease Option", "Land"];
+  const INVESTOR_TYPES = ["Fix & Flip", "Buy & Hold", "BRRRR", "Syndication", "Fund Manager", "JV Partner", "Passive Investor", "1031 Exchange"];
+  const sectionLabel = contactTypeFilter === "lender" ? "Lenders" : contactTypeFilter === "buyer" ? "Buyers" : contactTypeFilter === "wholesaler" ? "Wholesalers" : contactTypeFilter === "investor" ? "Investors" : "Contacts";
+  const sectionLabelLower = contactTypeFilter === "lender" ? "lenders" : contactTypeFilter === "buyer" ? "buyers" : contactTypeFilter === "wholesaler" ? "wholesalers" : contactTypeFilter === "investor" ? "investors" : "contacts";
+  const subtypeOptions = contactTypeFilter === "lender" ? LENDER_TYPES : contactTypeFilter === "buyer" ? BUYER_PROPERTY_TYPES : contactTypeFilter === "wholesaler" ? WHOLESALER_TYPES : contactTypeFilter === "investor" ? INVESTOR_TYPES : [];
 
   // Fetch funds + investor_funds for contact detail investor tabs
   const fetchContactFundsData = useCallback(async () => {
@@ -7885,9 +7907,28 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
       }
       setBuyers(filtered);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
-  }, [teamEmailsProp]);
+  }, [teamEmailsProp, contactTypeFilter, hasFullAccess]);
 
   useEffect(() => { if (session) fetchBuyers(); }, [session, fetchBuyers, refreshKey]);
+
+  // Fetch investor pipeline stats from investors table when on investor tab
+  useEffect(() => {
+    if (contactTypeFilter !== "investor") return;
+    (async () => {
+      try {
+        const { data: rows } = await supabase.from("investors").select("capital_range_max, capital_committed, capital_funded");
+        if (rows) {
+          const n = (v) => parseFloat(v) || 0;
+          setInvestorPipelineStats({
+            total: rows.length,
+            pipeline: rows.reduce((s, r) => s + (n(r.capital_range_max) || n(r.capital_committed) || 0), 0),
+            committed: rows.reduce((s, r) => s + n(r.capital_committed), 0),
+            funded: rows.reduce((s, r) => s + n(r.capital_funded), 0),
+          });
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  }, [contactTypeFilter]);
 
   // After buyers reload, update selectedContact if still viewing one
   useEffect(() => {
@@ -7899,8 +7940,21 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
     }
   }, [buyers, selectedContact]);
 
+  // Multi-select helpers
+  const toggleSelectContact = (id, e) => { e.stopPropagation(); setSelectedContacts(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }); };
+  const toggleSelectAllContacts = () => { if (selectedContacts.size === statusFiltered.length) setSelectedContacts(new Set()); else setSelectedContacts(new Set(statusFiltered.map(b => b.rowId))); };
+  const handleBulkContactStatusChange = async (newStatus) => {
+    const ids = Array.from(selectedContacts);
+    try {
+      await Promise.all(ids.map(id => supabase.from("contacts").update({ buyer_status: newStatus }).eq("id", id)));
+      setBuyers(prev => prev.map(b => ids.includes(b.rowId) ? { ...b, buyerStatus: newStatus } : b));
+      setSelectedContacts(new Set());
+    } catch (e) { console.error("Bulk status update failed:", e); }
+  };
+
   const statusFilters = BUYER_STATUS_LIST.map(label => ({ label, match: b => (b.buyerStatus || "").trim() === label }));
-  const typeFiltered = typeFilter ? buyers.filter(b => (b.contactType || "").toLowerCase().includes(typeFilter.toLowerCase())) : buyers;
+  const subtypeFiltered = subtypeFilter ? buyers.filter(b => (b.assetPreference || "").toLowerCase().includes(subtypeFilter.toLowerCase())) : buyers;
+  const typeFiltered = typeFilter ? subtypeFiltered.filter(b => (b.contactType || "").toLowerCase().includes(typeFilter.toLowerCase())) : subtypeFiltered;
   const textFiltered = typeFiltered.filter(b => (b.name || "").toLowerCase().includes(search.toLowerCase()) || (b.email || "").toLowerCase().includes(search.toLowerCase()) || (b.company || "").toLowerCase().includes(search.toLowerCase()) || (b.phone || "").toLowerCase().includes(search.toLowerCase()));
   const statusFiltered = statusFilter !== null ? textFiltered.filter(statusFilters[statusFilter].match) : textFiltered;
 
@@ -7928,6 +7982,36 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
     </>;
   }
 
+  // Dashboard stats
+  const activeCount = buyers.filter(b => b.buyerStatus === "Active").length;
+  const now = new Date(); const thisMonth = buyers.filter(b => { try { const d = new Date(b.dateAdded); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); } catch(e) { return false; } }).length;
+  const hotCount = buyers.filter(b => (b.temperature || "").includes("Hot")).length;
+  const medCount = buyers.filter(b => (b.temperature || "").includes("Medium")).length;
+  const coldCount = buyers.filter(b => (b.temperature || "").includes("Cold")).length;
+
+  // View tab pill toggle
+  const viewTabBar = (
+    <div style={{ background: "#fff", borderBottom: "1px solid #f1f5f9", padding: isMobile ? "8px 12px" : "8px 32px", display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "inline-flex", background: "#f1f5f9", borderRadius: 8, padding: 2 }}>
+        {[{ id: "dashboard", label: "Dashboard", icon: "M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" }, { id: "table", label: "Table", icon: "M3 3h18v18H3V3zm2 4v4h6V7H5zm8 0v4h6V7h-6zM5 13v4h6v-4H5zm8 0v4h6v-4h-6z" }, { id: "card", label: "Cards", icon: "M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" }].map(tab => (
+          <button key={tab.id} onClick={() => { setViewTab(tab.id); setSelectedContacts(new Set()); }} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", background: viewTab === tab.id ? "#fff" : "transparent", color: viewTab === tab.id ? "#0f172a" : "#94a3b8", boxShadow: viewTab === tab.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none", transition: "all 0.15s" }}>
+            <svg width={13} height={13} viewBox="0 0 24 24" fill="currentColor"><path d={tab.icon} /></svg>
+            {!isMobile && tab.label}
+          </button>
+        ))}
+      </div>
+      {subtypeOptions.length > 0 && (
+        <div style={{ display: "flex", gap: 4, overflowX: "auto", flex: 1, marginLeft: 8 }}>
+          <button onClick={() => setSubtypeFilter("")} style={{ flexShrink: 0, padding: "4px 10px", borderRadius: 6, border: "1px solid " + (!subtypeFilter ? "#16a34a" : "#e2e8f0"), background: !subtypeFilter ? "#f0fdf4" : "#fff", color: !subtypeFilter ? "#16a34a" : "#64748b", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>All</button>
+          {subtypeOptions.map(st => {
+            const isAct = subtypeFilter === st;
+            return <button key={st} onClick={() => setSubtypeFilter(isAct ? "" : st)} style={{ flexShrink: 0, padding: "4px 10px", borderRadius: 6, border: "1px solid " + (isAct ? "#16a34a" : "#e2e8f0"), background: isAct ? "#f0fdf4" : "#fff", color: isAct ? "#16a34a" : "#64748b", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>{st}</button>;
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
       {isMobile ? (
@@ -7936,15 +8020,15 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
             <div style={{ display: "flex", alignItems: "center", gap: 10, animation: "fadeIn 0.2s ease" }}>
               <div style={{ position: "relative", flex: 1 }}>
                 <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
-                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search contacts..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px 10px 32px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: "100%" }} />
+                <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder={"Search " + sectionLabelLower + "..."} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px 10px 32px", color: "#0f172a", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", width: "100%" }} />
               </div>
               <button onClick={() => { setSearchOpen(false); setSearch(""); }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "8px 4px", whiteSpace: "nowrap" }}>Cancel</button>
             </div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
-                <h1 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Contacts</h1>
-                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{statusFilter !== null ? statusFiltered.length + " " + statusFilters[statusFilter].label.toLowerCase() : buyers.length + " contacts"}</p>
+                <h1 style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>{sectionLabel}</h1>
+                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{statusFilter !== null ? statusFiltered.length + " " + statusFilters[statusFilter].label.toLowerCase() : buyers.length + " " + sectionLabelLower}</p>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
@@ -7960,11 +8044,11 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
       ) : (
         <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "18px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Contacts</h1>
-            <p style={{ fontSize: 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{buyers.length} contacts</p>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>{sectionLabel}</h1>
+            <p style={{ fontSize: 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{buyers.length} {sectionLabelLower}</p>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 12px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}>
+            {!contactTypeFilter && <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 12px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}>
               <option value="">All Types</option>
               <option value="Buyer">Buyers</option>
               <option value="Investor">Investors</option>
@@ -7973,18 +8057,19 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
               <option value="Lender">Lenders</option>
               <option value="Attorney">Attorneys</option>
               <option value="Property Manager">Property Managers</option>
-            </select>
+            </select>}
             <div style={{ position: "relative" }}>
               <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search contacts..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={"Search " + sectionLabelLower + "..."} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
             </div>
             <button onClick={onNewBuyer} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "9px 18px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap" }}>
               <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14" /></svg>
-              New Contact
+              New {contactTypeFilter === "lender" ? "Lender" : contactTypeFilter === "buyer" ? "Buyer" : contactTypeFilter === "wholesaler" ? "Wholesaler" : contactTypeFilter === "investor" ? "Investor" : "Contact"}
             </button>
           </div>
         </div>
       )}
+      {/* Status filter pills */}
       <div style={{ background: "#fff", borderBottom: "1px solid #f1f5f9", padding: isMobile ? "0" : "12px 32px", display: "flex", gap: 0, overflowX: isMobile ? "auto" : "visible", WebkitOverflowScrolling: "touch" }}>
         {statusFilters.map((s, i) => {
           const count = buyers.filter(s.match).length; const isActive = statusFilter === i;
@@ -7994,60 +8079,234 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
           </button>);
         })}
       </div>
+      {/* View tab toggle + subtype pills */}
+      {viewTabBar}
+      {/* Content area */}
       <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px" : "16px 32px" }}>
-        {statusFiltered.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
-            <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ margin: "0 auto 12px", display: "block" }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx={9} cy={7} r={4} /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-            <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>{buyers.length === 0 ? "No contacts yet" : "No contacts match your filters"}</p>
-            <p style={{ fontSize: 13, margin: 0 }}>{buyers.length === 0 ? "Add your first contact to get started" : "Try adjusting your search or status filter"}</p>
-          </div>
-        ) : isMobile ? (
-          statusFiltered.map((b, i) => (
-            <div key={b.rowId || b.name + i} onClick={() => handleContactClick(b)} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 16px", cursor: "pointer", marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.03)", WebkitTapHighlightColor: "transparent" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.name || "—"}</p>
-                  <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{[b.company, b.assetPreference].filter(Boolean).join(" · ") || "—"}</p>
+
+        {/* ── DASHBOARD VIEW ── */}
+        {viewTab === "dashboard" ? (
+          <div>
+            {/* Investor Pipeline Stats */}
+            {contactTypeFilter === "investor" && (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+                <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#16a34a", borderRadius: "14px 14px 0 0" }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Total in Pipeline</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{investorPipelineStats.total}</div>
                 </div>
-                <div style={{ flexShrink: 0, marginLeft: 10 }}><BuyerStatusBadge status={b.buyerStatus || "New"} /></div>
+                <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#3b82f6", borderRadius: "14px 14px 0 0" }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Pipeline Value</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{investorPipelineStats.pipeline ? fmt(investorPipelineStats.pipeline) : "—"}</div>
+                </div>
+                <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#d97706", borderRadius: "14px 14px 0 0" }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Capital Committed</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{investorPipelineStats.committed ? fmt(investorPipelineStats.committed) : "—"}</div>
+                </div>
+                <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#7c3aed", borderRadius: "14px 14px 0 0" }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Capital Funded</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{investorPipelineStats.funded ? fmt(investorPipelineStats.funded) : "—"}</div>
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-                {b.temperature && <div><span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Temp</span><p style={{ fontSize: 13, fontWeight: 500, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "1px 0 0" }}>{b.temperature}</p></div>}
-                {b.phone && <div><span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Phone</span><p style={{ fontSize: 13, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{b.phone}</p></div>}
-                <div style={{ marginLeft: "auto" }}><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2}><path d="M9 18l6-6-6-6" /></svg></div>
+            )}
+            {/* Stat cards */}
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+              <div style={{ background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", border: "1px solid #bbf7d0", borderRadius: 12, padding: "14px 16px" }}>
+                <span style={{ fontSize: 9, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" }}>Total {sectionLabel}</span>
+                <p style={{ fontSize: 24, fontWeight: 700, color: "#15803d", fontFamily: "'DM Mono', monospace", margin: "4px 0 0", letterSpacing: "-0.02em" }}>{buyers.length}</p>
+              </div>
+              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px" }}>
+                <span style={{ fontSize: 9, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" }}>Active</span>
+                <p style={{ fontSize: 24, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "4px 0 0" }}>{activeCount}</p>
+              </div>
+              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px" }}>
+                <span style={{ fontSize: 9, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" }}>New This Month</span>
+                <p style={{ fontSize: 24, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "4px 0 0" }}>{thisMonth}</p>
+              </div>
+              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px" }}>
+                <span style={{ fontSize: 9, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" }}>Temperature</span>
+                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#ef4444", fontFamily: "'DM Sans', sans-serif" }}>{hotCount} Hot</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#f59e0b", fontFamily: "'DM Sans', sans-serif" }}>{medCount} Med</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#3b82f6", fontFamily: "'DM Sans', sans-serif" }}>{coldCount} Cold</span>
+                </div>
               </div>
             </div>
-          ))
-        ) : (
-          <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif" }}>
-              <thead><tr style={{ borderBottom: "1px solid #e2e8f0" }}>
-                {["Name", "Company", "Type", "Status", "Temp", "Asset Pref", "Phone", "Email", "Manager"].map(h => (<th key={h} style={{ textAlign: "left", padding: "12px 14px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>))}
-              </tr></thead>
-              <tbody>
+            {/* Status distribution */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "18px 20px", marginBottom: 20 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px" }}>Status Distribution</h3>
+              {buyers.length > 0 ? (
+                <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", height: 28, marginBottom: 12 }}>
+                  {BUYER_STATUS_LIST.map(s => {
+                    const cnt = buyers.filter(b => (b.buyerStatus || "").trim() === s).length;
+                    if (!cnt) return null;
+                    const pct = (cnt / buyers.length * 100);
+                    const colors = { "New": "#3b82f6", "Contacted": "#8b5cf6", "Info Gathering": "#f59e0b", "Confirmed Buyer": "#10b981", "Active": "#16a34a", "Closed": "#64748b" };
+                    return <div key={s} style={{ width: pct + "%", background: colors[s] || "#94a3b8", minWidth: cnt > 0 ? 4 : 0, display: "flex", alignItems: "center", justifyContent: "center" }} title={s + ": " + cnt}>
+                      {pct > 10 && <span style={{ fontSize: 9, color: "#fff", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>{cnt}</span>}
+                    </div>;
+                  })}
+                </div>
+              ) : <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>No data yet</p>}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                {BUYER_STATUS_LIST.map(s => {
+                  const cnt = buyers.filter(b => (b.buyerStatus || "").trim() === s).length;
+                  const colors = { "New": "#3b82f6", "Contacted": "#8b5cf6", "Info Gathering": "#f59e0b", "Confirmed Buyer": "#10b981", "Active": "#16a34a", "Closed": "#64748b" };
+                  return <div key={s} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors[s] || "#94a3b8" }} />
+                    <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{s}: {cnt}</span>
+                  </div>;
+                })}
+              </div>
+            </div>
+            {/* Recently added */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "18px 20px" }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 14px" }}>Recently Added</h3>
+              {buyers.slice(0, 5).map((b, i) => (
+                <div key={b.rowId || i} onClick={() => handleContactClick(b)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: i < 4 ? "1px solid #f1f5f9" : "none", cursor: "pointer" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Sans', sans-serif" }}>{(b.name || "?")[0].toUpperCase()}</span>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.name}</p>
+                      <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "1px 0 0" }}>{b.company || b.email || "—"}</p>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <BuyerStatusBadge status={b.buyerStatus || "New"} />
+                    {b.dateAdded && <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{new Date(b.dateAdded).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
+                  </div>
+                </div>
+              ))}
+              {buyers.length === 0 && <p style={{ fontSize: 12, color: "#94a3b8", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>No {sectionLabelLower} yet</p>}
+            </div>
+          </div>
+
+        /* ── CARD VIEW ── */
+        ) : viewTab === "card" ? (
+          <div>
+            {statusFiltered.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ margin: "0 auto 12px", display: "block" }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx={9} cy={7} r={4} /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>{buyers.length === 0 ? "No " + sectionLabelLower + " yet" : "No " + sectionLabelLower + " match your filters"}</p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 14 }}>
                 {statusFiltered.map((b, i) => (
-                  <tr key={b.rowId || b.name + i} onClick={() => handleContactClick(b)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer", background: hoveredRow === i ? "#f8fafc" : "transparent", transition: "background 0.1s" }}>
-                    <td style={{ padding: "12px 14px" }}><span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{b.name || "—"}</span></td>
-                    <td style={{ padding: "12px 14px", fontSize: 13, color: "#64748b" }}>{b.company || "—"}</td>
-                    <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>
-                      {(b.contactType || "").split(",").map(t => t.trim()).filter(Boolean).length > 0
-                        ? (b.contactType || "").split(",").map(t => t.trim()).filter(Boolean).map((t, j) => (
-                            <span key={j} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontWeight: 600, fontSize: 10, marginRight: 4, marginBottom: 2, background: t.toLowerCase() === "investor" ? "#f0fdf4" : "#f8fafc", color: t.toLowerCase() === "investor" ? "#16a34a" : "#64748b", border: "1px solid " + (t.toLowerCase() === "investor" ? "#bbf7d0" : "#e2e8f0") }}>{t}</span>
-                          ))
-                        : "—"}
-                    </td>
-                    <td style={{ padding: "12px 14px" }}><BuyerStatusBadge status={b.buyerStatus || "New"} /></td>
-                    <td style={{ padding: "12px 14px", fontSize: 13 }}>{b.temperature || "—"}</td>
-                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.assetPreference || "—"}</td>
-                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{b.phone || "—"}</td>
-                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#94a3b8" }}>{b.email || "—"}</td>
-                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.manager || "—"}</td>
-                  </tr>
+                  <div key={b.rowId || b.name + i} onClick={() => handleContactClick(b)} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px", cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,0.03)", transition: "all 0.15s" }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = "#16a34a"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(22,163,74,0.1)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.03)"; }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+                        <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Sans', sans-serif" }}>{(b.name || "?")[0].toUpperCase()}</span>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.name || "—"}</p>
+                          <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.company || "—"}</p>
+                        </div>
+                      </div>
+                      <BuyerStatusBadge status={b.buyerStatus || "New"} />
+                    </div>
+                    {/* Contact type tags */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+                      {(b.contactType || "").split(",").map(t => t.trim()).filter(Boolean).map((t, j) => (
+                        <span key={j} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontWeight: 600, fontSize: 9, background: t.toLowerCase() === "investor" ? "#f0fdf4" : "#f8fafc", color: t.toLowerCase() === "investor" ? "#16a34a" : "#64748b", border: "1px solid " + (t.toLowerCase() === "investor" ? "#bbf7d0" : "#e2e8f0") }}>{t}</span>
+                      ))}
+                    </div>
+                    {/* Detail rows */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      {b.phone && <div><span style={{ fontSize: 9, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Phone</span><p style={{ fontSize: 12, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{b.phone}</p></div>}
+                      {b.email && <div><span style={{ fontSize: 9, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Email</span><p style={{ fontSize: 12, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.email}</p></div>}
+                      {b.assetPreference && <div><span style={{ fontSize: 9, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Preference</span><p style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{b.assetPreference}</p></div>}
+                      {b.temperature && <div><span style={{ fontSize: 9, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Temp</span><p style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{b.temperature}</p></div>}
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
+          </div>
+
+        /* ── TABLE VIEW ── */
+        ) : (
+          <div>
+            {/* Bulk action bar */}
+            {selectedContacts.size > 0 && (
+              <div style={{ padding: "10px 16px", marginBottom: 12, background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", borderRadius: 10, border: "1px solid #bbf7d0", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#15803d", fontFamily: "'DM Sans', sans-serif" }}>{selectedContacts.size} selected</span>
+                <span style={{ width: 1, height: 16, background: "#bbf7d0" }} />
+                {BUYER_STATUS_LIST.map(s => {
+                  const colors = { "New": "#3b82f6", "Contacted": "#8b5cf6", "Info Gathering": "#f59e0b", "Confirmed Buyer": "#10b981", "Active": "#16a34a", "Closed": "#64748b" };
+                  return <button key={s} onClick={() => handleBulkContactStatusChange(s)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 6, border: "1px solid " + (colors[s] || "#94a3b8") + "33", background: (colors[s] || "#94a3b8") + "10", color: colors[s] || "#94a3b8", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                    <svg width={7} height={7} viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="6"/></svg>
+                    {s}
+                  </button>;
+                })}
+                <button onClick={() => setSelectedContacts(new Set())} style={{ marginLeft: "auto", padding: "5px 12px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Clear</button>
+              </div>
+            )}
+            {statusFiltered.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
+                <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ margin: "0 auto 12px", display: "block" }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx={9} cy={7} r={4} /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#64748b", margin: "0 0 4px" }}>{buyers.length === 0 ? "No " + sectionLabelLower + " yet" : "No " + sectionLabelLower + " match your filters"}</p>
+                <p style={{ fontSize: 13, margin: 0 }}>{buyers.length === 0 ? "Add your first " + (contactTypeFilter || "contact") + " to get started" : "Try adjusting your search or status filter"}</p>
+              </div>
+            ) : isMobile ? (
+              statusFiltered.map((b, i) => (
+                <div key={b.rowId || b.name + i} onClick={() => handleContactClick(b)} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "14px 16px", cursor: "pointer", marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.03)", WebkitTapHighlightColor: "transparent" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.name || "—"}</p>
+                      <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{[b.company, b.assetPreference].filter(Boolean).join(" · ") || "—"}</p>
+                    </div>
+                    <div style={{ flexShrink: 0, marginLeft: 10 }}><BuyerStatusBadge status={b.buyerStatus || "New"} /></div>
+                  </div>
+                  <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                    {b.temperature && <div><span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Temp</span><p style={{ fontSize: 13, fontWeight: 500, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "1px 0 0" }}>{b.temperature}</p></div>}
+                    {b.phone && <div><span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Phone</span><p style={{ fontSize: 13, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{b.phone}</p></div>}
+                    <div style={{ marginLeft: "auto" }}><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2}><path d="M9 18l6-6-6-6" /></svg></div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif" }}>
+                  <thead><tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                    <th style={{ padding: "12px 10px", width: 36 }}><input type="checkbox" checked={selectedContacts.size === statusFiltered.length && statusFiltered.length > 0} onChange={toggleSelectAllContacts} style={{ cursor: "pointer", accentColor: "#16a34a" }} /></th>
+                    {["Name", "Company", "Type", "Status", "Temp", "Asset Pref", "Phone", "Email", "Manager"].map(h => (<th key={h} style={{ textAlign: "left", padding: "12px 14px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>))}
+                  </tr></thead>
+                  <tbody>
+                    {statusFiltered.map((b, i) => (
+                      <tr key={b.rowId || b.name + i} onClick={() => handleContactClick(b)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer", background: selectedContacts.has(b.rowId) ? "#f0fdf4" : hoveredRow === i ? "#f8fafc" : "transparent", transition: "background 0.1s" }}>
+                        <td style={{ padding: "12px 10px", width: 36 }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedContacts.has(b.rowId)} onChange={e => toggleSelectContact(b.rowId, e)} style={{ cursor: "pointer", accentColor: "#16a34a" }} /></td>
+                        <td style={{ padding: "12px 14px" }}><span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{b.name || "—"}</span></td>
+                        <td style={{ padding: "12px 14px", fontSize: 13, color: "#64748b" }}>{b.company || "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>
+                          {(b.contactType || "").split(",").map(t => t.trim()).filter(Boolean).length > 0
+                            ? (b.contactType || "").split(",").map(t => t.trim()).filter(Boolean).map((t, j) => (
+                                <span key={j} style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontWeight: 600, fontSize: 10, marginRight: 4, marginBottom: 2, background: t.toLowerCase() === "investor" ? "#f0fdf4" : "#f8fafc", color: t.toLowerCase() === "investor" ? "#16a34a" : "#64748b", border: "1px solid " + (t.toLowerCase() === "investor" ? "#bbf7d0" : "#e2e8f0") }}>{t}</span>
+                              ))
+                            : "—"}
+                        </td>
+                        <td style={{ padding: "12px 14px" }}><BuyerStatusBadge status={b.buyerStatus || "New"} /></td>
+                        <td style={{ padding: "12px 14px", fontSize: 13 }}>{b.temperature || "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.assetPreference || "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{b.phone || "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "#94a3b8" }}>{b.email || "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.manager || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
+
       </div>
       <BuyerModal isOpen={showBuyerModal} onClose={onCloseBuyerModal} onSave={onSaveBuyer} saving={savingBuyer} isMobile={isMobile} buyer={editingBuyer} />
     </div>
@@ -9805,6 +10064,16 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
   const [propTypeFilter, setPropTypeFilter] = useState(initialFilters?.propTypeFilter || null);
   const [sortCol, setSortCol] = useState(initialFilters?.sortCol || null);
   const [sortDir, setSortDir] = useState(initialFilters?.sortDir || "desc");
+  const [selectedListings, setSelectedListings] = useState(new Set());
+  const [statusDropdownId, setStatusDropdownId] = useState(null);
+  const [showBulkBar, setShowBulkBar] = useState(false);
+  useEffect(() => { setShowBulkBar(selectedListings.size > 0); }, [selectedListings]);
+  useEffect(() => {
+    if (!statusDropdownId) return;
+    const handler = () => setStatusDropdownId(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [statusDropdownId]);
   // Report filter changes to parent
   useEffect(() => {
     if (onFilterChange) onFilterChange({ statusFilter, reviewFilter, styleFilter, propTypeFilter, sortCol, sortDir, search, activeTab });
@@ -9927,6 +10196,33 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
   const handleSort = (col) => {
     if (sortCol === col) { setSortDir(d => d === "asc" ? "desc" : "asc"); }
     else { setSortCol(col); setSortDir("desc"); }
+  };
+
+  const handleInlineStatusChange = async (listing, newStatus) => {
+    try {
+      await supabase.from("mls_listings").update({ review_status: newStatus }).eq("id", listing._id);
+      setListings(prev => prev.map(l => l._id === listing._id ? { ...l, reviewStatus: newStatus } : l));
+    } catch (e) { console.error("Status update failed:", e); }
+    setStatusDropdownId(null);
+  };
+
+  const handleBulkStatusChange = async (newStatus) => {
+    const ids = Array.from(selectedListings);
+    try {
+      await Promise.all(ids.map(id => supabase.from("mls_listings").update({ review_status: newStatus }).eq("id", id)));
+      setListings(prev => prev.map(l => ids.includes(l._id) ? { ...l, reviewStatus: newStatus } : l));
+      setSelectedListings(new Set());
+    } catch (e) { console.error("Bulk status update failed:", e); }
+  };
+
+  const toggleSelect = (id, e) => {
+    e.stopPropagation();
+    setSelectedListings(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedListings.size === sorted.length) setSelectedListings(new Set());
+    else setSelectedListings(new Set(sorted.map(l => l._id)));
   };
 
   // Status counts for dashboard + filters
@@ -10323,15 +10619,31 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
 
         /* ── TABLE VIEW ── */
         ) : activeTab === "table" ? (
-          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "auto" }}>
+          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            {showBulkBar && (
+              <div style={{ padding: "10px 16px", background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", borderBottom: "1px solid #bbf7d0", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", flexShrink: 0 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Sans', sans-serif" }}>{selectedListings.size} selected</span>
+                <span style={{ color: "#d1d5db" }}>|</span>
+                {["New", "Watching", "Reviewing", "Added to Pipeline", "Declined"].map(s => {
+                  const cfg = MLS_REVIEW_STATUS[s] || MLS_REVIEW_STATUS["New"];
+                  return (<button key={s} onClick={() => handleBulkStatusChange(s)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 6, border: `1px solid ${cfg.color}33`, background: cfg.bg, color: cfg.color, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                    <svg width={7} height={7} viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="6"/></svg>
+                    {s}
+                  </button>);
+                })}
+                <button onClick={() => setSelectedListings(new Set())} style={{ marginLeft: "auto", padding: "5px 12px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Clear</button>
+              </div>
+            )}
+          <div style={{ overflow: "auto", flex: 1 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif", minWidth: 1000 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #f1f5f9" }}>
-                  <th style={{ ...thStyle, width: 52, cursor: "default", padding: "10px 8px 10px 14px" }} />
+                  <th style={{ ...thStyle, width: 36, cursor: "default", padding: "10px 4px 10px 10px" }}><input type="checkbox" checked={selectedListings.size === sorted.length && sorted.length > 0} onChange={toggleSelectAll} style={{ cursor: "pointer", accentColor: "#16a34a" }} /></th>
+                  <th style={{ ...thStyle, width: 44, cursor: "default", padding: "10px 4px 10px 6px" }} />
+                  <th onClick={() => handleSort("reviewStatus")} style={{...thStyle, width: 140}}>My Status<SortArrow col="reviewStatus"/></th>
                   <th onClick={() => handleSort("address")} style={thStyle}>Address<SortArrow col="address"/></th>
                   <th onClick={() => handleSort("city")} style={thStyle}>City<SortArrow col="city"/></th>
                   <th onClick={() => handleSort("price")} style={{...thStyle, textAlign: "right"}}>Price<SortArrow col="price"/></th>
-                  <th onClick={() => handleSort("status")} style={thStyle}>Status<SortArrow col="status"/></th>
                   <th onClick={() => handleSort("propType")} style={thStyle}>Type<SortArrow col="propType"/></th>
                   <th onClick={() => handleSort("beds")} style={{...thStyle, textAlign: "center"}}>Beds<SortArrow col="beds"/></th>
                   <th onClick={() => handleSort("baths")} style={{...thStyle, textAlign: "center"}}>Baths<SortArrow col="baths"/></th>
@@ -10340,26 +10652,44 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                   <th onClick={() => handleSort("ppsf")} style={{...thStyle, textAlign: "right"}}>$/SF<SortArrow col="ppsf"/></th>
                   <th onClick={() => handleSort("yearBuilt")} style={{...thStyle, textAlign: "center"}}>Built<SortArrow col="yearBuilt"/></th>
                   <th onClick={() => handleSort("cdom")} style={{...thStyle, textAlign: "center"}}>DOM<SortArrow col="cdom"/></th>
-                  <th style={{...thStyle, textAlign: "center", cursor: "default", width: 100}}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {sorted.map(listing => (
-                  <tr key={listing.rowIndex} onClick={() => onSelectListing && onSelectListing(listing)} onMouseEnter={() => setHoveredRow(listing.rowIndex)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f8fafc", background: hoveredRow === listing.rowIndex ? "#fafffe" : "transparent", transition: "background 0.1s", cursor: "pointer" }}>
-                    <td style={{ padding: "8px 4px 8px 10px", width: 52 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
-                        {listing.address ? (
-                          <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
-                        ) : null}
-                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
-                          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                        </div>
+                {sorted.map(listing => {
+                  const rs = listing.reviewStatus || "New";
+                  const rsCfg = MLS_REVIEW_STATUS[rs] || MLS_REVIEW_STATUS["New"];
+                  const isSelected = selectedListings.has(listing._id);
+                  return (
+                  <tr key={listing.rowIndex} onClick={() => onSelectListing && onSelectListing(listing)} onMouseEnter={() => setHoveredRow(listing.rowIndex)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f8fafc", background: isSelected ? "#f0fdf4" : hoveredRow === listing.rowIndex ? "#fafffe" : "transparent", transition: "background 0.1s", cursor: "pointer" }}>
+                    <td style={{ padding: "8px 4px 8px 10px", width: 36 }} onClick={e => toggleSelect(listing._id, e)}><input type="checkbox" checked={isSelected} onChange={() => {}} style={{ cursor: "pointer", accentColor: "#16a34a" }} /></td>
+                    <td style={{ padding: "8px 4px 8px 6px", width: 44 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
+                        {listing.address ? (<img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />) : null}
+                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}><svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
                       </div>
+                    </td>
+                    <td style={{ padding: "8px 10px", position: "relative", width: 140 }} onClick={e => { e.stopPropagation(); setStatusDropdownId(statusDropdownId === listing._id ? null : listing._id); }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, background: rsCfg.bg, color: rsCfg.color, fontSize: 10, fontWeight: 700, cursor: "pointer", border: `1px solid ${rsCfg.color}22`, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>
+                        <svg width={8} height={8} viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="6"/></svg>
+                        {rs}
+                        <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} style={{ marginLeft: 2 }}><polyline points="6 9 12 15 18 9"/></svg>
+                      </div>
+                      {statusDropdownId === listing._id && (
+                        <div style={{ position: "absolute", top: "100%", left: 10, zIndex: 50, background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: "6px 0", minWidth: 160 }} onClick={e => e.stopPropagation()}>
+                          {["New", "Watching", "Reviewing", "Added to Pipeline", "Declined"].map(s => {
+                            const cfg = MLS_REVIEW_STATUS[s] || MLS_REVIEW_STATUS["New"];
+                            return (<button key={s} onClick={e => { e.stopPropagation(); handleInlineStatusChange(listing, s); }} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 14px", background: rs === s ? cfg.bg : "transparent", border: "none", cursor: "pointer", fontSize: 11, fontWeight: rs === s ? 700 : 500, color: rs === s ? cfg.color : "#475569", fontFamily: "'DM Sans', sans-serif", textAlign: "left" }} onMouseEnter={e => { if (rs !== s) e.currentTarget.style.background = "#f8fafc"; }} onMouseLeave={e => { if (rs !== s) e.currentTarget.style.background = "transparent"; }}>
+                              <svg width={8} height={8} viewBox="0 0 24 24" fill={cfg.color} stroke="none"><circle cx="12" cy="12" r="6"/></svg>
+                              {s}
+                              {rs === s && <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={cfg.color} strokeWidth={3} style={{ marginLeft: "auto" }}><polyline points="20 6 9 17 4 12"/></svg>}
+                            </button>);
+                          })}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{listing.address || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>{listing.city || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace", textAlign: "right" }}>{listing.price ? fmt(listing.price) : "—"}</td>
-                    <td style={{ padding: "12px 14px" }}><MLSStatusBadge status={listing.status} /></td>
                     <td style={{ padding: "12px 14px", fontSize: 11, color: "#64748b" }}>{listing.propType || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.beds || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.baths || "—"}</td>
@@ -10368,21 +10698,12 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "right", fontFamily: "'DM Mono', monospace" }}>{listing.ppsf || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.yearBuilt || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.cdom || listing.adom || "—"}</td>
-                    <td style={{ padding: "12px 14px", textAlign: "center" }}>
-                      <button onClick={() => handleAddToPipeline(listing)} disabled={addingId === listing.rowIndex} style={{
-                        padding: "5px 12px", borderRadius: 8, border: "1px solid #16a34a22",
-                        background: addingId === listing.rowIndex ? "#f0fdf4" : "rgba(22,163,74,0.06)",
-                        color: "#16a34a", fontSize: 10, fontWeight: 700, cursor: addingId === listing.rowIndex ? "not-allowed" : "pointer",
-                        fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s",
-                      }}>
-                        {addingId === listing.rowIndex ? "..." : "+ Pipeline"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {sorted.length === 0 && <tr><td colSpan={14} style={{ padding: "40px 14px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match</td></tr>}
+                  </tr>);
+                })}
+                {sorted.length === 0 && <tr><td colSpan={15} style={{ padding: "40px 14px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match</td></tr>}
               </tbody>
             </table>
+          </div>
           </div>
 
         /* ── MAP VIEW ── */
@@ -14361,8 +14682,8 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
         <div style={{ padding: "28px 36px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
             <div>
-              <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Company Pipeline</h1>
-              <p style={{ fontSize: 13, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{investors.length} investor{investors.length !== 1 ? "s" : ""} in pipeline</p>
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Company Library</h1>
+              <p style={{ fontSize: 13, color: "#94a3b8", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{investors.length} compan{investors.length !== 1 ? "ies" : "y"} in library</p>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <div style={{ position: "relative" }}>
@@ -14379,29 +14700,7 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
             </div>
           </div>
 
-          {/* Stat cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
-            <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#16a34a", borderRadius: "14px 14px 0 0" }} />
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Total investors</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{investors.length}</div>
-            </div>
-            <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#3b82f6", borderRadius: "14px 14px 0 0" }} />
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Pipeline value</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{totalPipeline ? fmt(totalPipeline) : "—"}</div>
-            </div>
-            <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#d97706", borderRadius: "14px 14px 0 0" }} />
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Capital committed</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{totalCommitted ? fmt(totalCommitted) : "—"}</div>
-            </div>
-            <div style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", border: "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "#7c3aed", borderRadius: "14px 14px 0 0" }} />
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Capital funded</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", letterSpacing: "-0.02em" }}>{totalFunded ? fmt(totalFunded) : "—"}</div>
-            </div>
-          </div>
+          {/* Stats moved to Investors tab */}
         </div>
       )}
 
@@ -14778,6 +15077,10 @@ export default function ReapApp() {
       setActiveNav("contacts"); setContactsTab("lenders");
     } else if (hash === "contacts/buyers") {
       setActiveNav("contacts"); setContactsTab("buyers");
+    } else if (hash === "contacts/wholesalers") {
+      setActiveNav("contacts"); setContactsTab("wholesalers");
+    } else if (hash === "contacts/investorContacts") {
+      setActiveNav("contacts"); setContactsTab("investorContacts");
     } else if (hash.startsWith("contacts/investor/")) {
       const id = decodeURIComponent(hash.replace("contacts/investor/", ""));
       setActiveNav("contacts"); setContactsTab("investors");
@@ -14908,6 +15211,10 @@ export default function ReapApp() {
         setActiveNav("contacts"); setContactsTab("lenders"); setShowProfile(false);
       } else if (hash === "contacts/buyers") {
         setActiveNav("contacts"); setContactsTab("buyers"); setShowProfile(false);
+      } else if (hash === "contacts/wholesalers") {
+        setActiveNav("contacts"); setContactsTab("wholesalers"); setShowProfile(false);
+      } else if (hash === "contacts/investorContacts") {
+        setActiveNav("contacts"); setContactsTab("investorContacts"); setShowProfile(false);
       } else if (hash.startsWith("contacts/investor/")) {
         const id = decodeURIComponent(hash.replace("contacts/investor/", ""));
         setActiveNav("contacts"); setContactsTab("investors"); setShowProfile(false);
@@ -15965,7 +16272,7 @@ export default function ReapApp() {
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
+                <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "wholesalers", label: "Wholesalers" }, { id: "investorContacts", label: "Investors" }, { id: "investors", label: "Company Library" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {contactsTab === "import"
                     ? <ContactImporterView session={session} isMobile={true} onImported={() => setContactsTab("dashboard")} />
@@ -15973,7 +16280,7 @@ export default function ReapApp() {
                     ? <ContactsDashboardView session={session} isMobile={true} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
                     : contactsTab === "investors"
                     ? <InvestorPipelineView session={session} isMobile={true} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
-                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : null} hasFullAccess={hasFullAccess} />
+                    : <BuyerPipelineView session={session} isMobile={true} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : contactsTab === "wholesalers" ? "wholesaler" : contactsTab === "investorContacts" ? "investor" : null} hasFullAccess={hasFullAccess} />
                   }
                 </div>
               </div>
@@ -16051,7 +16358,7 @@ export default function ReapApp() {
                 </div>
               : activeNav === "contacts"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "investors", label: "Companies" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "wholesalers", label: "Wholesalers" }, { id: "investorContacts", label: "Investors" }, { id: "investors", label: "Company Library" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {contactsTab === "import"
                       ? <ContactImporterView session={session} isMobile={false} onImported={() => setContactsTab("dashboard")} />
@@ -16059,7 +16366,7 @@ export default function ReapApp() {
                       ? <ContactsDashboardView session={session} isMobile={false} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
                       : contactsTab === "investors"
                       ? <InvestorPipelineView session={session} isMobile={false} teamEmails={teamEmails} deals={deals} pendingInvestorId={pendingInvestorId} onInvestorSelected={() => setPendingInvestorId(null)} updateHash={updateHash} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
-                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : null} hasFullAccess={hasFullAccess} />
+                      : <BuyerPipelineView session={session} isMobile={false} teamEmails={teamEmails} showBuyerModal={showBuyerModal} onCloseBuyerModal={() => { setShowBuyerModal(false); setEditingBuyer(null); }} onSaveBuyer={handleSaveBuyer} savingBuyer={savingBuyer} editingBuyer={editingBuyer} onSetEditingBuyer={(b) => { setEditingBuyer(b); setShowBuyerModal(true); }} onNewBuyer={() => { setEditingBuyer(null); setShowBuyerModal(true); }} deals={deals} updateHash={updateHash} refreshKey={buyerRefreshKey} orgData={orgData} orgMembers={orgMembers} contactTypeFilter={contactsTab === "lenders" ? "lender" : contactsTab === "buyers" ? "buyer" : contactsTab === "wholesalers" ? "wholesaler" : contactsTab === "investorContacts" ? "investor" : null} hasFullAccess={hasFullAccess} />
                     }
                   </div>
                 </div>
