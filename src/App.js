@@ -1470,8 +1470,11 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   const [statusFilter, setStatusFilter] = useState(initialFilters?.statusFilter || null);
   const [sortCol, setSortCol] = useState(initialFilters?.sortCol || null);
   const [sortDir, setSortDir] = useState(initialFilters?.sortDir || "desc");
-  const [pipelineView, setPipelineViewState] = useState(initialView || "cards"); // "cards", "table", or "map"
-  const setPipelineView = (v) => { setPipelineViewState(v); if (onViewChange) onViewChange(v); };
+  const [pipelineView, setPipelineViewState] = useState(() => {
+    try { const saved = window.localStorage?.getItem("reap_pipeline_view"); if (saved && ["table","cards","map"].includes(saved)) return saved; } catch(e) {}
+    return initialView || "table";
+  }); // "table", "cards", or "map"
+  const setPipelineView = (v) => { setPipelineViewState(v); try { window.localStorage?.setItem("reap_pipeline_view", v); } catch(e) {} if (onViewChange) onViewChange(v); };
   // Report filter changes to parent
   useEffect(() => {
     if (onFilterChange) onFilterChange({ statusFilter, sortCol, sortDir, search });
@@ -1768,11 +1771,11 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                   <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
                 </button>
                 <div style={{ display: "flex", borderRadius: 10, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-                  <button onClick={() => setPipelineView("cards")} style={{ width: 36, height: 36, border: "none", background: pipelineView === "cards" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
-                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={pipelineView === "cards" ? "#fff" : "#64748b"} strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                  </button>
-                  <button onClick={() => setPipelineView("table")} style={{ width: 36, height: 36, border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "table" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                  <button onClick={() => setPipelineView("table")} style={{ width: 36, height: 36, border: "none", background: pipelineView === "table" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
                     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={pipelineView === "table" ? "#fff" : "#64748b"} strokeWidth={2}><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+                  </button>
+                  <button onClick={() => setPipelineView("cards")} style={{ width: 36, height: 36, border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "cards" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={pipelineView === "cards" ? "#fff" : "#64748b"} strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                   </button>
                   <button onClick={() => setPipelineView("map")} style={{ width: 36, height: 36, border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "map" ? "#0f172a" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
                     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={pipelineView === "map" ? "#fff" : "#64748b"} strokeWidth={2}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
@@ -1796,15 +1799,15 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search deals..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
             </div>
-            {/* Cards / Table / Map toggle */}
+            {/* Table / Cards / Map toggle */}
             <div style={{ display: "flex", borderRadius: 8, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-              <button onClick={() => setPipelineView("cards")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", background: pipelineView === "cards" ? "#0f172a" : "#fff", color: pipelineView === "cards" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
-                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                Cards
-              </button>
-              <button onClick={() => setPipelineView("table")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "table" ? "#0f172a" : "#fff", color: pipelineView === "table" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+              <button onClick={() => setPipelineView("table")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", background: pipelineView === "table" ? "#0f172a" : "#fff", color: pipelineView === "table" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
                 Table
+              </button>
+              <button onClick={() => setPipelineView("cards")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "cards" ? "#0f172a" : "#fff", color: pipelineView === "cards" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                Cards
               </button>
               <button onClick={() => setPipelineView("map")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", borderLeft: "1px solid #e2e8f0", background: pipelineView === "map" ? "#0f172a" : "#fff", color: pipelineView === "map" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
