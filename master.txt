@@ -166,35 +166,14 @@ Edge Function deploy:
   supabase functions deploy send-investor-notifications
 
 ================================================================================
-PENDING SQL (run in Supabase Dashboard → SQL Editor)
+COMPLETED SQL MIGRATIONS (all applied April 4, 2026)
 ================================================================================
-
--- Photos column on investor_updates (Session 4)
-ALTER TABLE investor_updates ADD COLUMN IF NOT EXISTS photos text;
-
--- Funds table (Session 4)
-CREATE TABLE IF NOT EXISTS funds (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_email text,
-  org_id uuid,
-  name text NOT NULL,
-  description text,
-  status text DEFAULT 'Active',
-  target_raise numeric,
-  capital_raised numeric,
-  target_irr numeric,
-  preferred_return numeric,
-  hold_period text,
-  vintage_year text,
-  deal_addresses text,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
--- Enable RLS (match your existing policy pattern)
-ALTER TABLE funds ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all for authenticated users" ON funds
-  FOR ALL USING (auth.role() = 'authenticated');
+  ✅ investor_updates.photos column (Session 4)
+  ✅ funds table + RLS (Session 4)
+  ✅ investors: notification_email, notification_phone (Session 5C/5D)
+  ✅ contacts: linked_deal_addresses, portal_email (Session 5C/5D)
+  ✅ deal_improvements table + RLS (Session 5D)
+  ✅ deal_units table + RLS (Session 5D)
 
 ================================================================================
 FUTURE WORK (Session 5+)

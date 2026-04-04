@@ -2,44 +2,15 @@ REAP Platform - Future Improvements & Large Items
 ==================================================
 Last updated: March 29, 2026 (Session 5D)
 
-SUPABASE MIGRATIONS NEEDED (Run these SQL statements)
+SUPABASE MIGRATIONS COMPLETED
 ------------------------------------------------------
--- From Session 5C/5D: Contact & Notification fields
-ALTER TABLE investors ADD COLUMN IF NOT EXISTS notification_email text;
-ALTER TABLE investors ADD COLUMN IF NOT EXISTS notification_phone text;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS linked_deal_addresses text;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS portal_email text;
-
--- From Session 5D: New tables for deal improvements and units
-CREATE TABLE deal_improvements (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  deal_id uuid NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
-  description text NOT NULL,
-  budgeted_cost numeric,
-  actual_cost numeric,
-  status text DEFAULT 'Not Started',
-  contractor text,
-  created_at timestamptz DEFAULT now()
-);
-
-CREATE TABLE deal_units (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  deal_id uuid NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
-  unit_number text NOT NULL,
-  sqft numeric,
-  bedrooms integer,
-  bathrooms numeric,
-  current_rent numeric,
-  market_rent numeric,
-  status text DEFAULT 'Vacant',
-  tenant_name text,
-  created_at timestamptz DEFAULT now()
-);
-
-ALTER TABLE deal_improvements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE deal_units ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Authenticated users can manage improvements" ON deal_improvements FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Authenticated users can manage units" ON deal_units FOR ALL USING (auth.role() = 'authenticated');
+-- All migrations from Sessions 4, 5C, 5D have been applied (April 4, 2026):
+--   ✅ investor_updates.photos column
+--   ✅ funds table + RLS
+--   ✅ investors: notification_email, notification_phone columns
+--   ✅ contacts: linked_deal_addresses, portal_email columns
+--   ✅ deal_improvements table + RLS
+--   ✅ deal_units table + RLS
 
 
 LARGE FUTURE ITEMS (Require significant development time)
