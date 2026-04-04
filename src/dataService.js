@@ -126,6 +126,8 @@ export async function getDeals(teamEmails) {
     insuranceCost: row.insurance_cost_annual != null ? String(row.insurance_cost_annual) : "",
     // Supabase ID (for editing by ID instead of address)
     _id: row.id,
+    // Metadata (e.g. MLS number reference)
+    metadata: row.metadata || {},
   }));
 }
 

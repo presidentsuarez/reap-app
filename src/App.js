@@ -1436,15 +1436,19 @@ function DealCard({ deal, onSelect }) {
   );
 }
 
-function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal, isMobile, initialView, onViewChange }) {
-  const [search, setSearch] = useState("");
+function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal, isMobile, initialView, onViewChange, initialFilters, onFilterChange }) {
+  const [search, setSearch] = useState(initialFilters?.search || "");
   const [hoveredRow, setHoveredRow] = useState(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState(null);
-  const [sortCol, setSortCol] = useState(null);
-  const [sortDir, setSortDir] = useState("desc");
+  const [searchOpen, setSearchOpen] = useState(!!initialFilters?.search);
+  const [statusFilter, setStatusFilter] = useState(initialFilters?.statusFilter || null);
+  const [sortCol, setSortCol] = useState(initialFilters?.sortCol || null);
+  const [sortDir, setSortDir] = useState(initialFilters?.sortDir || "desc");
   const [pipelineView, setPipelineViewState] = useState(initialView || "cards"); // "cards", "table", or "map"
   const setPipelineView = (v) => { setPipelineViewState(v); if (onViewChange) onViewChange(v); };
+  // Report filter changes to parent
+  useEffect(() => {
+    if (onFilterChange) onFilterChange({ statusFilter, sortCol, sortDir, search });
+  }, [statusFilter, sortCol, sortDir, search]);
   const [mapReady, setMapReady] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
   const [geocodingProgress, setGeocodingProgress] = useState("");
@@ -1817,7 +1821,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                   <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
-                  {["User", "Date", "Status", "Address", "Type", "Our Offer", "$/sqft", "Sq Ft", "Source"].map(h => (
+                  {["User", "Date", "Status", "Address", "Type", "Our Offer", "$/sqft", "Sq Ft", "Units", "Source"].map(h => (
                     <th key={h} onClick={() => handleSort(h)} style={{
                       padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
                       fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
@@ -1837,7 +1841,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={10} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
+                  <tr><td colSpan={11} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
                 ) : filtered.map((deal, i) => (
                   <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
                     <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
@@ -1858,6 +1862,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                     <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.offer)}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.netSqft ? `$${deal.netSqft}` : "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace", textAlign: "center" }}>{deal.units || "—"}</td>
                     <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{deal.source || "Manual"}</span></td>
                   </tr>
                 ))}
@@ -2796,7 +2801,8 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [activeTab, setActiveTab] = useState("overview");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
-  const tabs = ["overview", "cash flow", "financing", "improvements", "units", "offerings", "ai underwriting", "ai summary", "notes", "tasks", "documents", "shared deal", "activity", "investor updates"];
+  const hasMlsSource = deal?.source === "MLS Feed" || deal?.metadata?.mls_number;
+  const tabs = ["overview", "cash flow", "financing", "improvements", "units", ...(hasMlsSource ? ["mls"] : []), "offerings", "ai underwriting", "ai summary", "notes", "tasks", "documents", "shared deal", "activity", "investor updates"];
 
   // Resolve pending deal tab from URL
   useEffect(() => {
@@ -3597,18 +3603,37 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
 
         {activeTab === "overview" && (
           <>
+            {/* Property Details */}
             <section style={{ marginBottom: 32 }}>
               <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                Deal Overview <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                Property Details <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
               </h2>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12 }}>
-                <MetricCard label="Property Type" value={deal.type} />
+                <MetricCard label="Property Type" value={deal.type || "—"} />
+                <MetricCard label="Class" value={deal.dealClass || "—"} />
                 <MetricCard label="Square Footage" value={fmtNum(deal.sqft)} sub="sq ft" />
-                <MetricCard label="Our Offer" value={fmt(deal.offer)} sub={deal.netSqft ? `$${deal.netSqft} / sqft` : ""} />
                 <MetricCard label="Units" value={deal.units || "—"} />
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
+                <MetricCard label="Asking Price" value={fmt(deal.askingPrice)} />
+                <MetricCard label="Our Offer" value={fmt(deal.offer)} sub={deal.netSqft ? `$${deal.netSqft} / sqft` : ""} />
+                <MetricCard label="Year Built" value={deal.yearBuilt || "—"} />
+                <MetricCard label="Lot Size" value={deal.lotAcres ? `${deal.lotAcres} acres` : "—"} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
+                <MetricCard label="City" value={deal.city || "—"} />
+                <MetricCard label="State" value={deal.state || "—"} />
+                <MetricCard label="Zip Code" value={deal.zip || "—"} />
+                <MetricCard label="Source" value={deal.source || "Manual"} />
+              </div>
+              {deal.dealName && deal.dealName !== deal.address && (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
+                  <MetricCard label="Deal Name" value={deal.dealName} />
+                </div>
+              )}
             </section>
 
+            {/* Deal Overview (Investment Metrics) */}
             <section style={{ marginBottom: 32 }}>
               <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
                 Investment Overview <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
@@ -4223,6 +4248,70 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                     Rent Upside: {fmt(totalMarketRent - totalCurrentRent)}/mo ({Math.round(((totalMarketRent - totalCurrentRent) / totalCurrentRent) * 100)}% increase potential)
                   </div>
                   <div style={{ fontSize: 12, color: "#64748b" }}>Current total: {fmt(totalCurrentRent)}/mo · Market total: {fmt(totalMarketRent)}/mo</div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── MLS REFERENCE TAB ── */}
+        {activeTab === "mls" && (() => {
+          const mlsNum = deal.metadata?.mls_number || "";
+          return (
+            <div>
+              <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 18px", display: "flex", alignItems: "center", gap: 8 }}>
+                MLS Source Reference <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              </h2>
+              {mlsNum ? (
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
+                  {/* Card header */}
+                  <div style={{ background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", padding: "18px 24px", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                      </div>
+                      <div>
+                        <p style={{ fontSize: 10, color: "#16a34a", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>MLS Listing</p>
+                        <p style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0", letterSpacing: "0.02em" }}>#{mlsNum}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => {
+                      if (updateHash) updateHash("mls/" + encodeURIComponent(mlsNum));
+                      window.location.hash = "mls/" + encodeURIComponent(mlsNum);
+                    }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid #16a34a33", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, color: "#16a34a", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+                      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      View in MLS Feed
+                    </button>
+                  </div>
+                  {/* Card body — key MLS fields */}
+                  <div style={{ padding: "20px 24px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 16 }}>
+                      <div><p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>Address</p><p style={{ fontSize: 13, color: "#0f172a", fontWeight: 600, margin: 0, fontFamily: "'DM Sans', sans-serif" }}>{deal.address || "—"}</p></div>
+                      <div><p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>City / State</p><p style={{ fontSize: 13, color: "#0f172a", fontWeight: 600, margin: 0, fontFamily: "'DM Sans', sans-serif" }}>{[deal.city, deal.state].filter(Boolean).join(", ") || "—"}</p></div>
+                      <div><p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>Property Type</p><p style={{ fontSize: 13, color: "#0f172a", fontWeight: 600, margin: 0, fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</p></div>
+                      <div><p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>Asking Price</p><p style={{ fontSize: 13, color: "#0f172a", fontWeight: 600, margin: 0, fontFamily: "'DM Mono', monospace" }}>{fmt(deal.askingPrice)}</p></div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 16, marginTop: 16 }}>
+                      <div><p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>Square Feet</p><p style={{ fontSize: 13, color: "#0f172a", fontWeight: 600, margin: 0, fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft) || "—"}</p></div>
+                      <div><p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>Units</p><p style={{ fontSize: 13, color: "#0f172a", fontWeight: 600, margin: 0, fontFamily: "'DM Mono', monospace" }}>{deal.units || "—"}</p></div>
+                      <div><p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>Year Built</p><p style={{ fontSize: 13, color: "#0f172a", fontWeight: 600, margin: 0, fontFamily: "'DM Mono', monospace" }}>{deal.yearBuilt || "—"}</p></div>
+                      <div><p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>Lot Size</p><p style={{ fontSize: 13, color: "#0f172a", fontWeight: 600, margin: 0, fontFamily: "'DM Mono', monospace" }}>{deal.lotAcres ? `${deal.lotAcres} acres` : "—"}</p></div>
+                    </div>
+                    <div style={{ marginTop: 20, padding: "14px 16px", background: "#f8fafc", borderRadius: 10, border: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 10 }}>
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                      <p style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>
+                        This deal was imported from the <strong style={{ color: "#16a34a" }}>MLS Feed</strong> (MLS# {mlsNum}). Click "View in MLS Feed" to see the full original listing data.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "48px 20px", textAlign: "center" }}>
+                  <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(100,116,139,0.06)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  </div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "#475569", fontFamily: "'DM Sans', sans-serif", margin: "0 0 6px" }}>MLS Source</p>
+                  <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>This deal was imported from the MLS Feed but no MLS number was recorded.</p>
                 </div>
               )}
             </div>
@@ -9678,21 +9767,25 @@ function MLSStatusBadge({ status }) {
   );
 }
 
-function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, onSelectListing }) {
+function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, onSelectListing, initialFilters, onFilterChange }) {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState(initialFilters?.search || "");
+  const [searchOpen, setSearchOpen] = useState(!!initialFilters?.search);
   const [hoveredRow, setHoveredRow] = useState(null);
   const [addingId, setAddingId] = useState(null);
-  const [activeTab, setActiveTab] = useState("table");
-  const [statusFilter, setStatusFilter] = useState(null);
-  const [reviewFilter, setReviewFilter] = useState(null);
-  const [styleFilter, setStyleFilter] = useState(null);
-  const [propTypeFilter, setPropTypeFilter] = useState(null);
-  const [sortCol, setSortCol] = useState(null);
-  const [sortDir, setSortDir] = useState("desc");
+  const [activeTab, setActiveTab] = useState(initialFilters?.activeTab || "table");
+  const [statusFilter, setStatusFilter] = useState(initialFilters?.statusFilter || null);
+  const [reviewFilter, setReviewFilter] = useState(initialFilters?.reviewFilter || null);
+  const [styleFilter, setStyleFilter] = useState(initialFilters?.styleFilter || null);
+  const [propTypeFilter, setPropTypeFilter] = useState(initialFilters?.propTypeFilter || null);
+  const [sortCol, setSortCol] = useState(initialFilters?.sortCol || null);
+  const [sortDir, setSortDir] = useState(initialFilters?.sortDir || "desc");
+  // Report filter changes to parent
+  useEffect(() => {
+    if (onFilterChange) onFilterChange({ statusFilter, reviewFilter, styleFilter, propTypeFilter, sortCol, sortDir, search, activeTab });
+  }, [statusFilter, reviewFilter, styleFilter, propTypeFilter, sortCol, sortDir, search, activeTab]);
   const searchRef = useRef(null);
 
   useEffect(() => { if (searchOpen && searchRef.current) searchRef.current.focus(); }, [searchOpen]);
@@ -9775,6 +9868,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
         year_built: dealData["Year Built"] || null,
         deal_status: "New",
         source: "MLS Feed",
+        metadata: listing.mlsNumber ? { mls_number: listing.mlsNumber } : {},
       });
       if (insertErr) throw new Error(insertErr.message);
       if (onAddToPipeline) onAddToPipeline();
@@ -10219,6 +10313,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                   <th onClick={() => handleSort("beds")} style={{...thStyle, textAlign: "center"}}>Beds<SortArrow col="beds"/></th>
                   <th onClick={() => handleSort("baths")} style={{...thStyle, textAlign: "center"}}>Baths<SortArrow col="baths"/></th>
                   <th onClick={() => handleSort("heatedArea")} style={{...thStyle, textAlign: "right"}}>SqFt<SortArrow col="heatedArea"/></th>
+                  <th onClick={() => handleSort("units")} style={{...thStyle, textAlign: "center"}}>Units<SortArrow col="units"/></th>
                   <th onClick={() => handleSort("ppsf")} style={{...thStyle, textAlign: "right"}}>$/SF<SortArrow col="ppsf"/></th>
                   <th onClick={() => handleSort("yearBuilt")} style={{...thStyle, textAlign: "center"}}>Built<SortArrow col="yearBuilt"/></th>
                   <th onClick={() => handleSort("cdom")} style={{...thStyle, textAlign: "center"}}>DOM<SortArrow col="cdom"/></th>
@@ -10246,6 +10341,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.beds || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.baths || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "right", fontFamily: "'DM Mono', monospace" }}>{listing.heatedArea ? fmtNum(listing.heatedArea) : "—"}</td>
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.units || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "right", fontFamily: "'DM Mono', monospace" }}>{listing.ppsf || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.yearBuilt || "—"}</td>
                     <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{listing.cdom || listing.adom || "—"}</td>
@@ -10261,7 +10357,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                     </td>
                   </tr>
                 ))}
-                {sorted.length === 0 && <tr><td colSpan={13} style={{ padding: "40px 14px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match</td></tr>}
+                {sorted.length === 0 && <tr><td colSpan={14} style={{ padding: "40px 14px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No listings match</td></tr>}
               </tbody>
             </table>
           </div>
@@ -14568,6 +14664,8 @@ export default function ReapApp() {
   const [pendingMLSSlug, setPendingMLSSlug] = useState(null);
   const [pendingPipelineView, setPendingPipelineView] = useState(null);
   const [activePipelineView, setActivePipelineView] = useState("cards");
+  const [pipelineFilterState, setPipelineFilterState] = useState({});
+  const [mlsFilterState, setMlsFilterState] = useState({});
   const [pendingInvestorId, setPendingInvestorId] = useState(null);
   const [pendingPortfolioId, setPendingPortfolioId] = useState(null);
 
@@ -14636,13 +14734,37 @@ export default function ReapApp() {
       setActiveNav("marketplace");
       if (["intelligence","listings","watchlist"].includes(sub)) setMarketplaceTab(sub);
     } else if (hash.startsWith("realestate/")) {
-      const parts = hash.replace("realestate/", "").split("/");
+      const [pathPart, queryPart] = hash.replace("realestate/", "").split("?");
+      const parts = pathPart.split("/");
       const tab = parts[0];
+      const qp = new URLSearchParams(queryPart || "");
       if (["dashboard","pipeline","portfolios","mls","offerings"].includes(tab)) {
         setActiveNav("realestate"); setRealEstateTab(tab);
         if (parts[1] === "map") setPendingPipelineView("map");
         else if (parts[1] === "table") setPendingPipelineView("table");
         else if (parts[1] === "cards") setPendingPipelineView("cards");
+        // Restore pipeline filters from hash params
+        if (tab === "pipeline" && queryPart) {
+          const pf = {};
+          if (qp.get("status")) pf.statusFilter = qp.get("status");
+          if (qp.get("sort")) pf.sortCol = qp.get("sort");
+          if (qp.get("dir")) pf.sortDir = qp.get("dir"); else pf.sortDir = "desc";
+          if (qp.get("q")) pf.search = qp.get("q");
+          setPipelineFilterState(pf);
+        }
+        // Restore MLS filters from hash params
+        if (tab === "mls" && queryPart) {
+          const mf = {};
+          if (qp.get("status")) mf.statusFilter = qp.get("status");
+          if (qp.get("review")) mf.reviewFilter = qp.get("review");
+          if (qp.get("style")) mf.styleFilter = qp.get("style");
+          if (qp.get("propType")) mf.propTypeFilter = qp.get("propType");
+          if (qp.get("sort")) mf.sortCol = qp.get("sort");
+          if (qp.get("dir")) mf.sortDir = qp.get("dir"); else mf.sortDir = "desc";
+          if (qp.get("q")) mf.search = qp.get("q");
+          if (qp.get("tab")) mf.activeTab = qp.get("tab");
+          setMlsFilterState(mf);
+        }
       }
     } else if (["command","realestate","contacts","marketplace","mls"].includes(hash)) {
       setActiveNav(hash);
@@ -14739,13 +14861,35 @@ export default function ReapApp() {
         setActiveNav("marketplace"); setShowProfile(false);
         if (["intelligence","listings","watchlist"].includes(sub)) setMarketplaceTab(sub);
       } else if (hash.startsWith("realestate/")) {
-        const parts = hash.replace("realestate/", "").split("/");
+        const [pathPart2, queryPart2] = hash.replace("realestate/", "").split("?");
+        const parts = pathPart2.split("/");
         const tab = parts[0];
+        const qp2 = new URLSearchParams(queryPart2 || "");
         if (["dashboard","pipeline","portfolios","mls","offerings"].includes(tab)) {
           setActiveNav("realestate"); setRealEstateTab(tab); setShowProfile(false);
           setSelectedDeal(null); setSelectedMLSListing(null); if (isMobile) setDealTransition(false);
           if (tab === "pipeline" && parts[1]) {
             if (["cards","table","map"].includes(parts[1])) { setPendingPipelineView(parts[1]); setActivePipelineView(parts[1]); }
+          }
+          if (tab === "pipeline" && queryPart2) {
+            const pf = {};
+            if (qp2.get("status")) pf.statusFilter = qp2.get("status");
+            if (qp2.get("sort")) pf.sortCol = qp2.get("sort");
+            if (qp2.get("dir")) pf.sortDir = qp2.get("dir"); else pf.sortDir = "desc";
+            if (qp2.get("q")) pf.search = qp2.get("q");
+            setPipelineFilterState(pf);
+          }
+          if (tab === "mls" && queryPart2) {
+            const mf = {};
+            if (qp2.get("status")) mf.statusFilter = qp2.get("status");
+            if (qp2.get("review")) mf.reviewFilter = qp2.get("review");
+            if (qp2.get("style")) mf.styleFilter = qp2.get("style");
+            if (qp2.get("propType")) mf.propTypeFilter = qp2.get("propType");
+            if (qp2.get("sort")) mf.sortCol = qp2.get("sort");
+            if (qp2.get("dir")) mf.sortDir = qp2.get("dir"); else mf.sortDir = "desc";
+            if (qp2.get("q")) mf.search = qp2.get("q");
+            if (qp2.get("tab")) mf.activeTab = qp2.get("tab");
+            setMlsFilterState(mf);
           }
         }
       } else if (["command","realestate","contacts","marketplace","mls"].includes(hash)) {
@@ -15484,7 +15628,14 @@ export default function ReapApp() {
     } else {
       setSelectedDeal(null);
     }
-    updateHash("pipeline");
+    const view = activePipelineView || "cards";
+    const params = new URLSearchParams();
+    if (pipelineFilterState.statusFilter) params.set("status", pipelineFilterState.statusFilter);
+    if (pipelineFilterState.sortCol) params.set("sort", pipelineFilterState.sortCol);
+    if (pipelineFilterState.sortDir && pipelineFilterState.sortDir !== "desc") params.set("dir", pipelineFilterState.sortDir);
+    if (pipelineFilterState.search) params.set("q", pipelineFilterState.search);
+    const paramStr = params.toString();
+    updateHash("realestate/pipeline/" + view + (paramStr ? "?" + paramStr : ""));
   };
 
   const handleSelectMLSListing = (listing) => {
@@ -15505,7 +15656,17 @@ export default function ReapApp() {
     } else {
       setSelectedMLSListing(null);
     }
-    updateHash("realestate/mls");
+    const params = new URLSearchParams();
+    if (mlsFilterState.statusFilter) params.set("status", mlsFilterState.statusFilter);
+    if (mlsFilterState.reviewFilter) params.set("review", mlsFilterState.reviewFilter);
+    if (mlsFilterState.styleFilter) params.set("style", mlsFilterState.styleFilter);
+    if (mlsFilterState.propTypeFilter) params.set("propType", mlsFilterState.propTypeFilter);
+    if (mlsFilterState.sortCol) params.set("sort", mlsFilterState.sortCol);
+    if (mlsFilterState.sortDir && mlsFilterState.sortDir !== "desc") params.set("dir", mlsFilterState.sortDir);
+    if (mlsFilterState.search) params.set("q", mlsFilterState.search);
+    if (mlsFilterState.activeTab && mlsFilterState.activeTab !== "table") params.set("tab", mlsFilterState.activeTab);
+    const paramStr = params.toString();
+    updateHash("realestate/mls" + (paramStr ? "?" + paramStr : ""));
   };
 
   const handleSaveBuyer = async (form) => {
@@ -15775,10 +15936,10 @@ export default function ReapApp() {
                       : realEstateTab === "mls"
                       ? (mlsTab === "upload"
                         ? <FileUploaderView session={session} isMobile={true} onProcessed={() => setMlsTab("feed")} />
-                        : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} />)
+                        : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} initialFilters={mlsFilterState} onFilterChange={setMlsFilterState} />)
                       : realEstateTab === "offerings"
                       ? <OfferingsView deals={deals} isMobile={true} session={session} userEmail={userEmail} updateHash={updateHash} />
-                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} />
+                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} initialFilters={pipelineFilterState} onFilterChange={setPipelineFilterState} />
                     }
                   </div>
                 </div>
@@ -15807,10 +15968,10 @@ export default function ReapApp() {
                       : realEstateTab === "mls"
                       ? (mlsTab === "upload"
                         ? <FileUploaderView session={session} isMobile={false} onProcessed={() => setMlsTab("feed")} />
-                        : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} />)
+                        : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} initialFilters={mlsFilterState} onFilterChange={setMlsFilterState} />)
                       : realEstateTab === "offerings"
                       ? <OfferingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} />
-                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} />
+                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} initialFilters={pipelineFilterState} onFilterChange={setPipelineFilterState} />
                     }
                   </div>
                 </div>
