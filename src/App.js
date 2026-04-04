@@ -15279,6 +15279,8 @@ export default function ReapApp() {
       setPendingPortfolioId(id);
     } else if (hash === "profile") {
       setShowProfile(true);
+    } else if (hash === "contacts/contacts") {
+      setActiveNav("contacts"); setContactsTab("contacts");
     } else if (hash === "contacts/dashboard") {
       setActiveNav("contacts"); setContactsTab("dashboard");
     } else if (hash === "contacts/investors") {
@@ -15413,6 +15415,8 @@ export default function ReapApp() {
         setPendingPortfolioId(decodeURIComponent(hash.replace("portfolio/", "")));
       } else if (hash === "profile") {
         setShowProfile(true);
+      } else if (hash === "contacts/contacts") {
+        setActiveNav("contacts"); setContactsTab("contacts"); setShowProfile(false);
       } else if (hash === "contacts/dashboard") {
         setActiveNav("contacts"); setContactsTab("dashboard"); setShowProfile(false);
       } else if (hash === "contacts/investors") {
@@ -16488,7 +16492,7 @@ export default function ReapApp() {
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "wholesalers", label: "Wholesalers" }, { id: "investorContacts", label: "Investors" }, { id: "investors", label: "Company Library" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
+                <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "wholesalers", label: "Wholesalers" }, { id: "investorContacts", label: "Investors" }, { id: "investors", label: "Company Library" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash("contacts/" + tab); }} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {contactsTab === "import"
                     ? <ContactImporterView session={session} isMobile={true} onImported={() => setContactsTab("dashboard")} />
@@ -16574,7 +16578,7 @@ export default function ReapApp() {
                 </div>
               : activeNav === "contacts"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "wholesalers", label: "Wholesalers" }, { id: "investorContacts", label: "Investors" }, { id: "investors", label: "Company Library" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash(tab === "contacts" ? "contacts" : "contacts/" + tab); }} title="Contacts" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "wholesalers", label: "Wholesalers" }, { id: "investorContacts", label: "Investors" }, { id: "investors", label: "Company Library" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash("contacts/" + tab); }} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {contactsTab === "import"
                       ? <ContactImporterView session={session} isMobile={false} onImported={() => setContactsTab("dashboard")} />
