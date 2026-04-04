@@ -1414,23 +1414,40 @@ function DealCard({ deal, onSelect }) {
           <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.address || "—"}</p>
           <p style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>{[deal.city, deal.state, deal.zip].filter(Boolean).join(", ") || (deal.type || "—")} · {fmtDate(deal.date)}</p>
         </div>
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <div>
-            <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Offer</span>
-            <p style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{fmt(deal.offer)}</p>
-          </div>
-          <div>
-            <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>$/sqft</span>
-            <p style={{ fontSize: 14, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{deal.netSqft ? "$" + deal.netSqft : "—"}</p>
-          </div>
-          <div>
-            <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Sq Ft</span>
-            <p style={{ fontSize: 14, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{fmtNum(deal.sqft)}</p>
-          </div>
-          <div style={{ marginLeft: "auto" }}>
-            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2}><path d="M9 18l6-6-6-6"/></svg>
-          </div>
-        </div>
+        {(() => {
+          const askNum = parseFloat(String(deal.askingPrice || "0").replace(/[$,]/g, "")) || 0;
+          const sqftNum = parseFloat(String(deal.sqft || "0").replace(/[,]/g, "")) || 0;
+          const unitsNum = parseFloat(String(deal.units || "0").replace(/[,]/g, "")) || 0;
+          const askPerSqft = askNum > 0 && sqftNum > 0 ? Math.round(askNum / sqftNum) : 0;
+          const pricePerUnit = askNum > 0 && unitsNum > 0 ? Math.round(askNum / unitsNum) : 0;
+          return (
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Asking</span>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{fmt(deal.askingPrice)}</p>
+              </div>
+              <div>
+                <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>$/sqft</span>
+                <p style={{ fontSize: 14, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{askPerSqft > 0 ? "$" + askPerSqft.toLocaleString() : "—"}</p>
+              </div>
+              <div>
+                <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Sq Ft</span>
+                <p style={{ fontSize: 14, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{fmtNum(deal.sqft)}</p>
+              </div>
+              <div>
+                <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Units</span>
+                <p style={{ fontSize: 14, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{deal.units || "—"}</p>
+              </div>
+              <div>
+                <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>$/Unit</span>
+                <p style={{ fontSize: 14, fontWeight: 500, color: "#64748b", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{pricePerUnit > 0 ? "$" + pricePerUnit.toLocaleString() : "—"}</p>
+              </div>
+              <div style={{ marginLeft: "auto" }}>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2}><path d="M9 18l6-6-6-6"/></svg>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -1661,10 +1678,14 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
     "Date":      { key: d => new Date(d.date || 0).getTime(), type: "number" },
     "Status":    { key: d => (d.status || "").toLowerCase(), type: "string" },
     "Address":   { key: d => (d.address || "").toLowerCase(), type: "string" },
+    "City":      { key: d => (d.city || "").toLowerCase(), type: "string" },
     "Type":      { key: d => (d.type || "").toLowerCase(), type: "string" },
+    "Asking Price": { key: d => parseFloat(String(d.askingPrice || "0").replace(/[$,]/g, "")) || 0, type: "number" },
     "Our Offer": { key: d => parseFloat(String(d.offer || "0").replace(/[$,]/g, "")) || 0, type: "number" },
     "$/sqft":    { key: d => parseFloat(String(d.netSqft || "0").replace(/[$,]/g, "")) || 0, type: "number" },
     "Sq Ft":     { key: d => parseFloat(String(d.sqft || "0").replace(/[$,]/g, "")) || 0, type: "number" },
+    "Units":     { key: d => parseFloat(String(d.units || "0").replace(/[,]/g, "")) || 0, type: "number" },
+    "$/Unit":    { key: d => { const a = parseFloat(String(d.askingPrice || "0").replace(/[$,]/g, "")) || 0; const u = parseFloat(String(d.units || "0").replace(/[,]/g, "")) || 0; return a > 0 && u > 0 ? a / u : 0; }, type: "number" },
     "Source":    { key: d => (d.source || "Manual").toLowerCase(), type: "string" },
   };
 
@@ -1821,7 +1842,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                   <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
-                  {["User", "Date", "Status", "Address", "Type", "Our Offer", "$/sqft", "Sq Ft", "Units", "Source"].map(h => (
+                  {["User", "Date", "Status", "Address", "City", "Type", "Asking Price", "Our Offer", "$/sqft", "Sq Ft", "Units", "$/Unit", "Source"].map(h => (
                     <th key={h} onClick={() => handleSort(h)} style={{
                       padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
                       fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
@@ -1841,7 +1862,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={11} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
+                  <tr><td colSpan={14} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
                 ) : filtered.map((deal, i) => (
                   <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
                     <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
@@ -1858,11 +1879,14 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtDate(deal.date)}</td>
                     <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
                     <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.city || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.askingPrice)}</td>
                     <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.offer)}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.netSqft ? `$${deal.netSqft}` : "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace", textAlign: "center" }}>{deal.units || "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{(() => { const a = parseFloat(String(deal.askingPrice || "0").replace(/[$,]/g, "")) || 0; const u = parseFloat(String(deal.units || "0").replace(/[,]/g, "")) || 0; return a > 0 && u > 0 ? "$" + Math.round(a / u).toLocaleString() : "—"; })()}</td>
                     <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{deal.source || "Manual"}</span></td>
                   </tr>
                 ))}
