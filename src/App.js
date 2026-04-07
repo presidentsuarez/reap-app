@@ -1470,7 +1470,9 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   const [statusFilter, setStatusFilter] = useState(initialFilters?.statusFilter || null);
   const [sortCol, setSortCol] = useState(initialFilters?.sortCol || null);
   const [sortDir, setSortDir] = useState(initialFilters?.sortDir || "desc");
-  const [memberFilter, setMemberFilter] = useState(initialFilters?.memberFilter || null);
+  const [ownerFilter, setOwnerFilter] = useState(initialFilters?.ownerFilter || null);
+  const [managerFilter, setManagerFilter] = useState(initialFilters?.managerFilter || null);
+  const [assigneeFilter, setAssigneeFilter] = useState(initialFilters?.assigneeFilter || null);
   const [pipelineView, setPipelineViewState] = useState(() => {
     try { const saved = window.localStorage?.getItem("reap_pipeline_view"); if (saved && ["table","cards","map"].includes(saved)) return saved; } catch(e) {}
     return initialView || "table";
@@ -1478,8 +1480,8 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   const setPipelineView = (v) => { setPipelineViewState(v); try { window.localStorage?.setItem("reap_pipeline_view", v); } catch(e) {} if (onViewChange) onViewChange(v); };
   // Report filter changes to parent
   useEffect(() => {
-    if (onFilterChange) onFilterChange({ statusFilter, sortCol, sortDir, search, memberFilter });
-  }, [statusFilter, sortCol, sortDir, search, memberFilter]);
+    if (onFilterChange) onFilterChange({ statusFilter, sortCol, sortDir, search, ownerFilter, managerFilter, assigneeFilter });
+  }, [statusFilter, sortCol, sortDir, search, ownerFilter, managerFilter, assigneeFilter]);
   const [editingAssigneeId, setEditingAssigneeId] = useState(null);
   const [assigneeInput, setAssigneeInput] = useState("");
   const handleAssigneeSave = async (deal, newAssignee) => {
@@ -1702,17 +1704,21 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
     }
   };
 
-  // Build unique team members list from deals (owners, managers, assignees)
-  const uniqueMembers = useMemo(() => {
-    const memberSet = new Map();
-    deals.forEach(d => {
-      [d.user, d.manager, d.assignee].forEach(email => {
-        if (email && !memberSet.has(email.toLowerCase())) {
-          memberSet.set(email.toLowerCase(), email);
-        }
-      });
-    });
-    return Array.from(memberSet.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  // Build unique lists per role from deals
+  const uniqueOwners = useMemo(() => {
+    const s = new Map();
+    deals.forEach(d => { if (d.user && !s.has(d.user.toLowerCase())) s.set(d.user.toLowerCase(), d.user); });
+    return Array.from(s.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  }, [deals]);
+  const uniqueManagers = useMemo(() => {
+    const s = new Map();
+    deals.forEach(d => { if (d.manager && !s.has(d.manager.toLowerCase())) s.set(d.manager.toLowerCase(), d.manager); });
+    return Array.from(s.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  }, [deals]);
+  const uniqueAssignees = useMemo(() => {
+    const s = new Map();
+    deals.forEach(d => { if (d.assignee && !s.has(d.assignee.toLowerCase())) s.set(d.assignee.toLowerCase(), d.assignee); });
+    return Array.from(s.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
   }, [deals]);
 
   const statusFilters = [
@@ -1737,14 +1743,11 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
     ? textFiltered.filter(statusFilters[statusFilter].match)
     : textFiltered;
 
-  // Team member filter (by assignee, owner, or manager)
-  const memberFiltered = memberFilter
-    ? statusFiltered.filter(d =>
-        (d.assignee || "").toLowerCase() === memberFilter.toLowerCase() ||
-        (d.user || "").toLowerCase() === memberFilter.toLowerCase() ||
-        (d.manager || "").toLowerCase() === memberFilter.toLowerCase()
-      )
-    : statusFiltered;
+  // Team member filters (owner, manager, assignee)
+  let roleFiltered = statusFiltered;
+  if (ownerFilter) roleFiltered = roleFiltered.filter(d => (d.user || "").toLowerCase() === ownerFilter.toLowerCase());
+  if (managerFilter) roleFiltered = roleFiltered.filter(d => (d.manager || "").toLowerCase() === managerFilter.toLowerCase());
+  if (assigneeFilter) roleFiltered = roleFiltered.filter(d => (d.assignee || "").toLowerCase() === assigneeFilter.toLowerCase());
 
   // Column sorting
   // Compute $/sqft and $/unit helpers
@@ -1798,7 +1801,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
     }
   };
 
-  const filtered = [...memberFiltered].sort((a, b) => {
+  const filtered = [...roleFiltered].sort((a, b) => {
     if (!sortCol || !sortConfig[sortCol]) return 0;
     const cfg = sortConfig[sortCol];
     const av = cfg.key(a);
@@ -1873,14 +1876,20 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search deals..." style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
             </div>
-            {/* Team member filter */}
-            <div style={{ position: "relative" }}>
-              <select value={memberFilter || ""} onChange={e => setMemberFilter(e.target.value || null)} style={{ appearance: "none", WebkitAppearance: "none", background: memberFilter ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (memberFilter ? "#16a34a" : "#e2e8f0"), borderRadius: 8, padding: "8px 30px 8px 12px", color: memberFilter ? "#16a34a" : "#64748b", fontSize: 13, fontWeight: memberFilter ? 600 : 400, fontFamily: "'DM Sans', sans-serif", outline: "none", cursor: "pointer", minWidth: 140, transition: "all 0.15s" }}>
-                <option value="">All Members</option>
-                {uniqueMembers.map(email => <option key={email} value={email}>{fmtUserName(email)}</option>)}
-              </select>
-              <svg style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={memberFilter ? "#16a34a" : "#94a3b8"} strokeWidth={2}><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
+            {/* Role filter dropdowns */}
+            {[
+              { label: "Owner", value: ownerFilter, set: setOwnerFilter, options: uniqueOwners },
+              { label: "Manager", value: managerFilter, set: setManagerFilter, options: uniqueManagers },
+              { label: "Assignee", value: assigneeFilter, set: setAssigneeFilter, options: uniqueAssignees },
+            ].map(f => (
+              <div key={f.label} style={{ position: "relative" }}>
+                <select value={f.value || ""} onChange={e => f.set(e.target.value || null)} style={{ appearance: "none", WebkitAppearance: "none", background: f.value ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (f.value ? "#16a34a" : "#e2e8f0"), borderRadius: 8, padding: "8px 28px 8px 10px", color: f.value ? "#16a34a" : "#64748b", fontSize: 12, fontWeight: f.value ? 600 : 400, fontFamily: "'DM Sans', sans-serif", outline: "none", cursor: "pointer", minWidth: 120, transition: "all 0.15s" }}>
+                  <option value="">All {f.label}s</option>
+                  {f.options.map(email => <option key={email} value={email}>{fmtUserName(email)}</option>)}
+                </select>
+                <svg style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} width={11} height={11} viewBox="0 0 24 24" fill="none" stroke={f.value ? "#16a34a" : "#94a3b8"} strokeWidth={2}><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+            ))}
             {/* Table / Cards / Map toggle */}
             <div style={{ display: "flex", borderRadius: 8, border: "1px solid #e2e8f0", overflow: "hidden" }}>
               <button onClick={() => setPipelineView("table")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", border: "none", background: pipelineView === "table" ? "#0f172a" : "#fff", color: pipelineView === "table" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
@@ -1928,21 +1937,26 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
         )}
       </div>
 
-      {/* Team member filter strip */}
-      {uniqueMembers.length > 0 && (
-        <div style={{ background: "#fff", borderBottom: "1px solid #f1f5f9", padding: isMobile ? "8px 16px" : "8px 32px", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>Team:</span>
-          <div style={{ position: "relative", flex: isMobile ? 1 : "none" }}>
-            <select value={memberFilter || ""} onChange={e => setMemberFilter(e.target.value || null)} style={{ appearance: "none", WebkitAppearance: "none", width: isMobile ? "100%" : "auto", background: memberFilter ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (memberFilter ? "#16a34a" : "#e2e8f0"), borderRadius: 8, padding: "7px 30px 7px 12px", color: memberFilter ? "#16a34a" : "#64748b", fontSize: 12, fontWeight: memberFilter ? 600 : 400, fontFamily: "'DM Sans', sans-serif", outline: "none", cursor: "pointer", minWidth: isMobile ? 0 : 150, transition: "all 0.15s" }}>
-              <option value="">All Members</option>
-              {uniqueMembers.map(email => <option key={email} value={email}>{fmtUserName(email)}</option>)}
-            </select>
-            <svg style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} width={11} height={11} viewBox="0 0 24 24" fill="none" stroke={memberFilter ? "#16a34a" : "#94a3b8"} strokeWidth={2}><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
-          {memberFilter && (
-            <button onClick={() => setMemberFilter(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#dc2626", fontFamily: "'DM Sans', sans-serif", padding: "4px 8px", whiteSpace: "nowrap" }}>Clear</button>
+      {/* Team role filter strip */}
+      {(uniqueOwners.length > 0 || uniqueManagers.length > 0 || uniqueAssignees.length > 0) && (
+        <div style={{ background: "#fff", borderBottom: "1px solid #f1f5f9", padding: isMobile ? "8px 12px" : "8px 32px", display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+          {[
+            { label: "Owner", value: ownerFilter, set: setOwnerFilter, options: uniqueOwners },
+            { label: "Manager", value: managerFilter, set: setManagerFilter, options: uniqueManagers },
+            { label: "Assignee", value: assigneeFilter, set: setAssigneeFilter, options: uniqueAssignees },
+          ].map(f => (
+            <div key={f.label} style={{ position: "relative", flex: isMobile ? "1 1 30%" : "none", minWidth: isMobile ? 0 : "auto" }}>
+              <select value={f.value || ""} onChange={e => f.set(e.target.value || null)} style={{ appearance: "none", WebkitAppearance: "none", width: isMobile ? "100%" : "auto", background: f.value ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (f.value ? "#16a34a" : "#e2e8f0"), borderRadius: 8, padding: "7px 26px 7px 10px", color: f.value ? "#16a34a" : "#64748b", fontSize: 11, fontWeight: f.value ? 600 : 400, fontFamily: "'DM Sans', sans-serif", outline: "none", cursor: "pointer", minWidth: isMobile ? 0 : 120, transition: "all 0.15s" }}>
+                <option value="">All {f.label}s</option>
+                {f.options.map(email => <option key={email} value={email}>{fmtUserName(email)}</option>)}
+              </select>
+              <svg style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} width={10} height={10} viewBox="0 0 24 24" fill="none" stroke={f.value ? "#16a34a" : "#94a3b8"} strokeWidth={2}><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          ))}
+          {(ownerFilter || managerFilter || assigneeFilter) && (
+            <button onClick={() => { setOwnerFilter(null); setManagerFilter(null); setAssigneeFilter(null); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#dc2626", fontFamily: "'DM Sans', sans-serif", padding: "4px 8px", whiteSpace: "nowrap" }}>Clear</button>
           )}
-          {memberFilter && <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{filtered.length} deal{filtered.length !== 1 ? "s" : ""}</span>}
+          {(ownerFilter || managerFilter || assigneeFilter) && <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600, fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>{filtered.length} deal{filtered.length !== 1 ? "s" : ""}</span>}
         </div>
       )}
 
