@@ -1463,7 +1463,7 @@ function DealCard({ deal, onSelect }) {
   );
 }
 
-function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal, isMobile, initialView, onViewChange, initialFilters, onFilterChange }) {
+function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal, isMobile, initialView, onViewChange, initialFilters, onFilterChange, orgMembers, allAppUsers }) {
   const [search, setSearch] = useState(initialFilters?.search || "");
   const [hoveredRow, setHoveredRow] = useState(null);
   const [searchOpen, setSearchOpen] = useState(!!initialFilters?.search);
@@ -1484,10 +1484,38 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   const handleAssigneeSave = async (deal, newAssignee) => {
     try {
       await supabase.from("deals").update({ assignee: newAssignee }).eq("id", deal._id);
-      // Update local deal in parent via re-fetch (deal list is from parent)
       if (onRetry) onRetry();
     } catch (e) { console.error("Assignee update failed:", e); }
     setEditingAssigneeId(null);
+  };
+  const [editingManagerId, setEditingManagerId] = useState(null);
+  const [managerInput, setManagerInput] = useState("");
+  const handleManagerSave = async (deal, newManager) => {
+    try {
+      await supabase.from("deals").update({ manager: newManager }).eq("id", deal._id);
+      if (onRetry) onRetry();
+    } catch (e) { console.error("Manager update failed:", e); }
+    setEditingManagerId(null);
+  };
+  const [editingOwnerId, setEditingOwnerId] = useState(null);
+  const [ownerInput, setOwnerInput] = useState("");
+  const handleOwnerSave = async (deal, newOwner) => {
+    try {
+      // Look up the new owner's org name to auto-populate organization
+      let orgName = "";
+      if (newOwner) {
+        const ownerProfile = (allAppUsers || []).find(u => u.email?.toLowerCase() === newOwner.toLowerCase());
+        if (ownerProfile?.org_id) {
+          const { data: orgRow } = await supabase.from("organizations").select("name").eq("id", ownerProfile.org_id).maybeSingle();
+          if (orgRow?.name) orgName = orgRow.name;
+        }
+      }
+      const updates = { user: newOwner };
+      if (orgName) updates.organization = orgName;
+      await supabase.from("deals").update(updates).eq("id", deal._id);
+      if (onRetry) onRetry();
+    } catch (e) { console.error("Owner update failed:", e); }
+    setEditingOwnerId(null);
   };
   const [mapReady, setMapReady] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
@@ -1696,23 +1724,46 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
     : textFiltered;
 
   // Column sorting
+  // Compute $/sqft and $/unit helpers
+  const calcPPSF = (d) => { const a = parseFloat(String(d.askingPrice || "0").replace(/[$,]/g, "")) || 0; const s = parseFloat(String(d.sqft || "0").replace(/[$,]/g, "")) || 0; return a > 0 && s > 0 ? Math.round(a / s) : 0; };
+  const calcPPU = (d) => { const a = parseFloat(String(d.askingPrice || "0").replace(/[$,]/g, "")) || 0; const u = parseFloat(String(d.units || "0").replace(/[,]/g, "")) || 0; return a > 0 && u > 0 ? Math.round(a / u) : 0; };
+  // Compute REAP Score if missing
+  const calcReapScore = (d) => {
+    const existing = parseFloat(String(d.reapScore || "0").replace(/[$,]/g, ""));
+    if (!isNaN(existing) && existing > 0) return Math.round(existing);
+    let score = 50;
+    const ask = parseFloat(String(d.askingPrice || "0").replace(/[$,]/g, "")) || 0;
+    const sf = parseFloat(String(d.sqft || "0").replace(/[$,]/g, "")) || 0;
+    const units = parseFloat(String(d.units || "0").replace(/[,]/g, "")) || 0;
+    if (ask > 0) { if (ask <= 200000) score += 12; else if (ask <= 500000) score += 8; else if (ask <= 1000000) score += 4; else score -= 4; }
+    if (units > 1) score += Math.min(units * 3, 15);
+    if (ask > 0 && sf > 0) { const ppsf = ask / sf; if (ppsf <= 100) score += 10; else if (ppsf <= 150) score += 5; else if (ppsf >= 300) score -= 5; }
+    if (ask > 0 && units > 0) { const ppu = ask / units; if (ppu <= 100000) score += 10; else if (ppu <= 150000) score += 5; }
+    const pt = (d.type || "").toLowerCase();
+    if (pt.includes("multi") || pt.includes("duplex") || pt.includes("triplex") || pt.includes("quadruplex") || pt.includes("apartment")) score += 10;
+    else if (pt.includes("single") || pt.includes("residential")) score += 2;
+    const capRate = parseFloat(String(d.capRate || "0").replace(/[%,]/g, "")) || 0;
+    if (capRate >= 8) score += 10; else if (capRate >= 6) score += 5;
+    return Math.max(0, Math.min(100, score));
+  };
+
   const sortConfig = {
-    "User":      { key: d => (d.user || "").toLowerCase(), type: "string" },
-    "Date":      { key: d => new Date(d.date || 0).getTime(), type: "number" },
+    "Date Added": { key: d => new Date(d.date || 0).getTime(), type: "number" },
+    "Owner":     { key: d => (d.user || "").toLowerCase(), type: "string" },
+    "Manager":   { key: d => (d.manager || "").toLowerCase(), type: "string" },
+    "Assignee":  { key: d => (d.assignee || "").toLowerCase(), type: "string" },
+    "Organization": { key: d => (d.organization || "").toLowerCase(), type: "string" },
     "Status":    { key: d => (d.status || "").toLowerCase(), type: "string" },
+    "REAP Score": { key: d => calcReapScore(d), type: "number" },
     "Address":   { key: d => (d.address || "").toLowerCase(), type: "string" },
     "City":      { key: d => (d.city || "").toLowerCase(), type: "string" },
     "Type":      { key: d => (d.type || "").toLowerCase(), type: "string" },
     "Asking Price": { key: d => parseFloat(String(d.askingPrice || "0").replace(/[$,]/g, "")) || 0, type: "number" },
-    "Our Offer": { key: d => parseFloat(String(d.offer || "0").replace(/[$,]/g, "")) || 0, type: "number" },
-    "$/sqft":    { key: d => parseFloat(String(d.netSqft || "0").replace(/[$,]/g, "")) || 0, type: "number" },
     "Sq Ft":     { key: d => parseFloat(String(d.sqft || "0").replace(/[$,]/g, "")) || 0, type: "number" },
+    "$/SF":      { key: d => calcPPSF(d), type: "number" },
     "Units":     { key: d => parseFloat(String(d.units || "0").replace(/[,]/g, "")) || 0, type: "number" },
-    "$/Unit":    { key: d => { const a = parseFloat(String(d.askingPrice || "0").replace(/[$,]/g, "")) || 0; const u = parseFloat(String(d.units || "0").replace(/[,]/g, "")) || 0; return a > 0 && u > 0 ? a / u : 0; }, type: "number" },
+    "$/Unit":    { key: d => calcPPU(d), type: "number" },
     "Source":    { key: d => (d.source || "Manual").toLowerCase(), type: "string" },
-    "Manager":   { key: d => (d.manager || "").toLowerCase(), type: "string" },
-    "Assignee":  { key: d => (d.assignee || "").toLowerCase(), type: "string" },
-    "Organization": { key: d => (d.organization || "").toLowerCase(), type: "string" },
   };
 
   const handleSort = (col) => {
@@ -1747,7 +1798,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   if (error) return <ErrorState message={error} onRetry={onRetry} />;
 
   return (
-    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "#f8fafc", minHeight: 0 }}>
       {/* Header */}
       {isMobile ? (
         <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "14px 16px" }}>
@@ -1848,7 +1899,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
 
       {/* Deals Cards / Table / Map */}
       {pipelineView === "cards" ? (
-        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px 24px" : "20px 24px 32px" }}>
+        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px 24px" : "20px 24px 32px", WebkitOverflowScrolling: "touch", minHeight: 0 }}>
           {filtered.length === 0 ? (
             <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0" }}>
               {statusFilter !== null ? "No " + statusFilters[statusFilter].label.toLowerCase() + " deals" : "No deals found"}
@@ -1862,13 +1913,29 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
           )}
         </div>
       ) : pipelineView === "table" ? (
-        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px 24px" : "20px 24px 32px" }}>
+        <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px 24px" : "20px 24px 32px", WebkitOverflowScrolling: "touch", minHeight: 0 }}>
           <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "auto", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: isMobile ? 900 : 0 }}>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                  {["Date Added"].map(h => (
+                    <th key={h} onClick={() => handleSort(h)} style={{
+                      padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
+                      fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
+                      whiteSpace: "nowrap", cursor: "pointer", userSelect: "none", transition: "color 0.15s",
+                    }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        {h}
+                        {sortCol === h && (
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} style={{ transition: "transform 0.2s", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }}>
+                            <polyline points="6 9 12 15 18 9"/>
+                          </svg>
+                        )}
+                      </span>
+                    </th>
+                  ))}
                   <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
-                  {["User", "Manager", "Assignee", "Organization", "Date", "Status", "Address", "City", "Type", "Asking Price", "Our Offer", "$/sqft", "Sq Ft", "Units", "$/Unit", "Source"].map(h => (
+                  {["Owner", "Manager", "Assignee", "Organization", "Status", "REAP Score", "Address", "City", "Type", "Asking Price", "Sq Ft", "$/SF", "Units", "$/Unit", "Source"].map(h => (
                     <th key={h} onClick={() => handleSort(h)} style={{
                       padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
                       fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
@@ -1891,7 +1958,10 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                   <tr><td colSpan={17} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
                 ) : filtered.map((deal, i) => (
                   <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
-                    <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
+                    {/* Date Added */}
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{fmtDate(deal.date)}</td>
+                    {/* Thumbnail */}
+                    <td style={{ padding: "8px 4px 8px 8px", width: 52 }}>
                       <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
                         {deal.address ? (
                           <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
@@ -1901,34 +1971,60 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                         </div>
                       </div>
                     </td>
-                    <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 12, color: "#475569", fontFamily: "'DM Sans', sans-serif", background: "#f1f5f9", padding: "3px 8px", borderRadius: 6, fontWeight: 500 }}>{fmtUserName(deal.user)}</span></td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.manager || "—"}</td>
+                    {/* Owner (dropdown – all app users) */}
+                    <td style={{ padding: "13px 10px" }} onClick={e => e.stopPropagation()}>
+                      {editingOwnerId === deal._id ? (
+                        <select autoFocus value={ownerInput} onChange={e => { setOwnerInput(e.target.value); handleOwnerSave(deal, e.target.value); }} onBlur={() => setEditingOwnerId(null)} style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #16a34a", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif", background: "#fff", cursor: "pointer", minWidth: 120 }}>
+                          <option value="">Unassigned</option>
+                          {(allAppUsers || []).map(u => <option key={u.email} value={u.email}>{u.full_name || u.email.split("@")[0]}</option>)}
+                        </select>
+                      ) : (
+                        <span onClick={e => { e.stopPropagation(); setEditingOwnerId(deal._id); setOwnerInput(deal.user || ""); }} style={{ fontSize: 12, color: deal.user ? "#475569" : "#cbd5e1", fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "3px 8px", borderRadius: 6, border: "1px dashed " + (deal.user ? "#64748b44" : "#e2e8f0"), background: deal.user ? "#f1f5f9" : "transparent", fontWeight: deal.user ? 500 : 400, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          {deal.user ? fmtUserName(deal.user) : "Assign"}
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                        </span>
+                      )}
+                    </td>
+                    {/* Manager (dropdown) */}
+                    <td style={{ padding: "13px 10px" }} onClick={e => e.stopPropagation()}>
+                      {editingManagerId === deal._id ? (
+                        <select autoFocus value={managerInput} onChange={e => { setManagerInput(e.target.value); handleManagerSave(deal, e.target.value); }} onBlur={() => setEditingManagerId(null)} style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #16a34a", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif", background: "#fff", cursor: "pointer", minWidth: 120 }}>
+                          <option value="">Unassigned</option>
+                          {(orgMembers || []).filter(m => m.status === "active").map(m => <option key={m.user_email} value={m.user_email}>{m.user_email.split("@")[0]}</option>)}
+                        </select>
+                      ) : (
+                        <span onClick={e => { e.stopPropagation(); setEditingManagerId(deal._id); setManagerInput(deal.manager || ""); }} style={{ fontSize: 12, color: deal.manager ? "#0f172a" : "#cbd5e1", fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "3px 8px", borderRadius: 6, border: "1px dashed " + (deal.manager ? "#7c3aed55" : "#e2e8f0"), background: deal.manager ? "#f5f3ff" : "transparent", fontWeight: deal.manager ? 600 : 400, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          {deal.manager ? fmtUserName(deal.manager) : "Assign"}
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                        </span>
+                      )}
+                    </td>
+                    {/* Assignee (dropdown) */}
                     <td style={{ padding: "13px 10px" }} onClick={e => e.stopPropagation()}>
                       {editingAssigneeId === deal._id ? (
-                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                          <input autoFocus value={assigneeInput} onChange={e => setAssigneeInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleAssigneeSave(deal, assigneeInput); if (e.key === "Escape") setEditingAssigneeId(null); }} style={{ width: 100, padding: "4px 8px", fontSize: 12, border: "1px solid #16a34a", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif" }} />
-                          <button onClick={() => handleAssigneeSave(deal, assigneeInput)} style={{ padding: "3px 8px", fontSize: 10, fontWeight: 700, background: "#16a34a", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer" }}>Save</button>
-                          <button onClick={() => setEditingAssigneeId(null)} style={{ padding: "3px 8px", fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 5, cursor: "pointer" }}>X</button>
-                        </div>
+                        <select autoFocus value={assigneeInput} onChange={e => { setAssigneeInput(e.target.value); handleAssigneeSave(deal, e.target.value); }} onBlur={() => setEditingAssigneeId(null)} style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #16a34a", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif", background: "#fff", cursor: "pointer", minWidth: 120 }}>
+                          <option value="">Unassigned</option>
+                          {(orgMembers || []).filter(m => m.status === "active").map(m => <option key={m.user_email} value={m.user_email}>{m.user_email.split("@")[0]}</option>)}
+                        </select>
                       ) : (
                         <span onClick={e => { e.stopPropagation(); setEditingAssigneeId(deal._id); setAssigneeInput(deal.assignee || ""); }} style={{ fontSize: 12, color: deal.assignee ? "#0f172a" : "#cbd5e1", fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "3px 8px", borderRadius: 6, border: "1px dashed " + (deal.assignee ? "#16a34a55" : "#e2e8f0"), background: deal.assignee ? "#f0fdf4" : "transparent", fontWeight: deal.assignee ? 600 : 400, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                          {deal.assignee || "Assign"}
-                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          {deal.assignee ? fmtUserName(deal.assignee) : "Assign"}
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
                         </span>
                       )}
                     </td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.organization || "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtDate(deal.date)}</td>
                     <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
+                    {/* REAP Score (always computed) */}
+                    <td style={{ padding: "13px 16px", textAlign: "center" }}>{(() => { const s = calcReapScore(deal); return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: s >= 70 ? "#f0fdf4" : s >= 40 ? "#fffbeb" : "#fef2f2", color: s >= 70 ? "#16a34a" : s >= 40 ? "#d97706" : "#dc2626", fontSize: 12, fontWeight: 700, fontFamily: "'DM Mono', monospace", border: "1px solid " + (s >= 70 ? "#16a34a" : s >= 40 ? "#d97706" : "#dc2626") + "22" }}>{s}</span>; })()}</td>
                     <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.city || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.askingPrice)}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.offer)}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{deal.netSqft ? `$${deal.netSqft}` : "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{(() => { const v = calcPPSF(deal); return v > 0 ? "$" + v.toLocaleString() : "—"; })()}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace", textAlign: "center" }}>{deal.units || "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{(() => { const a = parseFloat(String(deal.askingPrice || "0").replace(/[$,]/g, "")) || 0; const u = parseFloat(String(deal.units || "0").replace(/[,]/g, "")) || 0; return a > 0 && u > 0 ? "$" + Math.round(a / u).toLocaleString() : "—"; })()}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{(() => { const v = calcPPU(deal); return v > 0 ? "$" + v.toLocaleString() : "—"; })()}</td>
                     <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{deal.source || "Manual"}</span></td>
                   </tr>
                 ))}
@@ -2236,7 +2332,8 @@ function AssignmentsView({ session, isMobile, orgData, orgMembers, teamEmails })
     try {
       let q = supabase.from("tasks").select("*").order("due_date", { ascending: true, nullsFirst: false });
       if (orgData?.id) q = q.eq("org_id", orgData.id);
-      const { data } = await q;
+      const { data, error } = await q;
+      if (error) console.error("Fetch tasks error:", error);
       setTasks(data || []);
     } catch (e) { console.error("Fetch tasks error:", e); }
     finally { setLoading(false); }
@@ -9621,7 +9718,7 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
   const initials = displayName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   const createdAt = user.created_at ? fmtDate(user.created_at) : "—";
   const provider = user.app_metadata?.provider || "email";
-  const isOwner = orgData && orgData.owner_email === email;
+  const isOwner = orgData && (orgData.owner_email || "").toLowerCase() === (email || "").toLowerCase();
 
   const tabs = [
     { id: "profile", label: "Profile" },
@@ -9657,7 +9754,7 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
   const rowStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid #f1f5f9" };
 
   return (
-    <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+    <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", background: "#f8fafc", WebkitOverflowScrolling: "touch" }}>
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "14px 16px 0" : "18px 32px 0" }}>
         <div style={{ marginBottom: 14 }}>
@@ -9828,37 +9925,161 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
         )}
 
         {/* ═══ PRICING TAB ═══ */}
-        {activeTab === "pricing" && (
-          <>
-            <div style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginBottom: 16 }}>
-              Compare plans and see which features are included at each tier.
+        {activeTab === "pricing" && (() => {
+          const currentTier = orgData ? orgData.plan_tier : (isSubscribed ? "starter" : "free");
+          const currentRank = getTierRank(currentTier);
+          const PricingCheck = ({ included }) => (
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", background: included ? "#f0fdf4" : "#fef2f2", flexShrink: 0 }}>
+              {included ? (
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={3}><polyline points="20 6 9 17 4 12"/></svg>
+              ) : (
+                <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth={3}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              )}
+            </span>
+          );
+          const FeatureRow = ({ label, starter, team, pro }) => (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 80px 80px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>
+              <span style={{ fontSize: 13, color: "#334155", fontFamily: "'DM Sans', sans-serif" }}>{label}</span>
+              <span style={{ textAlign: "center" }}><PricingCheck included={starter} /></span>
+              <span style={{ textAlign: "center" }}><PricingCheck included={team} /></span>
+              <span style={{ textAlign: "center" }}><PricingCheck included={pro} /></span>
             </div>
-            {["free", "starter", "team", "pro", "enterprise"].map(tier => {
-              const isCurrentTier = orgData ? orgData.plan_tier === tier : (isSubscribed ? "starter" === tier : "free" === tier);
-              const tierFeatures = (featureFlags || []).filter(f => getTierRank(tier) >= getTierRank(f.min_tier));
-              return (
-                <div key={tier} style={{ ...cardStyle, border: isCurrentTier ? "2px solid #16a34a" : "1px solid #e2e8f0", position: "relative", overflow: "hidden" }}>
-                  {isCurrentTier && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(135deg, #16a34a, #15803d)" }} />}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{TIER_LABELS[tier]}</span>
-                        {isCurrentTier && <span style={{ fontSize: 9, fontWeight: 700, fontFamily: "'DM Mono', monospace", padding: "2px 8px", borderRadius: 5, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>CURRENT</span>}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{TIER_DESC[tier]}</div>
-                    </div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", flexShrink: 0 }}>{TIER_PRICES[tier]}</div>
+          );
+
+          const plans = [
+            { key: "starter", label: "Starter", price: "$99", period: "/mo", desc: "For individual investors & analysts", popular: false, color: "#16a34a", bg: "#f0fdf4", borderColor: "#bbf7d0" },
+            { key: "team", label: "Team", price: "$499", period: "/mo", desc: "For teams & small firms", popular: true, color: "#7c3aed", bg: "#f5f3ff", borderColor: "#ddd6fe" },
+            { key: "pro", label: "Pro", price: "$249", period: "/mo", desc: "Advanced AI & document tools", popular: false, color: "#d97706", bg: "#fffbeb", borderColor: "#fde68a" },
+          ];
+
+          return (
+            <>
+              {/* Header */}
+              <div style={{ textAlign: "center", marginBottom: 28 }}>
+                <h2 style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 6px", letterSpacing: "-0.02em" }}>Choose your plan</h2>
+                <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Scale your real estate operations with the right tier.</p>
+              </div>
+
+              {/* Free tier banner */}
+              {currentRank === 0 && (
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Free Plan</span>
+                    <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginLeft: 8 }}>View-only, up to 5 deals</span>
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-                    {tierFeatures.map(f => (
-                      <span key={f.feature_key} style={{ fontSize: 11, fontWeight: 500, fontFamily: "'DM Sans', sans-serif", padding: "3px 10px", borderRadius: 6, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>✓ {f.display_name}</span>
-                    ))}
-                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'DM Mono', monospace", padding: "2px 8px", borderRadius: 5, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>CURRENT</span>
                 </div>
-              );
-            })}
-          </>
-        )}
+              )}
+
+              {/* Main pricing cards */}
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 16, marginBottom: 24 }}>
+                {plans.map(plan => {
+                  const isCurrent = currentTier === plan.key;
+                  const isUpgrade = getTierRank(plan.key) > currentRank;
+                  const isDowngrade = getTierRank(plan.key) < currentRank;
+                  return (
+                    <div key={plan.key} style={{
+                      position: "relative", background: "#fff", borderRadius: 16, padding: "24px 20px",
+                      border: plan.popular ? "2px solid " + plan.color : isCurrent ? "2px solid #16a34a" : "1px solid #e2e8f0",
+                      boxShadow: plan.popular ? "0 8px 32px rgba(124, 58, 237, 0.12)" : "0 1px 4px rgba(0,0,0,0.04)",
+                      transform: plan.popular && !isMobile ? "scale(1.03)" : "none",
+                      transition: "all 0.2s",
+                    }}>
+                      {/* Popular badge */}
+                      {plan.popular && (
+                        <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg, #7c3aed, #6d28d9)", padding: "4px 16px", borderRadius: 20, fontSize: 10, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace", letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>MOST POPULAR</div>
+                      )}
+                      {/* Current badge */}
+                      {isCurrent && (
+                        <div style={{ position: "absolute", top: 12, right: 12, background: "#f0fdf4", padding: "2px 8px", borderRadius: 5, fontSize: 9, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Mono', monospace", border: "1px solid #bbf7d0" }}>CURRENT</div>
+                      )}
+                      {/* Tier name */}
+                      <div style={{ fontSize: 11, fontWeight: 700, color: plan.color, fontFamily: "'DM Mono', monospace", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>{plan.label}</div>
+                      {/* Price */}
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 2, marginBottom: 4 }}>
+                        <span style={{ fontSize: 40, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.03em", lineHeight: 1 }}>{plan.price}</span>
+                        <span style={{ fontSize: 14, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{plan.period}</span>
+                      </div>
+                      {/* Description */}
+                      <p style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "0 0 16px", lineHeight: 1.4 }}>{plan.desc}</p>
+                      {/* CTA Button */}
+                      <button onClick={isUpgrade ? onCheckout : undefined} disabled={isCurrent || isDowngrade} style={{
+                        width: "100%", padding: "10px 16px", border: "none", borderRadius: 10,
+                        background: isCurrent ? "#f1f5f9" : isUpgrade ? (plan.popular ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : plan.key === "starter" ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #d97706, #b45309)") : "#f8fafc",
+                        color: isCurrent ? "#94a3b8" : isUpgrade ? "#fff" : "#94a3b8",
+                        fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
+                        cursor: isCurrent || isDowngrade ? "default" : "pointer",
+                        transition: "all 0.2s", opacity: isDowngrade ? 0.5 : 1,
+                      }}>
+                        {isCurrent ? "Current Plan" : isUpgrade ? "Upgrade to " + plan.label : "Included"}
+                      </button>
+                      {/* Feature highlights */}
+                      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                        {(plan.key === "starter" ? [
+                          "Unlimited deal analysis", "Live financial metrics", "AI Executive Summaries", "Pipeline management", "MLS Feed access", "Portfolio tracking", "Google Street View",
+                        ] : plan.key === "team" ? [
+                          "Everything in Starter, plus:", "Shared team pipeline", "Shared contacts & investors", "Organization management", "Manager & assignee roles", "Data access controls", "Assignments view",
+                        ] : [
+                          "Everything in Team, plus:", "Advanced AI analysis", "Document generation", "Enhanced reporting", "Priority features",
+                        ]).map((feat, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: i === 0 && plan.key !== "starter" ? plan.color : "#475569", fontFamily: "'DM Sans', sans-serif", fontWeight: i === 0 && plan.key !== "starter" ? 600 : 400 }}>
+                            {(i === 0 && plan.key !== "starter") ? null : <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={plan.color} strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>}
+                            {feat}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Feature comparison matrix */}
+              <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "20px 24px", marginBottom: 20 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 16px" }}>Feature Comparison</h3>
+                {/* Column headers */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 80px 80px", alignItems: "center", padding: "8px 0", borderBottom: "2px solid #e2e8f0", marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", textTransform: "uppercase" }}>Feature</span>
+                  <span style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>Starter</span>
+                  <span style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#7c3aed", fontFamily: "'DM Mono', monospace" }}>Team</span>
+                  <span style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#d97706", fontFamily: "'DM Mono', monospace" }}>Pro</span>
+                </div>
+                <FeatureRow label="Deal Pipeline" starter={true} team={true} pro={true} />
+                <FeatureRow label="Contacts & CRM" starter={true} team={true} pro={true} />
+                <FeatureRow label="Dashboard / Command Center" starter={true} team={true} pro={true} />
+                <FeatureRow label="Portfolio Tracking" starter={true} team={true} pro={true} />
+                <FeatureRow label="AI Executive Summaries" starter={true} team={true} pro={true} />
+                <FeatureRow label="AI Underwriting" starter={true} team={true} pro={true} />
+                <FeatureRow label="MLS Feed" starter={true} team={true} pro={true} />
+                <FeatureRow label="File Uploader" starter={true} team={true} pro={true} />
+                <FeatureRow label="Marketplace" starter={true} team={true} pro={true} />
+                <FeatureRow label="Google Street View" starter={true} team={true} pro={true} />
+                <FeatureRow label="Team Collaboration" starter={false} team={true} pro={true} />
+                <FeatureRow label="Shared Pipeline & Contacts" starter={false} team={true} pro={true} />
+                <FeatureRow label="Manager / Assignee Roles" starter={false} team={true} pro={true} />
+                <FeatureRow label="Data Access Controls" starter={false} team={true} pro={true} />
+                <FeatureRow label="Assignments View" starter={false} team={true} pro={true} />
+                <FeatureRow label="Advanced AI Analysis" starter={false} team={false} pro={true} />
+                <FeatureRow label="Document Generation" starter={false} team={false} pro={true} />
+              </div>
+
+              {/* Enterprise CTA */}
+              <div style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", borderRadius: 14, padding: "20px 24px", display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexDirection: isMobile ? "column" : "row", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>Enterprise</div>
+                  <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>Custom integrations, SSO, dedicated support, and org-level feature overrides.</div>
+                </div>
+                <button style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 10, padding: "8px 20px", color: "#fff", fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>Contact Sales</button>
+              </div>
+
+              {/* Trial info */}
+              {!isSubscribed && trialDaysLeft > 0 && (
+                <div style={{ textAlign: "center", marginTop: 16, padding: "12px 16px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10 }}>
+                  <span style={{ fontSize: 13, color: "#92400e", fontFamily: "'DM Sans', sans-serif" }}>You have <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> left on your free trial.</span>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* ═══ ADMIN TAB ═══ */}
         {activeTab === "admin" && isAdmin && (
@@ -10447,7 +10668,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
   const totalListings = listings.length;
   const prices = listings.map(l => parseFloat(String(l.price).replace(/[$,]/g, ""))).filter(n => !isNaN(n));
   const avgPrice = prices.length > 0 ? prices.reduce((s, n) => s + n, 0) / prices.length : 0;
-  const medianPrice = prices.length > 0 ? [...prices].sort((a, b) => a - b)[Math.floor(prices.length / 2)] : 0;
+  const medianPrice = prices.length > 0 ? (() => { const sorted = [...prices].sort((a, b) => a - b); const mid = Math.floor(sorted.length / 2); return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]; })() : 0;
   const avgPPSF = (() => { const vals = listings.map(l => parseFloat(String(l.ppsf).replace(/[$,]/g, ""))).filter(n => !isNaN(n)); return vals.length > 0 ? vals.reduce((s, n) => s + n, 0) / vals.length : 0; })();
   const propTypeCounts = {};
   listings.forEach(l => { const t = l.propType || "Unknown"; propTypeCounts[t] = (propTypeCounts[t] || 0) + 1; });
@@ -11787,15 +12008,19 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const [mapLoading, setMapLoading] = useState(false);
+  const watchlistTogglingRef = useRef(new Set());
 
   // Watchlist: fetch user's watchlist from Supabase
   useEffect(() => {
     if (!userEmail) return;
     (async () => {
+      setWatchlistLoading(true);
       try {
-        const { data } = await supabase.from("marketplace_watchlist").select("deal_id").eq("user_email", userEmail.toLowerCase());
+        const { data, error } = await supabase.from("marketplace_watchlist").select("deal_id").eq("user_email", userEmail.toLowerCase());
+        if (error) console.error("Watchlist fetch error:", error);
         setWatchlist((data || []).map(w => w.deal_id));
       } catch (e) { console.error("Watchlist fetch error:", e); }
+      finally { setWatchlistLoading(false); }
     })();
   }, [userEmail]);
 
@@ -11804,13 +12029,18 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
   const toggleWatchlist = async (e, deal) => {
     e.stopPropagation();
     const dealId = deal._id || deal.id;
-    if (isWatchlisted(dealId)) {
-      setWatchlist(prev => prev.filter(id => id !== dealId));
-      await supabase.from("marketplace_watchlist").delete().eq("user_email", userEmail.toLowerCase()).eq("deal_id", dealId);
-    } else {
-      setWatchlist(prev => [...prev, dealId]);
-      await supabase.from("marketplace_watchlist").upsert({ user_email: userEmail.toLowerCase(), deal_id: dealId }, { onConflict: "user_email,deal_id" });
-    }
+    if (watchlistTogglingRef.current.has(dealId)) return; // prevent race condition
+    watchlistTogglingRef.current.add(dealId);
+    try {
+      if (isWatchlisted(dealId)) {
+        setWatchlist(prev => prev.filter(id => id !== dealId));
+        await supabase.from("marketplace_watchlist").delete().eq("user_email", userEmail.toLowerCase()).eq("deal_id", dealId);
+      } else {
+        setWatchlist(prev => [...prev, dealId]);
+        await supabase.from("marketplace_watchlist").upsert({ user_email: userEmail.toLowerCase(), deal_id: dealId }, { onConflict: "user_email,deal_id" });
+      }
+    } catch (e) { console.error("Watchlist toggle error:", e); }
+    finally { watchlistTogglingRef.current.delete(dealId); }
   };
 
   const publishedDeals = deals.filter(d => d.marketplace_published);
@@ -12168,6 +12398,694 @@ function OfferingsView({ deals, isMobile, session, userEmail, updateHash }) {
     </div>
   );
 }
+
+function ManagementView({ deals, isMobile, session, onRetry }) {
+  const closedDeals = (deals || []).filter(d => d.status === "Closed");
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState("asc");
+  const [search, setSearch] = useState("");
+  const [updating, setUpdating] = useState(null);
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  };
+
+  const toggleSold = async (deal) => {
+    setUpdating(deal._id);
+    try {
+      await supabase.from("deals").update({ sold: !deal.sold }).eq("id", deal._id);
+      if (onRetry) onRetry();
+    } catch (e) { console.error("Toggle sold error:", e); }
+    setUpdating(null);
+  };
+
+  const updateRegisteredUnits = async (deal, value) => {
+    try {
+      const parsed = value === "" ? null : parseInt(value, 10);
+      if (value !== "" && isNaN(parsed)) return;
+      await supabase.from("deals").update({ registered_units: parsed }).eq("id", deal._id);
+      if (onRetry) onRetry();
+    } catch (e) { console.error("Update registered units error:", e); }
+  };
+
+  const filtered = closedDeals.filter(d => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return (d.address || "").toLowerCase().includes(s) || (d.city || "").toLowerCase().includes(s) || (d.organization || "").toLowerCase().includes(s) || (d.type || "").toLowerCase().includes(s);
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (!sortCol) return 0;
+    const dir = sortDir === "asc" ? 1 : -1;
+    const valA = a[sortCol] || "";
+    const valB = b[sortCol] || "";
+    if (sortCol === "units" || sortCol === "registeredUnits" || sortCol === "askingPrice" || sortCol === "purchasePrice") {
+      return (parseFloat(valA) || 0) - (parseFloat(valB) || 0) * dir;
+    }
+    if (sortCol === "sold") return ((a.sold ? 1 : 0) - (b.sold ? 1 : 0)) * dir;
+    return String(valA).localeCompare(String(valB)) * dir;
+  });
+
+  const fmt = (v) => { const n = parseFloat(v); return isNaN(n) ? "—" : "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 }); };
+
+  const SortArrow = ({ col }) => {
+    if (sortCol !== col) return <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={2} style={{ marginLeft: 4 }}><polyline points="6 9 12 4 18 9"/><polyline points="6 15 12 20 18 15"/></svg>;
+    return <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.5} style={{ marginLeft: 4 }}>{sortDir === "asc" ? <polyline points="6 15 12 9 18 15"/> : <polyline points="6 9 12 15 18 9"/>}</svg>;
+  };
+
+  const thStyle = { padding: "11px 10px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#64748b", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.04em", textTransform: "uppercase", cursor: "pointer", whiteSpace: "nowrap", userSelect: "none", borderBottom: "2px solid #e2e8f0" };
+  const tdStyle = { padding: "12px 10px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", borderBottom: "1px solid #f1f5f9" };
+
+  // ── Inline editable cell for registered units ──
+  const RegisteredUnitsCell = ({ deal }) => {
+    const [editing, setEditing] = useState(false);
+    const [val, setVal] = useState(deal.registeredUnits != null ? String(deal.registeredUnits) : "");
+
+    if (editing) {
+      return (
+        <input
+          autoFocus
+          type="number"
+          min="0"
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onBlur={() => { updateRegisteredUnits(deal, val); setEditing(false); }}
+          onKeyDown={e => { if (e.key === "Enter") { updateRegisteredUnits(deal, val); setEditing(false); } if (e.key === "Escape") setEditing(false); }}
+          style={{ width: 64, padding: "5px 8px", borderRadius: 6, border: "1px solid #16a34a", fontSize: 13, fontFamily: "'DM Mono', monospace", textAlign: "center", outline: "none", boxSizing: "border-box" }}
+        />
+      );
+    }
+    return (
+      <span onClick={() => setEditing(true)} style={{ display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", padding: "4px 8px", borderRadius: 6, border: "1px dashed #e2e8f0", fontSize: 13, fontFamily: "'DM Mono', monospace", color: deal.registeredUnits != null ? "#0f172a" : "#94a3b8", minWidth: 40, justifyContent: "center" }}>
+        {deal.registeredUnits != null ? deal.registeredUnits : "—"}
+        <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </span>
+    );
+  };
+
+  return (
+    <div style={{ padding: isMobile ? "16px 12px" : "24px 28px", flex: 1, overflow: "auto" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#0f172a", margin: 0, fontFamily: "'Playfair Display', serif" }}>Property Management</h2>
+          <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{sorted.length} closed propert{sorted.length === 1 ? "y" : "ies"}{closedDeals.length !== sorted.length ? ` (of ${closedDeals.length})` : ""}</p>
+        </div>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search properties..." style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", width: isMobile ? "100%" : 240, boxSizing: "border-box" }} />
+      </div>
+
+      {/* Summary cards */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+        {[
+          { label: "Total Properties", value: closedDeals.length, color: "#2563EB" },
+          { label: "Active (Owned)", value: closedDeals.filter(d => !d.sold).length, color: "#16a34a" },
+          { label: "Sold", value: closedDeals.filter(d => d.sold).length, color: "#D97706" },
+          { label: "Total Units", value: closedDeals.reduce((s, d) => s + (parseInt(d.units) || 0), 0), color: "#7C3AED" },
+        ].map((stat, i) => (
+          <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: 16, textAlign: "center" }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: stat.color, fontFamily: "'DM Sans', sans-serif" }}>{stat.value}</div>
+            <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>{stat.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {sorted.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 60 }}>
+          <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 12 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <p style={{ fontSize: 15, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{search ? "No matching properties." : "No closed deals yet. Properties will appear here once deals are marked as \"Closed\" in your pipeline."}</p>
+        </div>
+      ) : isMobile ? (
+        /* ── Mobile cards ── */
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {sorted.map(deal => (
+            <div key={deal._id} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 2 }}>{deal.address}</div>
+                  <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.city}{deal.state ? `, ${deal.state}` : ""} &middot; {deal.type || "—"}</div>
+                </div>
+                <button onClick={() => toggleSold(deal)} disabled={updating === deal._id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: "none", background: deal.sold ? "#FEF3C7" : "#F0FDF4", color: deal.sold ? "#D97706" : "#16a34a", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", opacity: updating === deal._id ? 0.5 : 1 }}>
+                  {deal.sold ? "Sold" : "Owned"}
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Purchase</div><div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmt(deal.purchasePrice)}</div></div>
+                <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Units</div><div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{deal.units || "—"}</div></div>
+                <div><div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Registered</div><RegisteredUnitsCell deal={deal} /></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* ── Desktop table ── */
+        <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc" }}>
+                  <th onClick={() => handleSort("address")} style={thStyle}>Address <SortArrow col="address" /></th>
+                  <th onClick={() => handleSort("city")} style={thStyle}>City <SortArrow col="city" /></th>
+                  <th onClick={() => handleSort("type")} style={thStyle}>Type <SortArrow col="type" /></th>
+                  <th onClick={() => handleSort("purchasePrice")} style={thStyle}>Purchase Price <SortArrow col="purchasePrice" /></th>
+                  <th onClick={() => handleSort("units")} style={thStyle}>Units <SortArrow col="units" /></th>
+                  <th onClick={() => handleSort("registeredUnits")} style={thStyle}>Registered Units <SortArrow col="registeredUnits" /></th>
+                  <th onClick={() => handleSort("organization")} style={thStyle}>Organization <SortArrow col="organization" /></th>
+                  <th onClick={() => handleSort("sold")} style={{ ...thStyle, textAlign: "center" }}>Sold <SortArrow col="sold" /></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map(deal => (
+                  <tr key={deal._id} style={{ transition: "background 0.1s" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 260 }}>
+                      <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deal.address}</div>
+                    </td>
+                    <td style={tdStyle}>{deal.city || "—"}</td>
+                    <td style={tdStyle}><span style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 6, background: "#f1f5f9", color: "#475569" }}>{deal.type || "—"}</span></td>
+                    <td style={{ ...tdStyle, fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.purchasePrice)}</td>
+                    <td style={{ ...tdStyle, textAlign: "center", fontFamily: "'DM Mono', monospace" }}>{deal.units || "—"}</td>
+                    <td style={{ ...tdStyle, textAlign: "center" }}><RegisteredUnitsCell deal={deal} /></td>
+                    <td style={tdStyle}>{deal.organization || "—"}</td>
+                    <td style={{ ...tdStyle, textAlign: "center" }}>
+                      <button onClick={() => toggleSold(deal)} disabled={updating === deal._id} style={{
+                        display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 20, border: "none",
+                        background: deal.sold ? "#FEF3C7" : "#F0FDF4", color: deal.sold ? "#D97706" : "#16a34a",
+                        fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                        opacity: updating === deal._id ? 0.5 : 1, transition: "all 0.15s",
+                      }}>
+                        <div style={{ width: 32, height: 18, borderRadius: 10, background: deal.sold ? "#D97706" : "#cbd5e1", position: "relative", transition: "background 0.2s" }}>
+                          <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: deal.sold ? 16 : 2, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                        </div>
+                        {deal.sold ? "Sold" : "Owned"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   EDUCATION VIEW — Library, Courses, My Progress
+   ═══════════════════════════════════════════════════════════ */
+
+function EducationView({ session, isMobile, activeTab, onTabChange, updateHash, orgData }) {
+  const userEmail = session?.user?.email?.toLowerCase() || "";
+  const isAdmin = orgData?.owner_email?.toLowerCase() === userEmail;
+
+  // ─── Library state ───
+  const [libraryItems, setLibraryItems] = useState([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [showAddResource, setShowAddResource] = useState(false);
+  const [editingResource, setEditingResource] = useState(null);
+  const [resourceForm, setResourceForm] = useState({ title: "", description: "", type: "article", url: "", thumbnail_url: "" });
+
+  // ─── Courses state ───
+  const [courses, setCourses] = useState([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [showCourseBuilder, setShowCourseBuilder] = useState(false);
+  const [courseForm, setCourseForm] = useState({ title: "", description: "", thumbnail_url: "", sections: [] });
+  const [editingCourse, setEditingCourse] = useState(null);
+
+  // ─── Progress state ───
+  const [progress, setProgress] = useState([]);
+  const [progressLoading, setProgressLoading] = useState(true);
+
+  // ─── Data fetching ───
+  useEffect(() => { loadLibrary(); loadCourses(); if (userEmail) loadProgress(); }, [userEmail]);
+
+  const loadLibrary = async () => {
+    setLibraryLoading(true);
+    try {
+      const { data } = await supabase.from("education_library").select("*").order("created_at", { ascending: false });
+      setLibraryItems(data || []);
+    } catch (e) { console.error("Library load error:", e); }
+    setLibraryLoading(false);
+  };
+
+  const loadCourses = async () => {
+    setCoursesLoading(true);
+    try {
+      const { data } = await supabase.from("education_courses").select("*").order("created_at", { ascending: false });
+      setCourses(data || []);
+    } catch (e) { console.error("Courses load error:", e); }
+    setCoursesLoading(false);
+  };
+
+  const loadProgress = async () => {
+    setProgressLoading(true);
+    try {
+      const { data } = await supabase.from("education_progress").select("*").eq("user_email", userEmail);
+      setProgress(data || []);
+    } catch (e) { console.error("Progress load error:", e); }
+    setProgressLoading(false);
+  };
+
+  // ─── Library CRUD ───
+  const saveResource = async () => {
+    try {
+      if (editingResource) {
+        await supabase.from("education_library").update({ ...resourceForm, updated_at: new Date().toISOString() }).eq("id", editingResource.id);
+      } else {
+        await supabase.from("education_library").insert({ ...resourceForm, created_by: userEmail });
+      }
+      setShowAddResource(false); setEditingResource(null);
+      setResourceForm({ title: "", description: "", type: "article", url: "", thumbnail_url: "" });
+      loadLibrary();
+    } catch (e) { console.error("Save resource error:", e); }
+  };
+
+  const deleteResource = async (id) => {
+    if (!window.confirm("Delete this resource?")) return;
+    try {
+      await supabase.from("education_library").delete().eq("id", id);
+      loadLibrary();
+    } catch (e) { console.error("Delete resource error:", e); }
+  };
+
+  // ─── Course CRUD ───
+  const saveCourse = async () => {
+    try {
+      const payload = { title: courseForm.title, description: courseForm.description, thumbnail_url: courseForm.thumbnail_url, sections: courseForm.sections, created_by: userEmail };
+      if (editingCourse) {
+        await supabase.from("education_courses").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", editingCourse.id);
+      } else {
+        await supabase.from("education_courses").insert(payload);
+      }
+      setShowCourseBuilder(false); setEditingCourse(null);
+      setCourseForm({ title: "", description: "", thumbnail_url: "", sections: [] });
+      loadCourses();
+    } catch (e) { console.error("Save course error:", e); }
+  };
+
+  const deleteCourse = async (id) => {
+    if (!window.confirm("Delete this course and all progress data?")) return;
+    await supabase.from("education_progress").delete().eq("course_id", id);
+    await supabase.from("education_courses").delete().eq("id", id);
+    loadCourses(); loadProgress();
+  };
+
+  // ─── Progress tracking ───
+  const markLessonComplete = async (courseId, sectionIdx, lessonIdx) => {
+    const existing = progress.find(p => p.course_id === courseId);
+    const completedKey = `${sectionIdx}-${lessonIdx}`;
+    let completedLessons = existing?.completed_lessons || [];
+    if (completedLessons.includes(completedKey)) {
+      completedLessons = completedLessons.filter(k => k !== completedKey);
+    } else {
+      completedLessons = [...completedLessons, completedKey];
+    }
+    const course = courses.find(c => c.id === courseId);
+    const totalLessons = (course?.sections || []).reduce((acc, s) => acc + (s.lessons || []).length, 0);
+    const pct = totalLessons > 0 ? Math.round((completedLessons.length / totalLessons) * 100) : 0;
+    if (existing) {
+      await supabase.from("education_progress").update({ completed_lessons: completedLessons, percent_complete: pct, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    } else {
+      await supabase.from("education_progress").insert({ user_email: userEmail, course_id: courseId, completed_lessons: completedLessons, percent_complete: pct });
+    }
+    loadProgress();
+  };
+
+  const getProgressForCourse = (courseId) => progress.find(p => p.course_id === courseId) || { completed_lessons: [], percent_complete: 0 };
+
+  // ─── Type badge ───
+  const TypeBadge = ({ type }) => {
+    const colors = { article: { bg: "#EFF6FF", color: "#2563EB" }, video: { bg: "#FEF3C7", color: "#D97706" }, link: { bg: "#F0FDF4", color: "#16A34A" }, document: { bg: "#F5F3FF", color: "#7C3AED" } };
+    const c = colors[type] || colors.article;
+    return <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, fontFamily: "'DM Mono', monospace", background: c.bg, color: c.color, textTransform: "uppercase" }}>{type}</span>;
+  };
+
+  // ─── Resource form modal ───
+  const ResourceModal = () => (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 520, padding: 28, maxHeight: "90vh", overflowY: "auto" }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display', serif", color: "#0f172a", margin: "0 0 20px" }}>{editingResource ? "Edit Resource" : "Add Resource"}</h2>
+        {[
+          { label: "Title", key: "title", ph: "Resource title" },
+          { label: "Description", key: "description", ph: "Brief description" },
+          { label: "URL", key: "url", ph: "https://..." },
+          { label: "Thumbnail URL", key: "thumbnail_url", ph: "https://... (optional)" },
+        ].map(f => (
+          <div key={f.key} style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>{f.label}</label>
+            {f.key === "description" ? (
+              <textarea value={resourceForm[f.key]} onChange={e => setResourceForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.ph} rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: "vertical", boxSizing: "border-box" }} />
+            ) : (
+              <input value={resourceForm[f.key]} onChange={e => setResourceForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.ph} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+            )}
+          </div>
+        ))}
+        <div style={{ marginBottom: 18 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Type</label>
+          <select value={resourceForm.type} onChange={e => setResourceForm(p => ({ ...p, type: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }}>
+            <option value="article">Article</option><option value="video">Video</option><option value="link">Link</option><option value="document">Document</option>
+          </select>
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={() => { setShowAddResource(false); setEditingResource(null); setResourceForm({ title: "", description: "", type: "article", url: "", thumbnail_url: "" }); }} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+          <button onClick={saveResource} disabled={!resourceForm.title || !resourceForm.url} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: !resourceForm.title || !resourceForm.url ? "#94a3b8" : "#16a34a", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ─── Course Builder Modal ───
+  const CourseBuilderModal = () => {
+    const addSection = () => setCourseForm(p => ({ ...p, sections: [...p.sections, { title: "New Section", lessons: [] }] }));
+    const updateSection = (idx, field, val) => setCourseForm(p => { const s = [...p.sections]; s[idx] = { ...s[idx], [field]: val }; return { ...p, sections: s }; });
+    const removeSection = (idx) => setCourseForm(p => ({ ...p, sections: p.sections.filter((_, i) => i !== idx) }));
+    const addLesson = (sIdx) => setCourseForm(p => { const s = [...p.sections]; s[sIdx] = { ...s[sIdx], lessons: [...(s[sIdx].lessons || []), { title: "New Lesson", video_url: "", description: "" }] }; return { ...p, sections: s }; });
+    const updateLesson = (sIdx, lIdx, field, val) => setCourseForm(p => { const s = [...p.sections]; const ls = [...s[sIdx].lessons]; ls[lIdx] = { ...ls[lIdx], [field]: val }; s[sIdx] = { ...s[sIdx], lessons: ls }; return { ...p, sections: s }; });
+    const removeLesson = (sIdx, lIdx) => setCourseForm(p => { const s = [...p.sections]; s[sIdx] = { ...s[sIdx], lessons: s[sIdx].lessons.filter((_, i) => i !== lIdx) }; return { ...p, sections: s }; });
+
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", padding: 20 }}>
+        <div style={{ background: "#fff", borderRadius: isMobile ? "16px 16px 0 0" : 16, width: "100%", maxWidth: isMobile ? "100%" : 720, padding: isMobile ? "20px 16px 32px" : 28, maxHeight: "90vh", overflowY: "auto" }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display', serif", color: "#0f172a", margin: "0 0 20px" }}>{editingCourse ? "Edit Course" : "Create Course"}</h2>
+          {[
+            { label: "Course Title", key: "title", ph: "e.g. Real Estate Underwriting 101" },
+            { label: "Description", key: "description", ph: "What students will learn..." },
+            { label: "Thumbnail URL", key: "thumbnail_url", ph: "https://... (optional)" },
+          ].map(f => (
+            <div key={f.key} style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>{f.label}</label>
+              {f.key === "description" ? (
+                <textarea value={courseForm[f.key]} onChange={e => setCourseForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.ph} rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: "vertical", boxSizing: "border-box" }} />
+              ) : (
+                <input value={courseForm[f.key]} onChange={e => setCourseForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.ph} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+              )}
+            </div>
+          ))}
+
+          <div style={{ marginTop: 20, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>Sections</h3>
+            <button onClick={addSection} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #16a34a", background: "#F0FDF4", color: "#16a34a", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add Section</button>
+          </div>
+
+          {courseForm.sections.map((section, sIdx) => (
+            <div key={sIdx} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, marginBottom: 12, background: "#fafbfc" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <input value={section.title} onChange={e => updateSection(sIdx, "title", e.target.value)} style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }} />
+                <button onClick={() => removeSection(sIdx)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#FEF2F2", color: "#DC2626", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Remove</button>
+              </div>
+
+              {(section.lessons || []).map((lesson, lIdx) => (
+                <div key={lIdx} style={{ background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0", padding: 12, marginBottom: 8, marginLeft: 12 }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                    <input value={lesson.title} onChange={e => updateLesson(sIdx, lIdx, "title", e.target.value)} placeholder="Lesson title" style={{ flex: 1, padding: "7px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }} />
+                    <button onClick={() => removeLesson(sIdx, lIdx)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#FEF2F2", color: "#DC2626", fontSize: 11, cursor: "pointer" }}>X</button>
+                  </div>
+                  <input value={lesson.video_url || ""} onChange={e => updateLesson(sIdx, lIdx, "video_url", e.target.value)} placeholder="Video URL (YouTube, Vimeo, etc.)" style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", marginBottom: 6, boxSizing: "border-box" }} />
+                  <input value={lesson.description || ""} onChange={e => updateLesson(sIdx, lIdx, "description", e.target.value)} placeholder="Lesson description (optional)" style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+                </div>
+              ))}
+
+              <button onClick={() => addLesson(sIdx)} style={{ padding: "5px 12px", borderRadius: 8, border: "1px dashed #cbd5e1", background: "transparent", color: "#64748b", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginLeft: 12, marginTop: 4 }}>+ Add Lesson</button>
+            </div>
+          ))}
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+            <button onClick={() => { setShowCourseBuilder(false); setEditingCourse(null); setCourseForm({ title: "", description: "", thumbnail_url: "", sections: [] }); }} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+            <button onClick={saveCourse} disabled={!courseForm.title} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: !courseForm.title ? "#94a3b8" : "#16a34a", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Save Course</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ─── Video embed helper ───
+  const getEmbedUrl = (url) => {
+    if (!url) return null;
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\s]+)/);
+    if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
+    const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+    if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+    return url;
+  };
+
+  // ─── Course Detail View ───
+  const CourseDetail = ({ course }) => {
+    const prog = getProgressForCourse(course.id);
+    const completedSet = new Set(prog.completed_lessons || []);
+    const totalLessons = (course.sections || []).reduce((acc, s) => acc + (s.lessons || []).length, 0);
+    const [activeLesson, setActiveLesson] = useState(null);
+
+    return (
+      <div>
+        <button onClick={() => setSelectedCourse(null)} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", padding: "0 0 16px", marginTop: -4 }}>
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="15 18 9 12 15 6"/></svg>
+          Back to Courses
+        </button>
+
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+          {course.thumbnail_url && <img src={course.thumbnail_url} alt="" style={{ width: 120, height: 80, borderRadius: 10, objectFit: "cover" }} />}
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <h2 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0f172a", margin: "0 0 6px", fontFamily: "'Playfair Display', serif" }}>{course.title}</h2>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 10px", fontFamily: "'DM Sans', sans-serif" }}>{course.description}</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1, maxWidth: 200, height: 6, background: "#e2e8f0", borderRadius: 6, overflow: "hidden" }}>
+                <div style={{ width: `${prog.percent_complete || 0}%`, height: "100%", background: "#16a34a", borderRadius: 6, transition: "width 0.3s" }} />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>{prog.percent_complete || 0}%</span>
+              <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{completedSet.size}/{totalLessons} lessons</span>
+            </div>
+          </div>
+        </div>
+
+        {activeLesson && (() => {
+          const embedUrl = getEmbedUrl(activeLesson.video_url);
+          return (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ background: "#000", borderRadius: 12, overflow: "hidden", position: "relative", paddingBottom: "56.25%", marginBottom: 12 }}>
+                {embedUrl ? (
+                  <iframe src={embedUrl} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title={activeLesson.title} />
+                ) : (
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 14 }}>No video available</div>
+                )}
+              </div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 4px", fontFamily: "'DM Sans', sans-serif" }}>{activeLesson.title}</h3>
+              {activeLesson.description && <p style={{ fontSize: 13, color: "#64748b", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>{activeLesson.description}</p>}
+            </div>
+          );
+        })()}
+
+        {(course.sections || []).map((section, sIdx) => (
+          <div key={sIdx} style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", margin: "0 0 8px", fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Section {sIdx + 1}: {section.title}
+            </h3>
+            {(section.lessons || []).map((lesson, lIdx) => {
+              const key = `${sIdx}-${lIdx}`;
+              const done = completedSet.has(key);
+              const isActive = activeLesson && activeLesson._key === key;
+              return (
+                <div key={lIdx} onClick={() => setActiveLesson({ ...lesson, _key: key })} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: isActive ? "2px solid #16a34a" : "1px solid #e2e8f0", background: isActive ? "#F0FDF4" : done ? "#fafbfc" : "#fff", marginBottom: 6, cursor: "pointer", transition: "all 0.15s" }}>
+                  <button onClick={e => { e.stopPropagation(); markLessonComplete(course.id, sIdx, lIdx); }} style={{ width: 24, height: 24, borderRadius: "50%", border: done ? "none" : "2px solid #cbd5e1", background: done ? "#16a34a" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}>
+                    {done && <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}><polyline points="20 6 9 17 4 12"/></svg>}
+                  </button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: done ? "#94a3b8" : "#0f172a", fontFamily: "'DM Sans', sans-serif", textDecoration: done ? "line-through" : "none" }}>{lesson.title}</div>
+                    {lesson.description && <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{lesson.description}</div>}
+                  </div>
+                  {lesson.video_url && <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.8}><polygon points="5 3 19 12 5 21 5 3"/></svg>}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // ─── RENDER ───
+  const tabContentStyle = { padding: isMobile ? "16px 12px" : "24px 28px", flex: 1, overflowY: "auto" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {showAddResource && <ResourceModal />}
+      {showCourseBuilder && <CourseBuilderModal />}
+
+      <div style={tabContentStyle}>
+        {/* ═══ LIBRARY TAB ═══ */}
+        {activeTab === "library" && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <div>
+                <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#0f172a", margin: 0, fontFamily: "'Playfair Display', serif" }}>Resource Library</h2>
+                <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>Curated resources for real estate professionals</p>
+              </div>
+              {isAdmin && (
+                <button onClick={() => { setEditingResource(null); setResourceForm({ title: "", description: "", type: "article", url: "", thumbnail_url: "" }); setShowAddResource(true); }} style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: "#16a34a", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Add Resource
+                </button>
+              )}
+            </div>
+
+            {libraryLoading ? (
+              <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>Loading...</div>
+            ) : libraryItems.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 60 }}>
+                <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 12 }}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                <p style={{ fontSize: 15, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>No resources yet.{isAdmin ? " Add your first resource above." : ""}</p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+                {libraryItems.map(item => (
+                  <div key={item.id} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", transition: "box-shadow 0.15s", cursor: "pointer" }} onClick={() => window.open(item.url, "_blank")}>
+                    {item.thumbnail_url && <img src={item.thumbnail_url} alt="" style={{ width: "100%", height: 140, objectFit: "cover" }} />}
+                    <div style={{ padding: 16 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <TypeBadge type={item.type} />
+                      </div>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 6px", fontFamily: "'DM Sans', sans-serif" }}>{item.title}</h3>
+                      <p style={{ fontSize: 13, color: "#64748b", margin: 0, fontFamily: "'DM Sans', sans-serif", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.description}</p>
+                      {isAdmin && (
+                        <div style={{ display: "flex", gap: 8, marginTop: 12, borderTop: "1px solid #f1f5f9", paddingTop: 10 }}>
+                          <button onClick={e => { e.stopPropagation(); setEditingResource(item); setResourceForm({ title: item.title, description: item.description || "", type: item.type || "article", url: item.url || "", thumbnail_url: item.thumbnail_url || "" }); setShowAddResource(true); }} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", color: "#64748b" }}>Edit</button>
+                          <button onClick={e => { e.stopPropagation(); deleteResource(item.id); }} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #fecaca", background: "#FEF2F2", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", color: "#DC2626" }}>Delete</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══ COURSES TAB ═══ */}
+        {activeTab === "courses" && (
+          <div>
+            {selectedCourse ? (
+              <CourseDetail course={selectedCourse} />
+            ) : (
+              <>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                  <div>
+                    <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#0f172a", margin: 0, fontFamily: "'Playfair Display', serif" }}>Courses</h2>
+                    <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0", fontFamily: "'DM Sans', sans-serif" }}>Structured learning paths with video lessons</p>
+                  </div>
+                  {isAdmin && (
+                    <button onClick={() => { setEditingCourse(null); setCourseForm({ title: "", description: "", thumbnail_url: "", sections: [] }); setShowCourseBuilder(true); }} style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: "#16a34a", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      Create Course
+                    </button>
+                  )}
+                </div>
+
+                {coursesLoading ? (
+                  <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>Loading...</div>
+                ) : courses.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: 60 }}>
+                    <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 12 }}><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    <p style={{ fontSize: 15, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>No courses yet.{isAdmin ? " Create your first course above." : ""}</p>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+                    {courses.map(course => {
+                      const prog = getProgressForCourse(course.id);
+                      const totalLessons = (course.sections || []).reduce((acc, s) => acc + (s.lessons || []).length, 0);
+                      const totalSections = (course.sections || []).length;
+                      return (
+                        <div key={course.id} onClick={() => setSelectedCourse(course)} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", cursor: "pointer", transition: "box-shadow 0.15s" }}>
+                          {course.thumbnail_url && <img src={course.thumbnail_url} alt="" style={{ width: "100%", height: 160, objectFit: "cover" }} />}
+                          <div style={{ padding: 16 }}>
+                            <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 6px", fontFamily: "'DM Sans', sans-serif" }}>{course.title}</h3>
+                            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 12px", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{course.description}</p>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                              <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{totalSections} section{totalSections !== 1 ? "s" : ""}</span>
+                              <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{totalLessons} lesson{totalLessons !== 1 ? "s" : ""}</span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ flex: 1, height: 5, background: "#e2e8f0", borderRadius: 5, overflow: "hidden" }}>
+                                <div style={{ width: `${prog.percent_complete || 0}%`, height: "100%", background: "#16a34a", borderRadius: 5, transition: "width 0.3s" }} />
+                              </div>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>{prog.percent_complete || 0}%</span>
+                            </div>
+                            {isAdmin && (
+                              <div style={{ display: "flex", gap: 8, marginTop: 12, borderTop: "1px solid #f1f5f9", paddingTop: 10 }}>
+                                <button onClick={e => { e.stopPropagation(); setEditingCourse(course); setCourseForm({ title: course.title, description: course.description || "", thumbnail_url: course.thumbnail_url || "", sections: course.sections || [] }); setShowCourseBuilder(true); }} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", color: "#64748b" }}>Edit</button>
+                                <button onClick={e => { e.stopPropagation(); deleteCourse(course.id); }} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #fecaca", background: "#FEF2F2", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", color: "#DC2626" }}>Delete</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ═══ MY PROGRESS TAB ═══ */}
+        {activeTab === "progress" && (
+          <div>
+            <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#0f172a", margin: "0 0 6px", fontFamily: "'Playfair Display', serif" }}>My Progress</h2>
+            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 20px", fontFamily: "'DM Sans', sans-serif" }}>Track your learning journey</p>
+
+            {progressLoading || coursesLoading ? (
+              <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>Loading...</div>
+            ) : courses.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontSize: 15, fontFamily: "'DM Sans', sans-serif" }}>No courses available yet.</div>
+            ) : (
+              <>
+                {/* Overview stats */}
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+                  {[
+                    { label: "Courses", value: courses.length, color: "#2563EB" },
+                    { label: "In Progress", value: progress.filter(p => p.percent_complete > 0 && p.percent_complete < 100).length, color: "#D97706" },
+                    { label: "Completed", value: progress.filter(p => p.percent_complete === 100).length, color: "#16a34a" },
+                    { label: "Overall", value: courses.length > 0 ? Math.round(progress.reduce((acc, p) => acc + (p.percent_complete || 0), 0) / courses.length) + "%" : "0%", color: "#7C3AED" },
+                  ].map((stat, i) => (
+                    <div key={i} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", padding: 16, textAlign: "center" }}>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: stat.color, fontFamily: "'DM Sans', sans-serif" }}>{stat.value}</div>
+                      <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Course progress list */}
+                {courses.map(course => {
+                  const prog = getProgressForCourse(course.id);
+                  const totalLessons = (course.sections || []).reduce((acc, s) => acc + (s.lessons || []).length, 0);
+                  const completedCount = (prog.completed_lessons || []).length;
+                  return (
+                    <div key={course.id} onClick={() => { onTabChange("courses"); setSelectedCourse(course); }} style={{ display: "flex", alignItems: "center", gap: 16, padding: 16, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", marginBottom: 10, cursor: "pointer", transition: "box-shadow 0.15s" }}>
+                      {course.thumbnail_url && <img src={course.thumbnail_url} alt="" style={{ width: 64, height: 48, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>{course.title}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ flex: 1, height: 5, background: "#e2e8f0", borderRadius: 5, overflow: "hidden" }}>
+                            <div style={{ width: `${prog.percent_complete || 0}%`, height: "100%", background: prog.percent_complete === 100 ? "#16a34a" : "#2563EB", borderRadius: 5, transition: "width 0.3s" }} />
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: prog.percent_complete === 100 ? "#16a34a" : "#64748b", fontFamily: "'DM Mono', monospace", flexShrink: 0 }}>{completedCount}/{totalLessons}</span>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 20, fontWeight: 700, color: prog.percent_complete === 100 ? "#16a34a" : "#94a3b8", fontFamily: "'DM Mono', monospace", flexShrink: 0 }}>{prog.percent_complete || 0}%</span>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ADMIN VIEW — Platform owner only (rendered inside Settings)
+   ═══════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════
    FILE UPLOADER VIEW
@@ -15208,6 +16126,7 @@ export default function ReapApp() {
   const [realEstateTab, setRealEstateTab] = useState("dashboard");
   const [contactsTab, setContactsTab] = useState("dashboard");
   const [marketplaceTab, setMarketplaceTab] = useState("listings");
+  const [educationTab, setEducationTab] = useState("library");
   const [mlsTab, setMlsTab] = useState("feed");
   const [selectedMLSListing, setSelectedMLSListing] = useState(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -15242,6 +16161,7 @@ export default function ReapApp() {
   const [hasFullAccess, setHasFullAccess] = useState(false); // user can see all data, not just team
   const [pendingInvite, setPendingInvite] = useState(null); // invite awaiting acceptance
   const [orgMembers, setOrgMembers] = useState([]);        // all members in the user's org
+  const [allAppUsers, setAllAppUsers] = useState([]);       // all user emails in the app (for Owner dropdown)
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteSaving, setInviteSaving] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState("");
@@ -15309,7 +16229,7 @@ export default function ReapApp() {
       const parts = pathPart.split("/");
       const tab = parts[0];
       const qp = new URLSearchParams(queryPart || "");
-      if (["dashboard","pipeline","portfolios","mls","offerings"].includes(tab)) {
+      if (["dashboard","pipeline","portfolios","mls","offerings","management"].includes(tab)) {
         setActiveNav("realestate"); setRealEstateTab(tab);
         if (parts[1] === "map") setPendingPipelineView("map");
         else if (parts[1] === "table") setPendingPipelineView("table");
@@ -15445,7 +16365,7 @@ export default function ReapApp() {
         const parts = pathPart2.split("/");
         const tab = parts[0];
         const qp2 = new URLSearchParams(queryPart2 || "");
-        if (["dashboard","pipeline","portfolios","mls","offerings"].includes(tab)) {
+        if (["dashboard","pipeline","portfolios","mls","offerings","management"].includes(tab)) {
           setActiveNav("realestate"); setRealEstateTab(tab); setShowProfile(false);
           setSelectedDeal(null); setSelectedMLSListing(null); if (isMobile) setDealTransition(false);
           if (tab === "pipeline" && parts[1]) {
@@ -15768,9 +16688,15 @@ export default function ReapApp() {
         console.error("[REAP Org] Error loading org data:", err);
         setTeamEmails([email]);
         setFeatures({ pipeline: true, contacts: true, dashboard: true, market_intel: true, ai_summary: true, portfolio: true, ai_underwriting: true, mls_feed: true, file_uploader: true });
-      } finally {
-        setOrgLoading(false);
       }
+
+      // 7. Fetch all app users for Owner dropdown
+      try {
+        const { data: allProfiles } = await supabase.from("user_profiles").select("email, full_name, org_id");
+        setAllAppUsers((allProfiles || []).filter(p => p.email));
+      } catch (e) { console.error("[REAP] allAppUsers fetch:", e); }
+
+      setOrgLoading(false);
     }
 
     loadOrgData();
@@ -16338,6 +17264,7 @@ export default function ReapApp() {
     { id: "realestate", label: "Real Estate", mobileOrder: 0, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
     { id: "marketplace", label: "Marketplace", mobileOrder: 1, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
     { id: "contacts", label: "Contacts", mobileOrder: 3, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+    { id: "education", label: "Education", mobileOrder: 5, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="14" y2="11"/></svg> },
     { id: "assignments", label: "Assignments", mobileOrder: 4, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
   ];
   // Filter nav items by feature flags (fallback: show all if features haven't loaded yet)
@@ -16508,9 +17435,9 @@ export default function ReapApp() {
                 </div>
               </div>
             ) : activeNav === "marketplace" ? (
-              <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+              <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
                 <SubTabBar tabs={[{ id: "listings", label: "Marketplace" }, { id: "watchlist", label: "Watch List" }, { id: "intelligence", label: "Intelligence" }]} active={marketplaceTab} onChange={(tab) => { setMarketplaceTab(tab); updateHash("marketplace/" + tab); }} title="Marketplace" />
-                <div style={{ flex: 1, overflow: "auto" }}>
+                <div style={{ flex: 1, overflow: "auto", minHeight: 0, WebkitOverflowScrolling: "touch" }}>
                   {marketplaceTab === "intelligence"
                     ? <MarketIntelligenceView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
                     : marketplaceTab === "watchlist"
@@ -16531,8 +17458,8 @@ export default function ReapApp() {
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }, { id: "offerings", label: "Offerings" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
-                  <div style={{ flex: 1, overflow: "auto" }}>
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }, { id: "offerings", label: "Offerings" }, { id: "management", label: "Management" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
+                  <div style={{ flex: 1, overflow: "auto", minHeight: 0, WebkitOverflowScrolling: "touch" }}>
                     {realEstateTab === "dashboard"
                       ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
                       : realEstateTab === "portfolios"
@@ -16543,12 +17470,21 @@ export default function ReapApp() {
                         : <MLSFeedView session={session} isMobile={true} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} initialFilters={mlsFilterState} onFilterChange={setMlsFilterState} />)
                       : realEstateTab === "offerings"
                       ? <OfferingsView deals={deals} isMobile={true} session={session} userEmail={userEmail} updateHash={updateHash} />
-                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} initialFilters={pipelineFilterState} onFilterChange={setPipelineFilterState} />
+                      : realEstateTab === "management"
+                      ? <ManagementView deals={deals} isMobile={true} session={session} onRetry={fetchDeals} />
+                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} initialFilters={pipelineFilterState} onFilterChange={setPipelineFilterState} orgMembers={orgMembers} allAppUsers={allAppUsers} />
                     }
                   </div>
                 </div>
               )}
             </>
+            ) : activeNav === "education" ? (
+              <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                <SubTabBar tabs={[{ id: "library", label: "Library" }, { id: "courses", label: "Courses" }, { id: "progress", label: "My Progress" }]} active={educationTab} onChange={(tab) => { setEducationTab(tab); updateHash("education/" + tab); }} title="Education" />
+                <div style={{ flex: 1, overflow: "auto", WebkitOverflowScrolling: "touch" }}>
+                  <EducationView session={session} isMobile={true} activeTab={educationTab} onTabChange={(tab) => { setEducationTab(tab); updateHash("education/" + tab); }} updateHash={updateHash} orgData={orgData} />
+                </div>
+              </div>
             ) : activeNav === "assignments" ? (
               <AssignmentsView session={session} isMobile={true} orgData={orgData} orgMembers={orgMembers} teamEmails={teamEmails} />
             ) : null
@@ -16563,7 +17499,7 @@ export default function ReapApp() {
               ? <MLSListingDetailView listing={selectedMLSListing} onBack={handleMLSBack} isMobile={false} session={session} updateHash={updateHash} onAddToPipeline={fetchDeals} />
               : activeNav === "realestate"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }, { id: "offerings", label: "Offerings" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
+                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }, { id: "offerings", label: "Offerings" }, { id: "management", label: "Management" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {realEstateTab === "dashboard"
                       ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
@@ -16573,9 +17509,11 @@ export default function ReapApp() {
                       ? (mlsTab === "upload"
                         ? <FileUploaderView session={session} isMobile={false} onProcessed={() => setMlsTab("feed")} />
                         : <MLSFeedView session={session} isMobile={false} deals={deals} onAddToPipeline={fetchDeals} onShowUpload={() => setMlsTab("upload")} onSelectListing={handleSelectMLSListing} initialFilters={mlsFilterState} onFilterChange={setMlsFilterState} />)
+                      : realEstateTab === "management"
+                      ? <ManagementView deals={deals} isMobile={false} session={session} onRetry={fetchDeals} />
                       : realEstateTab === "offerings"
                       ? <OfferingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} />
-                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} initialFilters={pipelineFilterState} onFilterChange={setPipelineFilterState} />
+                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} initialFilters={pipelineFilterState} onFilterChange={setPipelineFilterState} orgMembers={orgMembers} allAppUsers={allAppUsers} />
                     }
                   </div>
                 </div>
@@ -16603,6 +17541,13 @@ export default function ReapApp() {
                       ? <MarketplaceListingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} watchlistOnly={true} />
                       : <MarketplaceListingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} />
                     }
+                  </div>
+                </div>
+              : activeNav === "education"
+              ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                  <SubTabBar tabs={[{ id: "library", label: "Library" }, { id: "courses", label: "Courses" }, { id: "progress", label: "My Progress" }]} active={educationTab} onChange={(tab) => { setEducationTab(tab); updateHash("education/" + tab); }} title="Education" />
+                  <div style={{ flex: 1, overflow: "auto", WebkitOverflowScrolling: "touch" }}>
+                    <EducationView session={session} isMobile={false} activeTab={educationTab} onTabChange={(tab) => { setEducationTab(tab); updateHash("education/" + tab); }} updateHash={updateHash} orgData={orgData} />
                   </div>
                 </div>
               : activeNav === "assignments"
