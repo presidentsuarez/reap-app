@@ -352,14 +352,14 @@ export async function saveBuyer(form, userEmail, editingRowId = null) {
 export async function getContactsList() {
   const { data, error } = await supabase
     .from("contacts")
-    .select("id, contact_name, email, phone, company")
+    .select("id, contact_name, first_name, last_name, email, phone, company")
     .order("contact_name", { ascending: true });
 
   if (error) throw new Error("Failed to load contacts list: " + error.message);
 
   return (data || []).map(row => ({
     rowId: row.id,
-    name: row.contact_name || "",
+    name: row.contact_name || [row.first_name, row.last_name].filter(Boolean).join(" ") || "",
     email: row.email || "",
     phone: row.phone || "",
     company: row.company || "",

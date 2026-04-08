@@ -7891,9 +7891,10 @@ function ContactsDashboardView({ session, isMobile, teamEmails: teamEmailsProp, 
     (async () => {
       setLoading(true);
       try {
-        const { data: rows } = await supabase.from("contacts").select("*").order("date_added", { ascending: false });
+        const { data: rows, error: contactsError } = await supabase.from("contacts").select("*").order("date_added", { ascending: false });
+        console.log("[REAP Contacts] Dashboard query:", rows?.length, "rows, error:", contactsError?.message || "none");
         const parsed = (rows || []).map(r => ({
-          name: r.contact_name || "", contactType: r.contact_type || "",
+          name: r.contact_name || [r.first_name, r.last_name].filter(Boolean).join(" ") || "", contactType: r.contact_type || "",
           buyerStatus: r.buyer_status || "", temperature: r.temperature || "",
           leadSource: r.lead_source || "", company: r.company || "",
           dateAdded: r.date_added || "", lastContact: r.last_contact || "",
@@ -8195,9 +8196,10 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
     setLoading(true); setError(null);
     try {
       const { data: rows, error: fetchErr } = await supabase.from("contacts").select("*").order("date_added", { ascending: false });
+      console.log("[REAP Contacts] BuyerPipeline query:", rows?.length, "rows, error:", fetchErr?.message || "none", "contactTypeFilter:", contactTypeFilter);
       if (fetchErr) throw new Error(fetchErr.message);
       const parsed = (rows || []).map(r => ({
-        rowId: r.id, name: r.contact_name || "", firstName: r.first_name || "",
+        rowId: r.id, name: r.contact_name || [r.first_name, r.last_name].filter(Boolean).join(" ") || "", firstName: r.first_name || "",
         email: r.email || "", phone: r.phone || "", contactType: r.contact_type || "",
         buyerStatus: r.buyer_status || "", assetPreference: r.asset_preference || "",
         temperature: r.temperature || "", manager: r.manager || "", notes: r.notes || "",
@@ -15627,10 +15629,10 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
 
   const fetchContacts = useCallback(async () => {
     try {
-      const { data: rows, error: fetchErr } = await supabase.from("contacts").select("id, contact_name, email, phone, company");
+      const { data: rows, error: fetchErr } = await supabase.from("contacts").select("id, contact_name, first_name, last_name, email, phone, company");
       if (fetchErr || !rows) { setContacts([]); return; }
       setContacts(rows.map(r => ({
-        rowId: r.id, name: r.contact_name || "",
+        rowId: r.id, name: r.contact_name || [r.first_name, r.last_name].filter(Boolean).join(" ") || "",
         email: r.email || "", phone: r.phone || "",
         company: r.company || "",
       })).filter(c => c.name));
@@ -16899,7 +16901,8 @@ export default function ReapApp() {
     setLoading(true);
     setError(null);
     try {
-      const { data: rows, error: fetchErr } = await supabase.from("deals").select("*").order("date_added", { ascending: false });
+      const { data: rows, error: fetchErr, status: dealStatus } = await supabase.from("deals").select("*").order("date_added", { ascending: false });
+      console.log("[REAP Deals] Fetch:", rows?.length, "rows, status:", dealStatus, "error:", fetchErr?.message || "none", fetchErr?.code || "", fetchErr?.details || "");
       if (fetchErr) throw new Error(fetchErr.message);
 
       const emailsToShow = teamEmails.length > 0 ? teamEmails : [session?.user?.email?.toLowerCase() || ""];
