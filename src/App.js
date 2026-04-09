@@ -8194,13 +8194,24 @@ function ScoreBadge({ score, label }) {
 }
 
 function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModal, onSaveBuyer, savingBuyer, editingBuyer, onSetEditingBuyer, onNewBuyer, teamEmails: teamEmailsProp, deals, updateHash, refreshKey, orgData, orgMembers, contactTypeFilter, hasFullAccess }) {
+  // localStorage key is scoped per contactTypeFilter so Buyers/Lenders/etc. each
+  // remember their own last-used view and filters
+  const prefKey = "reap_contacts_prefs_" + (contactTypeFilter || "all");
+  const loadPrefs = () => {
+    try {
+      const raw = window.localStorage?.getItem(prefKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  };
+  const savedPrefs = loadPrefs();
+
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(savedPrefs.search || "");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState(null);
-  const [typeFilter, setTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState(savedPrefs.statusFilter ?? null);
+  const [typeFilter, setTypeFilter] = useState(savedPrefs.typeFilter || "");
   const [hoveredRow, setHoveredRow] = useState(null);
   const searchRef = useRef(null);
   const [selectedContact, setSelectedContact] = useState(null);
@@ -8208,9 +8219,23 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
   const [allFunds, setAllFunds] = useState([]);
   const [contactComms, setContactComms] = useState([]);
   const [contactActivities, setContactActivities] = useState([]);
-  const [viewTab, setViewTab] = useState("table");
+  const [viewTab, setViewTab] = useState(savedPrefs.viewTab || "table");
   const [selectedContacts, setSelectedContacts] = useState(new Set());
-  const [subtypeFilter, setSubtypeFilter] = useState("");
+  const [subtypeFilter, setSubtypeFilter] = useState(savedPrefs.subtypeFilter || "");
+  // Team role filters (remembered per contact type)
+  const [ownerFilter, setOwnerFilter] = useState(savedPrefs.ownerFilter || null);
+  const [managerFilter, setManagerFilter] = useState(savedPrefs.managerFilter || null);
+  const [assigneeFilter, setAssigneeFilter] = useState(savedPrefs.assigneeFilter || null);
+
+  // Persist view + filter prefs whenever they change
+  useEffect(() => {
+    try {
+      window.localStorage?.setItem(prefKey, JSON.stringify({
+        viewTab, statusFilter, typeFilter, subtypeFilter, search,
+        ownerFilter, managerFilter, assigneeFilter,
+      }));
+    } catch (e) {}
+  }, [prefKey, viewTab, statusFilter, typeFilter, subtypeFilter, search, ownerFilter, managerFilter, assigneeFilter]);
   const [investorPipelineStats, setInvestorPipelineStats] = useState({ total: 0, pipeline: 0, committed: 0, funded: 0 });
 
   const WHOLESALER_TYPES = ["Assignment", "Double Close", "Novation", "Subject To", "Lease Option", "Land"];
@@ -8263,10 +8288,10 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
         rowId: r.id, name: r.contact_name || [r.first_name, r.last_name].filter(Boolean).join(" ") || "", firstName: r.first_name || "",
         email: r.email || "", phone: r.phone || "", contactType: r.contact_type || "",
         buyerStatus: r.buyer_status || "", assetPreference: r.asset_preference || "",
-        temperature: r.temperature || "", manager: r.manager || "", notes: r.notes || "",
+        temperature: r.temperature || "", manager: r.manager || "", assignee: r.assignee || "", notes: r.notes || "",
         leadSource: r.lead_source || "", company: r.company || "", dateAdded: r.date_added || "",
         lastContact: r.last_contact || "", followUpNotes: r.follow_up_notes || "",
-        user: r.user_email || "",
+        user: r.user_email || "", owner: r.user_email || "",
         linkedDealAddresses: r.linked_deal_addresses ? r.linked_deal_addresses.split("|||").filter(Boolean) : [],
         portalEmail: r.portal_email || "",
         dbContactScore: r.contact_score, dbBuyerScore: r.buyer_score,
@@ -8339,9 +8364,30 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
   };
 
   const statusFilters = BUYER_STATUS_LIST.map(label => ({ label, match: b => (b.buyerStatus || "").trim() === label }));
+  // Build dropdown lists (de-duplicated, case-insensitive)
+  const uniqueContactOwners = useMemo(() => {
+    const s = new Map();
+    buyers.forEach(b => { if (b.owner && !s.has(b.owner.toLowerCase())) s.set(b.owner.toLowerCase(), b.owner); });
+    return Array.from(s.values()).sort();
+  }, [buyers]);
+  const uniqueContactManagers = useMemo(() => {
+    const s = new Map();
+    buyers.forEach(b => { if (b.manager && !s.has(b.manager.toLowerCase())) s.set(b.manager.toLowerCase(), b.manager); });
+    return Array.from(s.values()).sort();
+  }, [buyers]);
+  const uniqueContactAssignees = useMemo(() => {
+    const s = new Map();
+    buyers.forEach(b => { if (b.assignee && !s.has(b.assignee.toLowerCase())) s.set(b.assignee.toLowerCase(), b.assignee); });
+    return Array.from(s.values()).sort();
+  }, [buyers]);
   const subtypeFiltered = subtypeFilter ? buyers.filter(b => (b.assetPreference || "").toLowerCase().includes(subtypeFilter.toLowerCase())) : buyers;
   const typeFiltered = typeFilter ? subtypeFiltered.filter(b => (b.contactType || "").toLowerCase().includes(typeFilter.toLowerCase())) : subtypeFiltered;
-  const textFiltered = typeFiltered.filter(b => (b.name || "").toLowerCase().includes(search.toLowerCase()) || (b.email || "").toLowerCase().includes(search.toLowerCase()) || (b.company || "").toLowerCase().includes(search.toLowerCase()) || (b.phone || "").toLowerCase().includes(search.toLowerCase()));
+  // Owner / Manager / Assignee filters
+  let roleFiltered = typeFiltered;
+  if (ownerFilter) roleFiltered = roleFiltered.filter(b => (b.owner || "").toLowerCase() === ownerFilter.toLowerCase());
+  if (managerFilter) roleFiltered = roleFiltered.filter(b => (b.manager || "").toLowerCase() === managerFilter.toLowerCase());
+  if (assigneeFilter) roleFiltered = roleFiltered.filter(b => (b.assignee || "").toLowerCase() === assigneeFilter.toLowerCase());
+  const textFiltered = roleFiltered.filter(b => (b.name || "").toLowerCase().includes(search.toLowerCase()) || (b.email || "").toLowerCase().includes(search.toLowerCase()) || (b.company || "").toLowerCase().includes(search.toLowerCase()) || (b.phone || "").toLowerCase().includes(search.toLowerCase()));
   const statusFiltered = statusFilter !== null ? textFiltered.filter(statusFilters[statusFilter].match) : textFiltered;
 
   if (loading) return <LoadingSpinner />;
@@ -8448,6 +8494,23 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
               <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder={"Search " + sectionLabelLower + "..."} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 14px 8px 32px", color: "#0f172a", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 210 }} />
             </div>
+            {/* Role filter dropdowns (Owner / Manager / Assignee) */}
+            {[
+              { label: "Owner", value: ownerFilter, set: setOwnerFilter, options: uniqueContactOwners },
+              { label: "Manager", value: managerFilter, set: setManagerFilter, options: uniqueContactManagers },
+              { label: "Assignee", value: assigneeFilter, set: setAssigneeFilter, options: uniqueContactAssignees },
+            ].map(f => (
+              <div key={f.label} style={{ position: "relative" }}>
+                <select value={f.value || ""} onChange={e => f.set(e.target.value || null)} style={{ appearance: "none", WebkitAppearance: "none", background: f.value ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (f.value ? "#16a34a" : "#e2e8f0"), borderRadius: 8, padding: "8px 28px 8px 10px", color: f.value ? "#16a34a" : "#64748b", fontSize: 12, fontWeight: f.value ? 600 : 400, fontFamily: "'DM Sans', sans-serif", outline: "none", cursor: "pointer", minWidth: 120, transition: "all 0.15s" }}>
+                  <option value="">All {f.label}s</option>
+                  {f.options.map(email => <option key={email} value={email}>{fmtUserName(email)}</option>)}
+                </select>
+                <svg style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} width={11} height={11} viewBox="0 0 24 24" fill="none" stroke={f.value ? "#16a34a" : "#94a3b8"} strokeWidth={2}><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+            ))}
+            {(ownerFilter || managerFilter || assigneeFilter) && (
+              <button onClick={() => { setOwnerFilter(null); setManagerFilter(null); setAssigneeFilter(null); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#dc2626", fontFamily: "'DM Sans', sans-serif", padding: "4px 8px", whiteSpace: "nowrap" }}>Clear</button>
+            )}
             <button onClick={onNewBuyer} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: "9px 18px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap" }}>
               <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14" /></svg>
               New {contactTypeFilter === "lender" ? "Lender" : contactTypeFilter === "buyer" ? "Buyer" : contactTypeFilter === "wholesaler" ? "Wholesaler" : contactTypeFilter === "investor" ? "Investor" : "Contact"}
@@ -8663,7 +8726,7 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
                 <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Sans', sans-serif" }}>
                   <thead><tr style={{ borderBottom: "1px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 10px", width: 36 }}><input type="checkbox" checked={selectedContacts.size === statusFiltered.length && statusFiltered.length > 0} onChange={toggleSelectAllContacts} style={{ cursor: "pointer", accentColor: "#16a34a" }} /></th>
-                    {["Name", "Company", "Type", "Status", "Temp", "Asset Pref", "Phone", "Email", "Manager", "Contact Score", ...(contactTypeFilter === "buyer" ? ["Buyer Score"] : contactTypeFilter === "lender" ? ["Lender Score"] : contactTypeFilter === "wholesaler" ? ["Wholesaler Score"] : contactTypeFilter === "investor" ? ["Investor Score"] : [])].map(h => (<th key={h} style={{ textAlign: h.includes("Score") ? "center" : "left", padding: "12px 14px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>))}
+                    {["Name", "Company", "Type", "Status", "Temp", "Asset Pref", "Phone", "Email", "Owner", "Manager", "Assignee", "Contact Score", ...(contactTypeFilter === "buyer" ? ["Buyer Score"] : contactTypeFilter === "lender" ? ["Lender Score"] : contactTypeFilter === "wholesaler" ? ["Wholesaler Score"] : contactTypeFilter === "investor" ? ["Investor Score"] : [])].map(h => (<th key={h} style={{ textAlign: h.includes("Score") ? "center" : "left", padding: "12px 14px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>))}
                   </tr></thead>
                   <tbody>
                     {statusFiltered.map((b, i) => (
@@ -8683,7 +8746,9 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
                         <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.assetPreference || "—"}</td>
                         <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{b.phone || "—"}</td>
                         <td style={{ padding: "12px 14px", fontSize: 12, color: "#94a3b8" }}>{b.email || "—"}</td>
-                        <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.manager || "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.owner ? fmtUserName(b.owner) : "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.manager ? fmtUserName(b.manager) : "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "#64748b" }}>{b.assignee ? fmtUserName(b.assignee) : "—"}</td>
                         <td style={{ padding: "12px 14px", textAlign: "center" }}><ScoreBadge score={b.contactScore} label="Contact Score" /></td>
                         {contactTypeFilter === "buyer" && <td style={{ padding: "12px 14px", textAlign: "center" }}><ScoreBadge score={b.buyerScore} label="Buyer Score" /></td>}
                         {contactTypeFilter === "lender" && <td style={{ padding: "12px 14px", textAlign: "center" }}><ScoreBadge score={b.lenderScore} label="Lender Score" /></td>}
