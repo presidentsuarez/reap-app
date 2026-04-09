@@ -270,24 +270,35 @@ export async function generateAISummary(deal) {
 export async function getBuyers(teamEmails) {
   const emailsLower = teamEmails.map(e => e.toLowerCase());
 
-  let query = supabase
-    .from("contacts")
-    .select("*")
-    .order("date_added", { ascending: false });
+  // Paginate: Supabase/PostgREST has a default 1000 row limit
+  let allRows = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    let query = supabase
+      .from("contacts")
+      .select("*")
+      .order("date_added", { ascending: false })
+      .range(from, from + pageSize - 1);
 
-  // Team filtering via RLS handles org-level access,
-  // but we also filter by teamEmails for explicit team scoping
-  if (emailsLower.length > 0) {
-    query = query.in("user_email", emailsLower);
+    // Team filtering via RLS handles org-level access,
+    // but we also filter by teamEmails for explicit team scoping
+    if (emailsLower.length > 0) {
+      query = query.in("user_email", emailsLower);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new Error("Failed to load contacts: " + error.message);
+    if (!data || data.length === 0) break;
+    allRows = allRows.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
   }
 
-  const { data, error } = await query;
-  if (error) throw new Error("Failed to load contacts: " + error.message);
-
   // Map Supabase columns back to the shape App.js expects
-  return (data || []).map(row => ({
+  return allRows.map(row => ({
     rowId: row.id,
-    name: row.contact_name || "",
+    name: row.contact_name || [row.first_name, row.last_name].filter(Boolean).join(" ") || "",
     firstName: row.first_name || "",
     email: row.email || "",
     phone: row.phone || "",
@@ -350,14 +361,24 @@ export async function saveBuyer(form, userEmail, editingRowId = null) {
 
 // Slim contacts list (used by InvestorPipelineView for linking)
 export async function getContactsList() {
-  const { data, error } = await supabase
-    .from("contacts")
-    .select("id, contact_name, first_name, last_name, email, phone, company")
-    .order("contact_name", { ascending: true });
+  // Paginate: Supabase/PostgREST has a default 1000 row limit
+  let allRows = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("id, contact_name, first_name, last_name, email, phone, company")
+      .order("contact_name", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error("Failed to load contacts list: " + error.message);
+    if (!data || data.length === 0) break;
+    allRows = allRows.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
 
-  if (error) throw new Error("Failed to load contacts list: " + error.message);
-
-  return (data || []).map(row => ({
+  return allRows.map(row => ({
     rowId: row.id,
     name: row.contact_name || [row.first_name, row.last_name].filter(Boolean).join(" ") || "",
     email: row.email || "",

@@ -2700,8 +2700,20 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
   // Fetch lender contacts
   const fetchLenderContacts = useCallback(async () => {
     try {
-      const { data } = await supabase.from("contacts").select("id, contact_name, company, email, phone, contact_type").order("contact_name");
-      const allContacts = data || [];
+      // Paginate: Supabase/PostgREST has a default 1000 row limit
+      let allContacts = [];
+      {
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data, error } = await supabase.from("contacts").select("id, contact_name, company, email, phone, contact_type").order("contact_name").range(from, from + pageSize - 1);
+          if (error) break;
+          if (!data || data.length === 0) break;
+          allContacts = allContacts.concat(data);
+          if (data.length < pageSize) break;
+          from += pageSize;
+        }
+      }
       // Prioritize lenders but show all contacts
       const lenders = allContacts.filter(c => (c.contact_type || "").toLowerCase().includes("lender"));
       const others = allContacts.filter(c => !(c.contact_type || "").toLowerCase().includes("lender"));
@@ -3235,8 +3247,20 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
         const { data: contacts } = await supabase.from("contacts").select("id, contact_name, email, phone").in("id", contactIds);
         (contacts || []).forEach(c => { contactMap[c.id] = c; });
       }
-      // Also fetch individually-linked contacts for this deal
-      const { data: allContacts } = await supabase.from("contacts").select("id, contact_name, email, phone, linked_deal_addresses");
+      // Also fetch individually-linked contacts for this deal (paginated to bypass 1000-row default)
+      let allContacts = [];
+      {
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data, error } = await supabase.from("contacts").select("id, contact_name, email, phone, linked_deal_addresses").range(from, from + pageSize - 1);
+          if (error) break;
+          if (!data || data.length === 0) break;
+          allContacts = allContacts.concat(data);
+          if (data.length < pageSize) break;
+          from += pageSize;
+        }
+      }
       const directLinkedContacts = (allContacts || []).filter(c => {
         const addrs = c.linked_deal_addresses ? c.linked_deal_addresses.split("|||").filter(Boolean) : [];
         return addrs.includes(deal.address);
@@ -7375,7 +7399,20 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
   useEffect(() => {
     async function fetchExtras() {
       try {
-        const { data: contacts } = await supabase.from("contacts").select("id, temperature, user_email");
+        // Paginate: Supabase/PostgREST has a default 1000 row limit
+        let contacts = [];
+        {
+          let from = 0;
+          const pageSize = 1000;
+          while (true) {
+            const { data, error } = await supabase.from("contacts").select("id, temperature, user_email").range(from, from + pageSize - 1);
+            if (error) break;
+            if (!data || data.length === 0) break;
+            contacts = contacts.concat(data);
+            if (data.length < pageSize) break;
+            from += pageSize;
+          }
+        }
         if (contacts) {
           const mine = hasFullAccess ? contacts : contacts.filter(c => emailsToShow.includes((c.user_email || "").toLowerCase()));
           setContactsCount(mine.length);
@@ -7891,8 +7928,20 @@ function ContactsDashboardView({ session, isMobile, teamEmails: teamEmailsProp, 
     (async () => {
       setLoading(true);
       try {
-        const { data: rows, error: contactsError } = await supabase.from("contacts").select("*").order("date_added", { ascending: false });
-        console.log("[REAP Contacts] Dashboard query:", rows?.length, "rows, error:", contactsError?.message || "none");
+        // Paginate: Supabase/PostgREST has a default 1000 row limit
+        let rows = [];
+        let from = 0;
+        const pageSize = 1000;
+        let lastError = null;
+        while (true) {
+          const { data, error } = await supabase.from("contacts").select("*").order("date_added", { ascending: false }).range(from, from + pageSize - 1);
+          if (error) { lastError = error; break; }
+          if (!data || data.length === 0) break;
+          rows = rows.concat(data);
+          if (data.length < pageSize) break;
+          from += pageSize;
+        }
+        console.log("[REAP Contacts] Dashboard query:", rows.length, "rows, error:", lastError?.message || "none");
         const parsed = (rows || []).map(r => ({
           name: r.contact_name || [r.first_name, r.last_name].filter(Boolean).join(" ") || "", contactType: r.contact_type || "",
           buyerStatus: r.buyer_status || "", temperature: r.temperature || "",
@@ -8195,8 +8244,20 @@ function BuyerPipelineView({ session, isMobile, showBuyerModal, onCloseBuyerModa
   const fetchBuyers = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const { data: rows, error: fetchErr } = await supabase.from("contacts").select("*").order("date_added", { ascending: false });
-      console.log("[REAP Contacts] BuyerPipeline query:", rows?.length, "rows, error:", fetchErr?.message || "none", "contactTypeFilter:", contactTypeFilter);
+      // Paginate: Supabase/PostgREST has a default 1000 row limit
+      let rows = [];
+      let from = 0;
+      const pageSize = 1000;
+      let fetchErr = null;
+      while (true) {
+        const { data, error } = await supabase.from("contacts").select("*").order("date_added", { ascending: false }).range(from, from + pageSize - 1);
+        if (error) { fetchErr = error; break; }
+        if (!data || data.length === 0) break;
+        rows = rows.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      console.log("[REAP Contacts] BuyerPipeline query:", rows.length, "rows, error:", fetchErr?.message || "none", "contactTypeFilter:", contactTypeFilter);
       if (fetchErr) throw new Error(fetchErr.message);
       const parsed = (rows || []).map(r => ({
         rowId: r.id, name: r.contact_name || [r.first_name, r.last_name].filter(Boolean).join(" ") || "", firstName: r.first_name || "",
@@ -15629,8 +15690,18 @@ function InvestorPipelineView({ session, isMobile, teamEmails: teamEmailsProp, d
 
   const fetchContacts = useCallback(async () => {
     try {
-      const { data: rows, error: fetchErr } = await supabase.from("contacts").select("id, contact_name, first_name, last_name, email, phone, company");
-      if (fetchErr || !rows) { setContacts([]); return; }
+      // Paginate: Supabase/PostgREST has a default 1000 row limit
+      let rows = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase.from("contacts").select("id, contact_name, first_name, last_name, email, phone, company").range(from, from + pageSize - 1);
+        if (error) { setContacts([]); return; }
+        if (!data || data.length === 0) break;
+        rows = rows.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
       setContacts(rows.map(r => ({
         rowId: r.id, name: r.contact_name || [r.first_name, r.last_name].filter(Boolean).join(" ") || "",
         email: r.email || "", phone: r.phone || "",
