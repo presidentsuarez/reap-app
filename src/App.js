@@ -1939,16 +1939,16 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
         )}
       </div>
 
-      {/* Team role filter strip */}
-      {(uniqueOwners.length > 0 || uniqueManagers.length > 0 || uniqueAssignees.length > 0) && (
-        <div style={{ background: "#fff", borderBottom: "1px solid #f1f5f9", padding: isMobile ? "8px 12px" : "8px 32px", display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+      {/* Team role filter strip (mobile only — desktop has these in the header search bar area) */}
+      {isMobile && (uniqueOwners.length > 0 || uniqueManagers.length > 0 || uniqueAssignees.length > 0) && (
+        <div style={{ background: "#fff", borderBottom: "1px solid #f1f5f9", padding: "8px 12px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           {[
             { label: "Owner", value: ownerFilter, set: setOwnerFilter, options: uniqueOwners },
             { label: "Manager", value: managerFilter, set: setManagerFilter, options: uniqueManagers },
             { label: "Assignee", value: assigneeFilter, set: setAssigneeFilter, options: uniqueAssignees },
           ].map(f => (
-            <div key={f.label} style={{ position: "relative", flex: isMobile ? "1 1 30%" : "none", minWidth: isMobile ? 0 : "auto" }}>
-              <select value={f.value || ""} onChange={e => f.set(e.target.value || null)} style={{ appearance: "none", WebkitAppearance: "none", width: isMobile ? "100%" : "auto", background: f.value ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (f.value ? "#16a34a" : "#e2e8f0"), borderRadius: 8, padding: "7px 26px 7px 10px", color: f.value ? "#16a34a" : "#64748b", fontSize: 11, fontWeight: f.value ? 600 : 400, fontFamily: "'DM Sans', sans-serif", outline: "none", cursor: "pointer", minWidth: isMobile ? 0 : 120, transition: "all 0.15s" }}>
+            <div key={f.label} style={{ position: "relative", flex: "1 1 30%", minWidth: 0 }}>
+              <select value={f.value || ""} onChange={e => f.set(e.target.value || null)} style={{ appearance: "none", WebkitAppearance: "none", width: "100%", background: f.value ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (f.value ? "#16a34a" : "#e2e8f0"), borderRadius: 8, padding: "7px 26px 7px 10px", color: f.value ? "#16a34a" : "#64748b", fontSize: 11, fontWeight: f.value ? 600 : 400, fontFamily: "'DM Sans', sans-serif", outline: "none", cursor: "pointer", minWidth: 0, transition: "all 0.15s" }}>
                 <option value="">All {f.label}s</option>
                 {f.options.map(email => <option key={email} value={email}>{fmtUserName(email)}</option>)}
               </select>
