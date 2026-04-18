@@ -7272,229 +7272,208 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
     return { bg: "linear-gradient(135deg, #fecaca, #fca5a5)", color: "#991b1b", glow: "rgba(239,68,68,0.15)" };
   };
 
-  const activityEmojis = { "Status Change": "🔄", "Note": "📝", "Call": "📞", "Email": "✉️", "Meeting": "🤝", "Offer Sent": "🚀", "Document Added": "📎", "Site Visit": "🏠" };
-
-  if (loading) return <LoadingSpinner />;
-
-
   const funnelStages = [
-    { n: added, label: "Added", color: "#3b82f6", bg: "#eff6ff" },
-    { n: underwritten, label: "Underwritten", color: "#7c3aed", bg: "#f5f3ff" },
-    { n: offersMade, label: "Offers", color: "#d97706", bg: "#fffbeb" },
-    { n: accepted, label: "Accepted", color: "#ea580c", bg: "#fff7ed" },
-    { n: inEscrow, label: "Escrow", color: "#0891b2", bg: "#ecfeff" },
-    { n: closings, label: "Closed", color: "#16a34a", bg: "#f0fdf4" },
+    { n: added, label: "Added", color: "#3b82f6" },
+    { n: underwritten, label: "Underwritten", color: "#8b5cf6" },
+    { n: offersMade, label: "Offers", color: "#f59e0b" },
+    { n: accepted, label: "Accepted", color: "#f97316" },
+    { n: inEscrow, label: "Escrow", color: "#06b6d4" },
+    { n: closings, label: "Closed", color: "#22c55e" },
   ];
 
+
   return (
-    <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif", maxWidth: "100%", minWidth: 0 }}>
-      <div style={{ padding: isMobile ? "0 0 100px" : "0 0 40px", maxWidth: isMobile ? "100%" : 1100, margin: "0 auto", overflowX: "hidden" }}>
+    <div style={{ flex: 1, overflow: "auto", background: "#0a0f1a", fontFamily: "'DM Sans', sans-serif", minHeight: "100vh" }}>
+      <style>{`
+        @keyframes ccPulse { 0%,100% { opacity: 0.4; } 50% { opacity: 0.8; } }
+        @keyframes ccGlow { 0%,100% { box-shadow: 0 0 20px rgba(22,163,74,0.1); } 50% { box-shadow: 0 0 40px rgba(22,163,74,0.2); } }
+      `}</style>
 
-      {/* ═══ HERO ═══ */}
-      <div style={{
-        background: "linear-gradient(160deg, #0a0f1a 0%, #111827 40%, #0f172a 100%)",
-        padding: isMobile ? "28px 16px 24px" : "36px 36px 32px",
-        position: "relative", overflow: "hidden",
-      }}>
-        {/* Subtle gradient orbs */}
-        <div style={{ position: "absolute", top: -80, right: -40, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(22,163,74,0.08) 0%, transparent 70%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: -80, left: "20%", width: 250, height: 250, borderRadius: "50%", background: "radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: isMobile ? "0 0 100px" : "0 24px 60px" }}>
 
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", margin: "0 0 6px", fontWeight: 500, letterSpacing: "0.02em" }}>{greeting}, {firstName}</p>
-        <h1 style={{ fontSize: isMobile ? 26 : 34, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: "0 0 20px", letterSpacing: "-0.025em" }}>Command Center</h1>
-
-        {/* Key stats row */}
-        <div style={{ display: "flex", gap: isMobile ? 8 : 12, flexWrap: "wrap" }}>
-          {[
-            { label: qLabel, value: daysLeft + "d left", accent: "#22c55e" },
-            { label: "Pipeline", value: fmtK(totalPipelineValue), accent: "#3b82f6" },
-            { label: "Deals", value: String(deals.length), accent: "#8b5cf6" },
-            { label: "Contacts", value: String(contactsCount), accent: "#f59e0b" },
-            ...(!isMobile ? [{ label: "Committed", value: fmtK(capitalCommitted), accent: "#ec4899" }] : []),
-          ].map((s, i) => (
-            <div key={i} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: isMobile ? "8px 12px" : "10px 16px", display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: s.accent, boxShadow: "0 0 8px " + s.accent + "60" }} />
-              <div>
-                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", margin: 0, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{s.label}</p>
-                <p style={{ fontSize: 15, color: "#fff", margin: 0, fontWeight: 700, fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em" }}>{s.value}</p>
+        {/* ═══ HERO HEADER ═══ */}
+        <div style={{ padding: isMobile ? "28px 16px 0" : "40px 12px 0", position: "relative" }}>
+          <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 16 : 0, marginBottom: 32 }}>
+            <div>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: "0 0 4px", fontWeight: 500 }}>{greeting}, {firstName}</p>
+              <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.03em" }}>Command Center</h1>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 10, padding: "8px 16px", display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", animation: "ccPulse 2s ease-in-out infinite" }} />
+                <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{qLabel}</span>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{daysLeft}d left</span>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ padding: isMobile ? "16px 12px 0" : "28px 36px 0" }}>
-
-      {/* ═══ PIPELINE FUNNEL ═══ */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(6, 1fr)", gap: isMobile ? 8 : 10, marginBottom: 8 }}>
-        {funnelStages.map((f, i) => (
-          <div key={f.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? "14px 10px" : "18px 14px", textAlign: "center", position: "relative", overflow: "hidden", transition: "all 0.2s" }}
-            onMouseEnter={e => { if (!isMobile) { e.currentTarget.style.borderColor = f.color; e.currentTarget.style.boxShadow = "0 4px 20px " + f.color + "15"; } }}
-            onMouseLeave={e => { if (!isMobile) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; } }}>
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: f.color, opacity: 0.8 }} />
-            <p style={{ fontSize: isMobile ? 28 : 36, fontWeight: 700, margin: "4px 0 2px", color: "#0f172a", fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{f.n}</p>
-            <p style={{ fontSize: 10, color: "#64748b", margin: 0, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>{f.label}</p>
           </div>
-        ))}
-      </div>
 
-      {/* Funnel progress bar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: isMobile ? 16 : 24, padding: "0 2px" }}>
-        <div style={{ flex: 1, display: "flex", height: 4, borderRadius: 2, overflow: "hidden", background: "#f1f5f9" }}>
-          {funnelStages.map((f) => (
-            <div key={f.label} style={{ flex: Math.max(f.n, 0.5), height: "100%", background: f.color, transition: "flex 0.5s" }} />
-          ))}
-        </div>
-        <span style={{ fontSize: 12, color: "#0f172a", flexShrink: 0, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>
-          {closeRate}%
-        </span>
-        <span style={{ fontSize: 11, color: "#94a3b8", flexShrink: 0 }}>close rate</span>
-      </div>
-
-      {/* ═══ MAIN GRID: Goals + Top Deals ═══ */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 16, marginBottom: isMobile ? 12 : 20 }}>
-
-        {/* Quarterly Goals */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: 0, letterSpacing: "-0.01em" }}>Quarterly Goals</h3>
-            <button onClick={() => setEditingGoals(!editingGoals)} style={{ background: "none", border: "none", fontSize: 11, color: "#16a34a", fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{editingGoals ? "Done" : "Edit"}</button>
+          {/* ═══ TOP METRICS BAR ═══ */}
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: isMobile ? 10 : 12, marginBottom: 28 }}>
+            {[
+              { label: "Pipeline Value", value: fmtK(totalPipelineValue), sub: deals.length + " deals", color: "#3b82f6" },
+              { label: "Close Rate", value: closeRate + "%", sub: closings + " of " + added + " " + qLabel, color: "#22c55e" },
+              { label: "Capital Committed", value: fmtK(capitalCommitted), sub: investorsData.length + " investors", color: "#a855f7" },
+              { label: "Active Contacts", value: String(contactsCount), sub: hotContactsCount + " hot leads", color: "#f59e0b" },
+              ...(!isMobile ? [{ label: "Avg REAP Score", value: String(scoredDeals.length > 0 ? Math.round(scoredDeals.reduce((s, d) => s + num(d.reapScore), 0) / scoredDeals.length) : 0), sub: scoredDeals.length + " scored deals", color: "#06b6d4" }] : []),
+            ].map((m, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px", position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", top: 0, left: 0, width: 3, height: "100%", background: m.color, borderRadius: "3px 0 0 3px" }} />
+                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: "0 0 6px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>{m.label}</p>
+                <p style={{ fontSize: isMobile ? 24 : 30, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace", margin: "0 0 4px", letterSpacing: "-0.03em", lineHeight: 1 }}>{m.value}</p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", margin: 0 }}>{m.sub}</p>
+              </div>
+            ))}
           </div>
-          {goals.map((g, i) => {
-            const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
-            const pace = daysLeft > 0 ? ((g.target - g.current) / (daysLeft / 7)).toFixed(1) : 0;
-            return (
-              <div key={i} style={{ marginBottom: i < goals.length - 1 ? 16 : 0 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  {editingGoals ? (
-                    <input value={g.label} onChange={e => { const u = [...goals]; u[i].label = e.target.value; setGoals(u); }} style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "#0f172a", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", fontFamily: "'DM Sans', sans-serif", marginRight: 8 }} />
-                  ) : (
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{g.label}</span>
-                  )}
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>
-                    {g.isCurrency ? fmtK(g.current) : g.current} / {g.isCurrency ? fmtK(g.target) : g.target}
-                  </span>
-                </div>
-                <div style={{ height: 6, borderRadius: 3, background: "#f1f5f9", overflow: "hidden" }}>
-                  <div style={{ width: pct + "%", height: "100%", borderRadius: 3, background: g.color, transition: "width 0.5s" }} />
-                </div>
-                <p style={{ fontSize: 10, color: "#94a3b8", margin: "4px 0 0" }}>Need {g.isCurrency ? fmtK(pace) : pace}/wk · {daysLeft}d left</p>
-                {editingGoals && (
-                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                    <input type="number" value={g.target} onChange={e => { const u = [...goals]; u[i].target = parseInt(e.target.value) || 0; setGoals(u); }} style={{ width: 80, fontSize: 12, padding: "4px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Mono', monospace" }} placeholder="Target" />
-                    <button onClick={() => setGoals(goals.filter((_, idx) => idx !== i))} style={{ fontSize: 10, color: "#dc2626", background: "none", border: "1px solid #fecaca", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}>Remove</button>
+
+          {/* ═══ PIPELINE FLOW ═══ */}
+          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: isMobile ? "16px 14px" : "24px 28px", marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Pipeline Flow — {qLabel}</p>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: isMobile ? 4 : 0 }}>
+              {funnelStages.map((f, i) => {
+                const maxN = Math.max(...funnelStages.map(s => s.n), 1);
+                const h = Math.max((f.n / maxN) * 100, 8);
+                return (
+                  <div key={f.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: isMobile ? 18 : 28, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace" }}>{f.n}</span>
+                    <div style={{ width: "70%", height: isMobile ? 40 : 64, borderRadius: "6px 6px 0 0", position: "relative", overflow: "hidden" }}>
+                      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: h + "%", background: f.color, borderRadius: "6px 6px 0 0", transition: "height 0.6s ease", opacity: 0.85 }} />
+                    </div>
+                    <span style={{ fontSize: isMobile ? 8 : 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{f.label}</span>
+                    {i < funnelStages.length - 1 && !isMobile && (
+                      <div style={{ position: "absolute", right: -6, top: "50%", transform: "translateY(-50%)" }}>
+                        <svg width={8} height={8} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={2}><polyline points="9 18 15 12 9 6"/></svg>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
-          {editingGoals && (
-            <button onClick={() => setGoals([...goals, { label: "New Goal", current: 0, target: 10, color: "#64748b" }])} style={{ marginTop: 12, width: "100%", padding: "8px", border: "1px dashed #cbd5e1", borderRadius: 8, background: "transparent", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add Goal</button>
-          )}
-        </div>
-
-        {/* Top Deals by REAP Score */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 24px" }}>
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 16px", letterSpacing: "-0.01em" }}>Top Deals by REAP Score</h3>
-          {scoredDeals.length === 0 ? (
-            <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: 20 }}>No scored deals yet</p>
-          ) : scoredDeals.map((d, i) => {
-            const sc = scoreColor(d.reapScore);
-            return (
-              <div key={d.address || i} onClick={() => onSelectDeal(d)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < scoredDeals.length - 1 ? "1px solid #f8fafc" : "none", cursor: "pointer", transition: "opacity 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.opacity = "0.7"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1", fontFamily: "'DM Mono', monospace", width: 20, textAlign: "center" }}>{i + 1}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.address}</p>
-                  <p style={{ fontSize: 10, color: "#94a3b8", margin: "1px 0 0" }}>{d.type || ""} · {d.status || ""}</p>
-                </div>
-                <div style={{ background: sc.bg, borderRadius: 8, padding: "4px 10px", boxShadow: "0 0 12px " + sc.glow }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: sc.color, fontFamily: "'DM Mono', monospace" }}>{Math.round(num(d.reapScore))}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ═══ ATTENTION + ACTIVITY ═══ */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 16, marginBottom: isMobile ? 12 : 20 }}>
-
-        {/* Needs Attention */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 24px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: 0 }}>Needs Attention</h3>
-            {attentionItems.length > 0 && <span style={{ background: "#fef2f2", color: "#dc2626", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, fontFamily: "'DM Mono', monospace", border: "1px solid #fecaca" }}>{attentionItems.length}</span>}
-          </div>
-          {attentionItems.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "20px 0", color: "#94a3b8", fontSize: 12 }}>All clear — no items need attention</div>
-          ) : attentionItems.slice(0, 6).map((item, i) => (
-            <div key={i} onClick={() => item.deal && onSelectDeal(item.deal)} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: i < Math.min(attentionItems.length, 6) - 1 ? "1px solid #f8fafc" : "none", cursor: item.deal ? "pointer" : "default" }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", marginTop: 6, flexShrink: 0, background: item.severity === "high" ? "#dc2626" : "#f59e0b", boxShadow: "0 0 6px " + (item.severity === "high" ? "rgba(220,38,38,0.3)" : "rgba(245,158,11,0.3)") }} />
-              <p style={{ fontSize: 12, color: "#334155", margin: 0, lineHeight: 1.5, flex: 1 }}>{item.text}</p>
-              {item.deal && <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2} style={{ flexShrink: 0, marginTop: 2 }}><polyline points="9 18 15 12 9 6"/></svg>}
+                );
+              })}
             </div>
-          ))}
-        </div>
+          </div>
 
-        {/* Recent Activity */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 24px" }}>
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 16px" }}>Recent Activity</h3>
-          {recentActivities.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "20px 0", color: "#94a3b8", fontSize: 12 }}>No recent activity</div>
-          ) : recentActivities.slice(0, 6).map((act, i) => (
-            <div key={act.id || i} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: i < Math.min(recentActivities.length, 6) - 1 ? "1px solid #f8fafc" : "none" }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11 }}>
-                {activityEmojis[act.activity_type] || "\u2022"}
+          {/* ═══ MAIN GRID ═══ */}
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: isMobile ? 12 : 14, marginBottom: 14 }}>
+
+            {/* Needs Attention */}
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Attention</p>
+                {attentionItems.length > 0 && <span style={{ background: "rgba(239,68,68,0.15)", color: "#f87171", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8, fontFamily: "'DM Mono', monospace" }}>{attentionItems.length}</span>}
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 12, fontWeight: 500, color: "#0f172a", margin: 0, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{act.description || act.activity_type}</p>
-                <p style={{ fontSize: 10, color: "#94a3b8", margin: "2px 0 0" }}>{(act.user_email || "").split("@")[0]} · {timeAgo(act.created_at)}</p>
+              {attentionItems.length === 0 ? (
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", textAlign: "center", padding: "16px 0" }}>All clear</p>
+              ) : attentionItems.slice(0, 5).map((item, i) => (
+                <div key={i} onClick={() => item.deal && onSelectDeal(item.deal)} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: i < Math.min(attentionItems.length, 5) - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", cursor: item.deal ? "pointer" : "default" }}>
+                  <div style={{ width: 5, height: 5, borderRadius: "50%", marginTop: 6, flexShrink: 0, background: item.severity === "high" ? "#ef4444" : "#f59e0b" }} />
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.5, flex: 1 }}>{item.text}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Top Deals */}
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px" }}>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: "0 0 14px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Top Deals</p>
+              {scoredDeals.length === 0 ? (
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", textAlign: "center", padding: "16px 0" }}>No scored deals</p>
+              ) : scoredDeals.map((d, i) => {
+                const sc = scoreColor(d.reapScore);
+                return (
+                  <div key={d.address || i} onClick={() => onSelectDeal(d)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i < scoredDeals.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", cursor: "pointer" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.2)", fontFamily: "'DM Mono', monospace", width: 16 }}>{i + 1}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.8)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.address}</p>
+                      <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", margin: "1px 0 0" }}>{d.type || ""} · {d.status || ""}</p>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: sc.color, fontFamily: "'DM Mono', monospace", background: sc.bg, padding: "3px 8px", borderRadius: 6 }}>{Math.round(num(d.reapScore))}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Recent Activity */}
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px" }}>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: "0 0 14px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Activity</p>
+              {recentActivities.length === 0 ? (
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", textAlign: "center", padding: "16px 0" }}>No recent activity</p>
+              ) : recentActivities.slice(0, 6).map((act, i) => (
+                <div key={act.id || i} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: i < Math.min(recentActivities.length, 6) - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#22c55e", marginTop: 7, flexShrink: 0, opacity: 0.6 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{act.description || act.activity_type}</p>
+                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", margin: "2px 0 0" }}>{(act.user_email || "").split("@")[0]} · {timeAgo(act.created_at)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ═══ BOTTOM ROW: Goals + Velocity ═══ */}
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 14 }}>
+
+            {/* Quarterly Goals */}
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Quarterly Goals</p>
+                <button onClick={() => setEditingGoals(!editingGoals)} style={{ background: "none", border: "none", fontSize: 11, color: "#22c55e", fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{editingGoals ? "Done" : "Edit"}</button>
+              </div>
+              {goals.map((g, i) => {
+                const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
+                const pace = daysLeft > 0 ? ((g.target - g.current) / (daysLeft / 7)).toFixed(1) : 0;
+                return (
+                  <div key={i} style={{ marginBottom: i < goals.length - 1 ? 14 : 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      {editingGoals ? (
+                        <input value={g.label} onChange={e => { const u = [...goals]; u[i].label = e.target.value; setGoals(u); }} style={{ flex: 1, fontSize: 12, fontWeight: 600, color: "#fff", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "4px 8px", fontFamily: "'DM Sans', sans-serif", marginRight: 8 }} />
+                      ) : (
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>{g.label}</span>
+                      )}
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", fontFamily: "'DM Mono', monospace" }}>{g.isCurrency ? fmtK(g.current) : g.current} / {g.isCurrency ? fmtK(g.target) : g.target}</span>
+                    </div>
+                    <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                      <div style={{ width: pct + "%", height: "100%", borderRadius: 2, background: g.color, transition: "width 0.5s" }} />
+                    </div>
+                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", margin: "4px 0 0" }}>Need {g.isCurrency ? fmtK(pace) : pace}/wk · {daysLeft}d left</p>
+                    {editingGoals && (
+                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                        <input type="number" value={g.target} onChange={e => { const u = [...goals]; u[i].target = parseInt(e.target.value) || 0; setGoals(u); }} style={{ width: 80, fontSize: 11, padding: "4px 8px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, fontFamily: "'DM Mono', monospace", background: "rgba(255,255,255,0.06)", color: "#fff" }} placeholder="Target" />
+                        <button onClick={() => setGoals(goals.filter((_, idx) => idx !== i))} style={{ fontSize: 10, color: "#f87171", background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}>Remove</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {editingGoals && (
+                <button onClick={() => setGoals([...goals, { label: "New Goal", current: 0, target: 10, color: "#64748b" }])} style={{ marginTop: 12, width: "100%", padding: "8px", border: "1px dashed rgba(255,255,255,0.1)", borderRadius: 8, background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add Goal</button>
+              )}
+            </div>
+
+            {/* Pipeline Velocity */}
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Velocity</p>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>avg days per stage</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+                {velocityData.map((v, i) => {
+                  const pct = maxVelocity > 0 ? (v.days / maxVelocity) * 100 : 0;
+                  const isHigh = v.days > 30;
+                  return (
+                    <div key={v.status} style={{ textAlign: "center" }}>
+                      <div style={{ height: 44, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 6 }}>
+                        <div style={{ width: "55%", minHeight: 3, height: pct + "%", borderRadius: "3px 3px 0 0", background: isHigh ? "#ef4444" : "rgba(255,255,255,0.15)", transition: "height 0.5s" }} />
+                      </div>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: isHigh ? "#f87171" : "rgba(255,255,255,0.7)", fontFamily: "'DM Mono', monospace", margin: "0 0 2px" }}>{v.days}d</p>
+                      <p style={{ fontSize: 8, color: "rgba(255,255,255,0.25)", margin: 0, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>{v.status}</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ═══ PIPELINE VELOCITY ═══ */}
-      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 24px", marginBottom: isMobile ? 12 : 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: 0 }}>Pipeline Velocity</h3>
-          <span style={{ fontSize: 10, color: "#94a3b8" }}>avg days per stage</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(6, 1fr)", gap: isMobile ? 8 : 10 }}>
-          {velocityData.map((v, i) => {
-            const pct = maxVelocity > 0 ? (v.days / maxVelocity) * 100 : 0;
-            const isHigh = v.days > 30;
-            return (
-              <div key={v.status} style={{ textAlign: "center" }}>
-                <div style={{ height: 48, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 6 }}>
-                  <div style={{ width: "60%", minHeight: 4, height: pct + "%", borderRadius: "4px 4px 0 0", background: isHigh ? "linear-gradient(to top, #fecaca, #f87171)" : "linear-gradient(to top, #e2e8f0, #94a3b8)", transition: "height 0.5s" }} />
-                </div>
-                <p style={{ fontSize: 16, fontWeight: 700, color: isHigh ? "#dc2626" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: "0 0 2px" }}>{v.days}d</p>
-                <p style={{ fontSize: 9, color: "#94a3b8", margin: 0, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{v.status}</p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ═══ BOTTOM STATS ═══ */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: isMobile ? 8 : 10 }}>
-        {[
-          { label: "Hot Contacts", value: String(hotContactsCount), color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
-          { label: "Capital Committed", value: fmtK(capitalCommitted), color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
-          { label: "Avg REAP Score", value: String(scoredDeals.length > 0 ? Math.round(scoredDeals.reduce((s, d) => s + num(d.reapScore), 0) / scoredDeals.length) : 0), color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
-          { label: "Investors", value: String(investorsData.length), color: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe" },
-        ].map((s, i) => (
-          <div key={i} style={{ background: "#fff", border: "1px solid " + s.border, borderRadius: 12, padding: isMobile ? "14px 12px" : "16px 18px", textAlign: "center" }}>
-            <p style={{ fontSize: 9, color: s.color, margin: "0 0 4px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{s.label}</p>
-            <p style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0, letterSpacing: "-0.02em" }}>{s.value}</p>
           </div>
-        ))}
-      </div>
 
-      </div>
+        </div>
       </div>
     </div>
   );
