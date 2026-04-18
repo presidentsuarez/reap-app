@@ -6524,18 +6524,18 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
       features: ["Unlimited deal analysis", "Live financial metrics", "AI Underwriting & REAP Score", "Deal pipeline management", "Contact & investor CRM", "Google Street View", "Portfolio tracking"],
     },
     {
-      key: "team", label: "Team", price: "$499", period: "/mo",
-      desc: "For teams & small firms", popular: true,
-      color: "#7c3aed", bg: "#f5f3ff", borderColor: "#ddd6fe", gradient: "linear-gradient(135deg, #7c3aed, #6d28d9)",
-      stripeUrl: null,
-      features: ["Everything in Starter, plus:", "Shared team pipeline", "Shared contacts & investors", "Organization management", "Manager & assignee roles", "MLS Feed access", "Education & assignments", "AI Executive Summaries"],
-    },
-    {
       key: "pro", label: "Pro", price: "$249", period: "/mo",
-      desc: "Advanced AI & document tools",
+      desc: "Advanced AI & document tools", popular: true,
       color: "#d97706", bg: "#fffbeb", borderColor: "#fde68a", gradient: "linear-gradient(135deg, #d97706, #b45309)",
       stripeUrl: null,
-      features: ["Everything in Team, plus:", "Document generation", "Investment memo builder", "Submit offers & LOIs", "Advanced reporting", "Priority support"],
+      features: ["Everything in Starter, plus:", "Document generation", "Investment memo builder", "Submit offers & LOIs", "Advanced reporting", "Priority support"],
+    },
+    {
+      key: "team", label: "Team", price: "$499", period: "/mo",
+      desc: "For teams & small firms",
+      color: "#7c3aed", bg: "#f5f3ff", borderColor: "#ddd6fe", gradient: "linear-gradient(135deg, #7c3aed, #6d28d9)",
+      stripeUrl: null,
+      features: ["Everything in Pro, plus:", "Shared team pipeline", "Shared contacts & investors", "Organization management", "Manager & assignee roles", "MLS Feed access", "Education & assignments", "AI Executive Summaries"],
     },
   ];
 
@@ -9890,8 +9890,8 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
 
           const plans = [
             { key: "starter", label: "Starter", price: "$99", period: "/mo", desc: "For individual investors & analysts", popular: false, color: "#16a34a", bg: "#f0fdf4", borderColor: "#bbf7d0" },
-            { key: "team", label: "Team", price: "$499", period: "/mo", desc: "For teams & small firms", popular: true, color: "#7c3aed", bg: "#f5f3ff", borderColor: "#ddd6fe" },
-            { key: "pro", label: "Pro", price: "$249", period: "/mo", desc: "Advanced AI & document tools", popular: false, color: "#d97706", bg: "#fffbeb", borderColor: "#fde68a" },
+            { key: "pro", label: "Pro", price: "$249", period: "/mo", desc: "Advanced AI & document tools", popular: true, color: "#d97706", bg: "#fffbeb", borderColor: "#fde68a" },
+            { key: "team", label: "Team", price: "$499", period: "/mo", desc: "For teams & small firms", popular: false, color: "#7c3aed", bg: "#f5f3ff", borderColor: "#ddd6fe" },
           ];
 
           return (
@@ -16527,8 +16527,7 @@ export default function ReapApp() {
   }, [session]);
 
   const handleCheckout = () => {
-    const email = session?.user?.email || "";
-    window.location.href = "https://buy.stripe.com/fZu9AScIZ9sjc0QbF163K03?prefilled_email=" + encodeURIComponent(email);
+    setShowPaywall(true);
   };
 
   useEffect(() => {
