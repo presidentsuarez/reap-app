@@ -6237,7 +6237,17 @@ function AuthScreen({ onAuth }) {
         <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13.5, color: "#DC2626", fontFamily: "'DM Sans', sans-serif", animation: "fadeUp 0.3s ease" }}>{error}</div>
       )}
       {success && (
-        <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13.5, color: "#0B3D2C", fontFamily: "'DM Sans', sans-serif", animation: "fadeUp 0.3s ease" }}>{success}</div>
+        <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 14, padding: "20px", marginBottom: 20, fontFamily: "'DM Sans', sans-serif", animation: "fadeUp 0.3s ease", textAlign: "center" }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.8}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <p style={{ fontSize: 15, fontWeight: 600, color: "#0f172a", margin: "0 0 6px" }}>{success}</p>
+          <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 16px", lineHeight: 1.5 }}>Look for an email from <strong>Supabase Auth</strong> with subject "Confirm Your Signup"</p>
+          <a href="mailto:" onClick={(e) => { e.preventDefault(); const w = window.open("", "_blank"); if (w) w.location = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "message://" : /Android/i.test(navigator.userAgent) ? "intent:///#Intent;scheme=mailto;end" : "https://mail.google.com"; }} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 24px", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", borderRadius: 10, textDecoration: "none", cursor: "pointer", border: "none", boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Open Mail App
+          </a>
+        </div>
       )}
 
       {mode === "signup" && (
