@@ -6302,35 +6302,7 @@ function AuthScreen({ onAuth }) {
         {mode === "forgot" && (loading ? "Sending link..." : "Send reset link")}
       </button>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 16, margin: "24px 0" }}>
-        <div style={{ flex: 1, height: 1, background: "#E8ECE9" }} />
-        <span style={{ fontSize: 11, color: "#8A9B91", fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>or</span>
-        <div style={{ flex: 1, height: 1, background: "#E8ECE9" }} />
-      </div>
 
-      <button
-        onClick={handleGoogleLogin}
-        onMouseEnter={() => setHoverGoogle(true)}
-        onMouseLeave={() => setHoverGoogle(false)}
-        style={{
-          width: "100%", padding: "13px 20px",
-          background: hoverGoogle ? "#F1F5F3" : "#fff",
-          border: `1.5px solid ${hoverGoogle ? "#B8C4BC" : "#DCE4DF"}`,
-          borderRadius: 10, cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-          fontSize: 14, fontWeight: 500, fontFamily: "'DM Sans', sans-serif", color: "#1A2E22",
-          transition: "all 0.2s",
-          transform: hoverGoogle ? "translateY(-1px)" : "translateY(0)",
-          boxShadow: hoverGoogle ? "0 4px 12px rgba(0,0,0,0.06)" : "none",
-        }}>
-        <svg width={18} height={18} viewBox="0 0 24 24">
-          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-        </svg>
-        Continue with Google
-      </button>
 
       <div style={{ marginTop: 28, textAlign: "center", fontSize: 14, color: isMobile ? "rgba(255,255,255,0.5)" : "#8A9B91", fontFamily: "'DM Sans', sans-serif" }}>
         {mode === "login" && (<>Don't have an account?{" "}<button onClick={() => switchMode("signup")} className="reap-link" style={{ background: "none", border: "none", color: isMobile ? "#22C55E" : "#0B3D2C", fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 14, padding: 0, transition: "opacity 0.15s" }}>Start free trial</button></>)}
@@ -6538,9 +6510,41 @@ function AuthScreen({ onAuth }) {
 }
 
 function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading }) {
-  const [hoverBtn, setHoverBtn] = useState(false);
   const isMobile = window.innerWidth < 768;
   const expired = daysLeft <= 0;
+  const [hoveredPlan, setHoveredPlan] = useState(null);
+
+  const plans = [
+    {
+      key: "starter", label: "Starter", price: "$99", period: "/mo",
+      desc: "For individual investors & analysts",
+      color: "#16a34a", bg: "#f0fdf4", borderColor: "#bbf7d0", gradient: "linear-gradient(135deg, #16a34a, #15803d)",
+      stripeUrl: "https://buy.stripe.com/fZu9AScIZ9sjc0QbF163K03",
+      features: ["Unlimited deal analysis", "Live financial metrics", "AI Underwriting & REAP Score", "Deal pipeline management", "Contact & investor CRM", "Google Street View", "Portfolio tracking"],
+    },
+    {
+      key: "team", label: "Team", price: "$499", period: "/mo",
+      desc: "For teams & small firms", popular: true,
+      color: "#7c3aed", bg: "#f5f3ff", borderColor: "#ddd6fe", gradient: "linear-gradient(135deg, #7c3aed, #6d28d9)",
+      stripeUrl: null,
+      features: ["Everything in Starter, plus:", "Shared team pipeline", "Shared contacts & investors", "Organization management", "Manager & assignee roles", "MLS Feed access", "Education & assignments", "AI Executive Summaries"],
+    },
+    {
+      key: "pro", label: "Pro", price: "$249", period: "/mo",
+      desc: "Advanced AI & document tools",
+      color: "#d97706", bg: "#fffbeb", borderColor: "#fde68a", gradient: "linear-gradient(135deg, #d97706, #b45309)",
+      stripeUrl: null,
+      features: ["Everything in Team, plus:", "Document generation", "Investment memo builder", "Submit offers & LOIs", "Advanced reporting", "Priority support"],
+    },
+  ];
+
+  const handlePlanCheckout = (plan) => {
+    if (plan.stripeUrl) {
+      window.location.href = plan.stripeUrl + "?prefilled_email=" + encodeURIComponent(userEmail || "");
+    } else {
+      alert("Coming soon! " + plan.label + " tier will be available shortly. For now, start with Starter.");
+    }
+  };
 
   return (
     <div style={{
@@ -6551,60 +6555,83 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading }) {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap');
         @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 20px rgba(34,197,94,0.15); } 50% { box-shadow: 0 0 40px rgba(34,197,94,0.3); } }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
-      <div style={{
-        background: "#fff", borderRadius: 24, padding: isMobile ? "32px 24px" : "48px 56px",
-        maxWidth: 480, width: "100%", textAlign: "center",
-        boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 28 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: "#22C55E", display: "flex", alignItems: "center", justifyContent: "center", animation: "pulseGlow 3s ease-in-out infinite" }}>
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+      <div style={{ maxWidth: 960, width: "100%", animation: "fadeUp 0.5s ease" }}>
+        {/* Header */}
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 20 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#22C55E", display: "flex", alignItems: "center", justifyContent: "center", animation: "pulseGlow 3s ease-in-out infinite" }}>
+              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+            </div>
+            <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>REAP</span>
           </div>
-          <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.02em" }}>REAP</span>
+          {expired ? (
+            <>
+              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: isMobile ? 24 : 32, fontWeight: 700, color: "#fff", margin: "0 0 10px", letterSpacing: "-0.02em" }}>Your free trial has ended</h1>
+              <p style={{ fontSize: 15, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.6 }}>Choose a plan to continue analyzing deals and closing faster.</p>
+            </>
+          ) : (
+            <>
+              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: isMobile ? 24 : 32, fontWeight: 700, color: "#fff", margin: "0 0 10px", letterSpacing: "-0.02em" }}>Choose your plan</h1>
+              <p style={{ fontSize: 15, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.6 }}>{daysLeft > 0 ? <>You have <strong style={{ color: "#22C55E" }}>{daysLeft} day{daysLeft !== 1 ? "s" : ""}</strong> left on your free trial. Upgrade anytime.</> : "Scale your real estate operations with the right tier."}</p>
+            </>
+          )}
         </div>
 
-        {expired ? (
-          <>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: "#0f172a", margin: "0 0 12px", letterSpacing: "-0.02em" }}>Your free trial has ended</h1>
-            <p style={{ fontSize: 15, color: "#64748b", margin: "0 0 32px", lineHeight: 1.6 }}>Upgrade to REAP Starter to keep analyzing deals, generating AI summaries, and closing faster.</p>
-          </>
-        ) : (
-          <>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: "#0f172a", margin: "0 0 12px", letterSpacing: "-0.02em" }}>Upgrade to REAP Starter</h1>
-            <p style={{ fontSize: 15, color: "#64748b", margin: "0 0 32px", lineHeight: 1.6 }}>You have <strong style={{ color: "#16a34a" }}>{daysLeft} day{daysLeft !== 1 ? "s" : ""}</strong> left on your free trial. Upgrade now to lock in your access.</p>
-          </>
-        )}
-
-        <div style={{ background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", border: "2px solid #16a34a", borderRadius: 16, padding: "28px 24px", marginBottom: 28 }}>
-          <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>STARTER</div>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 4, marginBottom: 12 }}>
-            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 48, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.03em" }}>$99</span>
-            <span style={{ fontSize: 16, color: "#64748b" }}>/month</span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, textAlign: "left", marginTop: 16 }}>
-            {["Unlimited deal analysis", "Live financial metrics", "AI Executive Summaries", "Deal pipeline management", "Google Street View integration"].map((feature, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "#1e293b" }}>
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>
-                {feature}
+        {/* Pricing Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 16, marginBottom: 32 }}>
+          {plans.map(plan => (
+            <div key={plan.key}
+              onMouseEnter={() => setHoveredPlan(plan.key)}
+              onMouseLeave={() => setHoveredPlan(null)}
+              style={{
+                position: "relative", background: "#fff", borderRadius: 20, padding: "28px 24px",
+                border: plan.popular ? "2px solid " + plan.color : "1px solid #e2e8f0",
+                boxShadow: hoveredPlan === plan.key ? "0 16px 48px rgba(0,0,0,0.15)" : plan.popular ? "0 8px 32px rgba(124,58,237,0.15)" : "0 2px 8px rgba(0,0,0,0.06)",
+                transform: hoveredPlan === plan.key ? "translateY(-4px)" : plan.popular && !isMobile ? "scale(1.02)" : "none",
+                transition: "all 0.25s ease",
+              }}>
+              {plan.popular && (
+                <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: plan.gradient, padding: "5px 18px", borderRadius: 20, fontSize: 10, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace", letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>MOST POPULAR</div>
+              )}
+              <div style={{ fontSize: 11, fontWeight: 700, color: plan.color, fontFamily: "'DM Mono', monospace", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>{plan.label}</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 2, marginBottom: 4 }}>
+                <span style={{ fontSize: 44, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.03em", lineHeight: 1 }}>{plan.price}</span>
+                <span style={{ fontSize: 15, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{plan.period}</span>
               </div>
-            ))}
-          </div>
+              <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "0 0 20px", lineHeight: 1.4 }}>{plan.desc}</p>
+              <button onClick={() => handlePlanCheckout(plan)} style={{
+                width: "100%", padding: "12px 16px", border: "none", borderRadius: 10,
+                background: plan.gradient, color: "#fff",
+                fontSize: 14, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
+                cursor: "pointer", transition: "all 0.2s",
+                boxShadow: "0 4px 14px " + plan.color + "40",
+              }}>
+                {plan.stripeUrl ? "Get " + plan.label : "Coming Soon"}
+              </button>
+              <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+                {plan.features.map((feat, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: i === 0 && plan.key !== "starter" ? plan.color : "#475569", fontFamily: "'DM Sans', sans-serif", fontWeight: i === 0 && plan.key !== "starter" ? 600 : 400 }}>
+                    {(i === 0 && plan.key !== "starter") ? null : <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={plan.color} strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>}
+                    {feat}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
-        <button onClick={onCheckout} disabled={checkoutLoading} onMouseEnter={() => setHoverBtn(true)} onMouseLeave={() => setHoverBtn(false)} style={{
-          width: "100%", padding: "16px 24px",
-          background: checkoutLoading ? "#15803d" : hoverBtn ? "#15803d" : "linear-gradient(135deg, #16a34a, #15803d)",
-          color: "#fff", fontSize: 16, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
-          border: "none", borderRadius: 12, cursor: checkoutLoading ? "not-allowed" : "pointer",
-          transition: "all 0.25s", letterSpacing: "0.01em",
-          transform: hoverBtn && !checkoutLoading ? "translateY(-2px)" : "translateY(0)",
-          boxShadow: hoverBtn && !checkoutLoading ? "0 8px 24px rgba(22,163,74,0.4)" : "0 4px 14px rgba(22,163,74,0.25)",
-        }}>
-          {checkoutLoading ? "Redirecting to checkout..." : "Subscribe — $99/month"}
-        </button>
-        <p style={{ fontSize: 12, color: "#94a3b8", margin: "16px 0 0", lineHeight: 1.5 }}>Secure payment via Stripe. Cancel anytime.</p>
-        <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", marginTop: 20, padding: "8px 16px", transition: "color 0.2s" }}>Sign out</button>
+        {/* Free trial info + Sign out */}
+        <div style={{ textAlign: "center" }}>
+          {daysLeft > 0 && !expired && (
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", margin: "0 0 12px", fontFamily: "'DM Sans', sans-serif" }}>
+              Not ready yet? You still have {daysLeft} day{daysLeft !== 1 ? "s" : ""} of free access.
+            </p>
+          )}
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", margin: "0 0 16px", fontFamily: "'DM Sans', sans-serif" }}>Secure payment via Stripe. Cancel anytime.</p>
+          <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "rgba(255,255,255,0.5)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "8px 20px", transition: "all 0.2s" }}>Sign out</button>
+        </div>
       </div>
     </div>
   );
