@@ -3046,7 +3046,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const dealTier = orgData?.plan_tier || "starter";
   const isDealStarter = getTierRank(dealTier) <= 1;
   const starterExcludedDealTabs = ["offerings", "ai summary", "tasks", "documents", "shared deal", "investor updates"];
-  const allDealTabs = ["overview", "cash flow", "financing", "improvements", "units", ...(hasMlsSource ? ["mls"] : []), "offerings", "ai underwriting", "ai summary", "tasks", "documents", "shared deal", "activity log", "investor updates"];
+  const allDealTabs = ["overview", "cash flow", "financing", "improvements", "units", ...(hasMlsSource ? ["mls"] : []), "offerings", "ai summary", "tasks", "documents", "shared deal", "activity log", "investor updates"];
   const tabs = isDealStarter ? allDealTabs.filter(t => !starterExcludedDealTabs.includes(t)) : allDealTabs;
 
   // Resolve pending deal tab from URL
@@ -3825,29 +3825,91 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               Edit Deal
             </button>
+            {deal.address && <a href={"https://www.zillow.com/homes/" + encodeURIComponent((deal.address + " " + (deal.city || "") + " " + (deal.state || "") + " " + (deal.zip || "")).trim().replace(/\s+/g, "-")) + "_rb/"} target="_blank" rel="noopener noreferrer" style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: isMobile ? "10px 14px" : "10px 16px", color: "#475569", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, textDecoration: "none", flex: isMobile ? 1 : "none" }}>
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Zillow
+            </a>}
             {!isDealStarter && <button style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: isMobile ? "10px 18px" : "10px 22px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap", flex: isMobile ? 1 : "none", textAlign: "center" }}>Submit Offer</button>}
           </div>
         </div>
       </div>
 
       <div style={{ padding: isMobile ? "20px 16px" : "28px 32px" }}>
-        {/* Google Street View */}
-        <div style={{ width: "100%", height: isMobile ? 160 : 220, borderRadius: 14, overflow: "hidden", marginBottom: isMobile ? 20 : 28, position: "relative", background: "#f1f5f9", border: "1px solid #e2e8f0" }}>
-          <img
-            src={`https://maps.googleapis.com/maps/api/streetview?size=1200x220&location=${encodeURIComponent(deal.address)}&fov=90&pitch=0&key=AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU`}
-            alt={deal.address}
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-            onError={e => {
-              e.target.style.display = "none";
-              e.target.nextSibling.style.display = "flex";
-            }}
-          />
-          <div style={{ display: "none", position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8, background: "linear-gradient(135deg, #f0fdf4, #dcfce7)" }}>
-            <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.2}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            <p style={{ color: "#16a34a", fontSize: 11, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, margin: 0 }}>No street view available</p>
+        {/* ═══ DEAL HERO: Street View + Scorecard ═══ */}
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 16 : 20, marginBottom: isMobile ? 20 : 28 }}>
+          {/* Street View Photo */}
+          <div style={{ borderRadius: 14, overflow: "hidden", position: "relative", background: "#f1f5f9", border: "1px solid #e2e8f0", height: isMobile ? 180 : 260 }}>
+            <img
+              src={`https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${encodeURIComponent(deal.address)}&fov=90&pitch=0&key=AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU`}
+              alt={deal.address}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }}
+            />
+            <div style={{ display: "none", position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8, background: "linear-gradient(135deg, #f0fdf4, #dcfce7)" }}>
+              <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.2}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              <p style={{ color: "#16a34a", fontSize: 11, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, margin: 0 }}>No street view available</p>
+            </div>
+            <div style={{ position: "absolute", bottom: 10, right: 10, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)", borderRadius: 8, padding: "4px 10px", fontSize: 10, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>Street View</div>
+            {/* Property tags overlay */}
+            <div style={{ position: "absolute", top: 10, left: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {deal.type && <span style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 6, fontFamily: "'DM Sans', sans-serif" }}>{deal.type}</span>}
+              {deal.units && <span style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 6, fontFamily: "'DM Sans', sans-serif" }}>{deal.units} Units</span>}
+              {deal.sqft && <span style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 6, fontFamily: "'DM Sans', sans-serif" }}>{parseInt(deal.sqft).toLocaleString()} sqft</span>}
+              {deal.yearBuilt && <span style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 6, fontFamily: "'DM Sans', sans-serif" }}>Built {deal.yearBuilt}</span>}
+            </div>
           </div>
-          <div style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>
-            Street View
+
+          {/* Deal Scorecard */}
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "18px 16px" : "22px 24px", display: "flex", flexDirection: "column" }}>
+            {/* REAP Score + AI badge */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
+              <ConfidenceRing score={num(deal.reapScore) || 0} size={isMobile ? 56 : 64} />
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>REAP Score</p>
+                <p style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "2px 0 0" }}>AI-powered deal analysis</p>
+              </div>
+              <div style={{ background: num(deal.reapScore) >= 70 ? "#f0fdf4" : num(deal.reapScore) >= 40 ? "#fffbeb" : "#fef2f2", border: "1px solid " + (num(deal.reapScore) >= 70 ? "#bbf7d0" : num(deal.reapScore) >= 40 ? "#fde68a" : "#fecaca"), borderRadius: 8, padding: "4px 10px" }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: num(deal.reapScore) >= 70 ? "#16a34a" : num(deal.reapScore) >= 40 ? "#d97706" : "#dc2626", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.04em" }}>{num(deal.reapScore) >= 70 ? "STRONG" : num(deal.reapScore) >= 40 ? "MODERATE" : "CAUTION"}</span>
+              </div>
+            </div>
+
+            {/* Key Metrics Grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 12px", border: "1px solid #f1f5f9" }}>
+                <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Asking</span>
+                <p style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0", letterSpacing: "-0.02em" }}>{fmt(deal.askingPrice)}</p>
+              </div>
+              <div style={{ background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", borderRadius: 10, padding: "10px 12px", border: "1px solid #bbf7d0" }}>
+                <span style={{ fontSize: 9, color: "#16a34a", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Our Offer</span>
+                <p style={{ fontSize: 17, fontWeight: 700, color: "#15803d", fontFamily: "'DM Mono', monospace", margin: "2px 0 0", letterSpacing: "-0.02em" }}>{fmt(deal.offer)}</p>
+                {num(deal.askingPrice) > 0 && num(deal.offer) > 0 && <span style={{ fontSize: 9, color: "#16a34a", fontFamily: "'DM Sans', sans-serif" }}>{Math.round(((num(deal.askingPrice) - num(deal.offer)) / num(deal.askingPrice)) * 100)}% below ask</span>}
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
+              {[
+                { label: "Cap Rate", value: fmtPct(deal.capRate), good: num(deal.capRate) >= 6, warn: num(deal.capRate) !== null && num(deal.capRate) < 4 && num(deal.capRate) > 0 },
+                { label: "ROI", value: fmtPct(deal.roi), good: num(deal.roi) >= 15, warn: num(deal.roi) < 0 },
+                { label: "DSCR", value: deal.dscr ? deal.dscr + "x" : "\u2014", good: num(deal.dscr) >= 1.25, warn: num(deal.dscr) > 0 && num(deal.dscr) < 1.25 },
+                { label: "CoC", value: fmtPct(deal.aar), good: num(deal.aar) >= 10, warn: num(deal.aar) < 0 },
+              ].map((m, i) => (
+                <div key={i} style={{ textAlign: "center", padding: "8px 4px", borderRadius: 8, background: m.warn ? "#fef2f2" : m.good ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (m.warn ? "#fecaca" : m.good ? "#bbf7d0" : "#f1f5f9") }}>
+                  <span style={{ fontSize: 8, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{m.label}</span>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: m.warn ? "#dc2626" : m.good ? "#16a34a" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{m.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Top AI Insight */}
+            {(() => {
+              const rs = num(deal.reapScore);
+              const insight = rs >= 70 ? "Strong investment thesis across key metrics" : rs >= 40 ? "Review assumptions \u2014 mixed signals on returns" : rs > 0 ? "Below target \u2014 stress-test before proceeding" : "Add deal data to generate AI analysis";
+              return (
+                <div style={{ background: "linear-gradient(135deg, rgba(22,163,74,0.04), rgba(22,163,74,0.01))", border: "1px solid rgba(22,163,74,0.12)", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.8}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                  <p style={{ fontSize: 12, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, margin: 0, flex: 1 }}>{insight}</p>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -3860,27 +3922,24 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
 
         {activeTab === "overview" && (
           <>
-            {/* Property Details */}
-            <section style={{ marginBottom: 32 }}>
+            {/* ═══ MERGED AI UNDERWRITING + OVERVIEW ═══ */}
+            <AIUnderwritingTab deal={deal} isMobile={isMobile} />
+
+            {/* Property Details (collapsed section below AI analysis) */}
+            <section style={{ marginTop: 28 }}>
               <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
                 Property Details <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
               </h2>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12 }}>
-                <MetricCard label="Property Type" value={deal.type || "—"} />
-                <MetricCard label="Class" value={deal.dealClass || "—"} />
+                <MetricCard label="Property Type" value={deal.type || "\u2014"} />
+                <MetricCard label="Class" value={deal.dealClass || "\u2014"} />
                 <MetricCard label="Square Footage" value={fmtNum(deal.sqft)} sub="sq ft" />
-                <MetricCard label="Units" value={deal.units || "—"} />
+                <MetricCard label="Units" value={deal.units || "\u2014"} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
-                <MetricCard label="Asking Price" value={fmt(deal.askingPrice)} />
-                <MetricCard label="Our Offer" value={fmt(deal.offer)} sub={deal.netSqft ? `$${deal.netSqft} / sqft` : ""} />
-                <MetricCard label="Year Built" value={deal.yearBuilt || "—"} />
-                <MetricCard label="Lot Size" value={deal.lotAcres ? `${deal.lotAcres} acres` : "—"} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
-                <MetricCard label="City" value={deal.city || "—"} />
-                <MetricCard label="State" value={deal.state || "—"} />
-                <MetricCard label="Zip Code" value={deal.zip || "—"} />
+                <MetricCard label="City" value={deal.city || "\u2014"} />
+                <MetricCard label="State" value={deal.state || "\u2014"} />
+                <MetricCard label="Zip Code" value={deal.zip || "\u2014"} />
                 <MetricCard label="Source" value={deal.source || "Manual"} />
               </div>
               {deal.dealName && deal.dealName !== deal.address && (
@@ -3888,17 +3947,10 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                   <MetricCard label="Deal Name" value={deal.dealName} />
                 </div>
               )}
-              {(deal.manager || deal.assignee || deal.organization) && (
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
-                  <MetricCard label="Manager" value={deal.manager || "—"} />
-                  <MetricCard label="Assignee" value={deal.assignee || "—"} />
-                  <MetricCard label="Organization" value={deal.organization || "—"} />
-                </div>
-              )}
             </section>
 
-            {/* Deal Overview (Investment Metrics) */}
-            <section style={{ marginBottom: 32 }}>
+            {/* Investment Overview */}
+            <section style={{ marginTop: 24, marginBottom: 16 }}>
               <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
                 Investment Overview <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
               </h2>
@@ -3911,12 +3963,8 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
                 <MetricCard label="ROI" value={fmtPct(deal.roi)} highlight good={num(deal.roi) >= 15} warn={num(deal.roi) !== null && num(deal.roi) < 5} />
                 <MetricCard label="Cost / Value" value={fmtPct(deal.ctv)} good={num(deal.ctv) !== null && num(deal.ctv) <= 75} warn={num(deal.ctv) > 90} />
-                <MetricCard label="Avg Annual Return" value={fmtPct(deal.aar)} good={num(deal.aar) >= 10} />
+                <MetricCard label="Equity Multiple" value={deal.equityMultiple || "\u2014"} good={num(deal.equityMultiple) >= 1.5} />
                 <MetricCard label="Profitability" value={fmtPct(deal.profitability)} good={num(deal.profitability) >= 15} warn={num(deal.profitability) !== null && num(deal.profitability) < 5} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
-                <MetricCard label="REAP Score" value={deal.reapScore || "—"} highlight={num(deal.reapScore) >= 70} good={num(deal.reapScore) >= 70} warn={num(deal.reapScore) !== null && num(deal.reapScore) < 40} />
-                <MetricCard label="Equity Multiple" value={deal.equityMultiple || "—"} good={num(deal.equityMultiple) >= 1.5} />
               </div>
             </section>
           </>
@@ -4585,9 +4633,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
           <DealOfferingsTab deal={deal} isMobile={isMobile} userEmail={userEmail} onUpdateDeal={onUpdateDeal} />
         )}
 
-        {activeTab === "ai underwriting" && (
-          <AIUnderwritingTab deal={deal} isMobile={isMobile} />
-        )}
+
         {activeTab === "ai summary" && (
           <div>
             {!summary && !summaryLoading && (
