@@ -16631,27 +16631,30 @@ export default function ReapApp() {
         return;
       }
 
-      supabase.from("subscriptions").select("status").eq("user_email", email).eq("status", "active").single().then(({ data }) => {
-        const subscribed = !!data;
+      // Check subscription: subscriptions table, user_profiles.is_subscribed (admin override), AND org membership
+      Promise.all([
+        supabase.from("subscriptions").select("status").eq("user_email", email).eq("status", "active").single(),
+        supabase.from("user_profiles").select("is_subscribed").eq("email", email).single(),
+        supabase.from("org_members").select("id, org_id").eq("user_email", email).eq("status", "active"),
+        supabase.from("organizations").select("id").eq("owner_email", email)
+      ]).then(([{ data: subData }, { data: profileData }, { data: memberRows }, { data: ownedOrgs }]) => {
+        const hasActiveSub = !!subData;
+        const adminOverride = !!profileData?.is_subscribed;
+        const isOrgMember = (memberRows && memberRows.length > 0) || (ownedOrgs && ownedOrgs.length > 0);
+        const subscribed = hasActiveSub || adminOverride || isOrgMember;
+
         setIsSubscribed(subscribed);
+
         const createdAt = new Date(session.user.created_at);
         const now = new Date();
         const daysSinceSignup = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
         const daysLeft = Math.max(0, TRIAL_DAYS - daysSinceSignup);
         setTrialDaysLeft(daysLeft);
-        if (daysLeft <= 0 && !subscribed) {
-          // Check if user is an org owner OR active org member (either bypasses paywall)
-          Promise.all([
-            supabase.from("org_members").select("id, org_id").eq("user_email", email).eq("status", "active"),
-            supabase.from("organizations").select("id").eq("owner_email", email)
-          ]).then(([{ data: memberRows }, { data: ownedOrgs }]) => {
-            if ((memberRows && memberRows.length > 0) || (ownedOrgs && ownedOrgs.length > 0)) {
-              setShowPaywall(false);
-              setIsSubscribed(true); // Treat org members/owners as subscribed
-            } else {
-              setShowPaywall(true);
-            }
-          });
+
+        if (subscribed) {
+          setShowPaywall(false);
+        } else if (daysLeft <= 0) {
+          setShowPaywall(true);
         } else {
           setShowPaywall(false);
         }
