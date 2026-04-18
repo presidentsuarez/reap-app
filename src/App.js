@@ -3781,7 +3781,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   }, [isMobile, handleScroll]);
 
   return (
-    <div ref={scrollRef} style={{ flex: 1, overflow: "auto", background: "#f8fafc" }}>
+    <div ref={scrollRef} style={{ flex: 1, overflow: "auto", background: "#f8fafc", minHeight: 0, WebkitOverflowScrolling: "touch" }}>
       {/* Sticky collapsed header — mobile only */}
       {isMobile && (
         <div style={{
@@ -3834,7 +3834,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
         </div>
       </div>
 
-      <div style={{ padding: isMobile ? "20px 16px" : "28px 32px" }}>
+      <div style={{ padding: isMobile ? "20px 16px 100px" : "28px 32px" }}>
         {/* ═══ DEAL HERO: Street View + Scorecard ═══ */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 16 : 20, marginBottom: isMobile ? 20 : 28 }}>
           {/* Street View Photo */}
@@ -17587,7 +17587,7 @@ export default function ReapApp() {
             ) : activeNav === "realestate" ? (
             <>
               {selectedDeal ? (
-                <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
                   <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={true} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
                 </div>
               ) : selectedMLSListing ? (
