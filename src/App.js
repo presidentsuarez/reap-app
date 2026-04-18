@@ -85,6 +85,18 @@ const INVESTOR_STAGE_CONFIG = {
 };
 const INVESTOR_STAGES = Object.keys(INVESTOR_STAGE_CONFIG);
 const INVESTOR_TYPES = ["Individual / HNW", "Family Office", "Private Equity Fund", "Institutional"];
+const BUYER_STATUS_LIST = ["New", "Contacted", "Info Gathering", "Confirmed Buyer", "Active", "Closed"];
+const BUYER_PROPERTY_TYPES = ["Single Family", "Multifamily", "Commercial", "Office", "Industrial", "Mixed Use", "Land", "Retail"];
+const LENDER_TYPES = ["Hard Money", "Private Lender", "Bank/Credit Union", "DSCR Lender", "Bridge Lender", "SBA Lender"];
+const BUYER_STATUS_CONFIG = {
+  "New":              { color: "#16a34a", bg: "rgba(22,163,74,0.08)",   dot: "#16a34a" },
+  "Contacted":        { color: "#d97706", bg: "rgba(217,119,6,0.08)",   dot: "#d97706" },
+  "Info Gathering":   { color: "#7c3aed", bg: "rgba(124,58,237,0.08)",  dot: "#7c3aed" },
+  "Confirmed Buyer":  { color: "#0891b2", bg: "rgba(8,145,178,0.08)",   dot: "#0891b2" },
+  "Active":           { color: "#2563eb", bg: "rgba(37,99,235,0.08)",   dot: "#2563eb" },
+  "Closed":           { color: "#64748b", bg: "rgba(100,116,139,0.08)", dot: "#64748b" },
+};
+const BUYER_MARKETS = ["Tampa", "Orlando", "Miami", "Jacksonville", "St. Petersburg", "Fort Lauderdale", "Clearwater", "Sarasota"];
 const INVESTOR_TEMPS = ["Hot", "Warm", "Cold"];
 const TEMP_COLORS = { "Hot": "#16a34a", "Warm": "#d97706", "Cold": "#94a3b8" };
 
@@ -7264,285 +7276,222 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
 
   if (loading) return <LoadingSpinner />;
 
-  const funnelData = [
-    { n: added, label: "Added", emoji: "📥", gradient: "linear-gradient(135deg, #dbeafe, #bfdbfe)", border: "#93c5fd", text: "#1e40af" },
-    { n: underwritten, label: "Underwritten", emoji: "🔍", gradient: "linear-gradient(135deg, #ede9fe, #ddd6fe)", border: "#c4b5fd", text: "#5b21b6" },
-    { n: offersMade, label: "Offers Made", emoji: "📨", gradient: "linear-gradient(135deg, #fef3c7, #fde68a)", border: "#fcd34d", text: "#92400e" },
-    { n: accepted, label: "Accepted", emoji: "🤝", gradient: "linear-gradient(135deg, #ffedd5, #fed7aa)", border: "#fdba74", text: "#9a3412" },
-    { n: inEscrow, label: "In Escrow", emoji: "🔐", gradient: "linear-gradient(135deg, #e0f2fe, #bae6fd)", border: "#7dd3fc", text: "#075985" },
-    { n: closings, label: "Closings", emoji: "🏆", gradient: "linear-gradient(135deg, #dcfce7, #bbf7d0)", border: "#86efac", text: "#166534" },
+
+  const funnelStages = [
+    { n: added, label: "Added", color: "#3b82f6", bg: "#eff6ff" },
+    { n: underwritten, label: "Underwritten", color: "#7c3aed", bg: "#f5f3ff" },
+    { n: offersMade, label: "Offers", color: "#d97706", bg: "#fffbeb" },
+    { n: accepted, label: "Accepted", color: "#ea580c", bg: "#fff7ed" },
+    { n: inEscrow, label: "Escrow", color: "#0891b2", bg: "#ecfeff" },
+    { n: closings, label: "Closed", color: "#16a34a", bg: "#f0fdf4" },
   ];
-
-  const gridCols = isMobile ? "repeat(3, minmax(0, 1fr))" : "repeat(6, minmax(0, 1fr))";
-  const midGrid = isMobile ? "1fr" : "1fr 1fr";
-  const velGrid = isMobile ? "repeat(3, minmax(0, 1fr))" : "repeat(6, minmax(0, 1fr))";
-
-  const CardWrap = ({ children, style = {} }) => (
-    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: isMobile ? "16px 14px" : "20px 24px", boxShadow: "0 1px 8px rgba(0,0,0,0.04)", ...style }}>{children}</div>
-  );
 
   return (
     <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif", maxWidth: "100%", minWidth: 0 }}>
       <div style={{ padding: isMobile ? "0 0 100px" : "0 0 40px", maxWidth: isMobile ? "100%" : 1100, margin: "0 auto", overflowX: "hidden" }}>
 
-      {/* Hero Header */}
+      {/* ═══ HERO ═══ */}
       <div style={{
-        background: "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)",
-        padding: isMobile ? "24px 16px 20px" : "32px 32px 28px",
+        background: "linear-gradient(160deg, #0a0f1a 0%, #111827 40%, #0f172a 100%)",
+        padding: isMobile ? "28px 16px 24px" : "36px 36px 32px",
         position: "relative", overflow: "hidden",
       }}>
-        <div style={{ position: "absolute", top: -60, right: -60, width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(22,163,74,0.15) 0%, transparent 70%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: -40, left: "30%", width: 160, height: 160, borderRadius: "50%", background: "radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%)", pointerEvents: "none" }} />
+        {/* Subtle gradient orbs */}
+        <div style={{ position: "absolute", top: -80, right: -40, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(22,163,74,0.08) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: -80, left: "20%", width: 250, height: 250, borderRadius: "50%", background: "radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />
 
-        <p style={{ fontSize: isMobile ? 13 : 14, color: "#94a3b8", margin: "0 0 4px", fontWeight: 500 }}>{greeting}, {firstName} 👋</p>
-        <h1 style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: "0 0 12px", letterSpacing: "-0.02em" }}>Command Center</h1>
+        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", margin: "0 0 6px", fontWeight: 500, letterSpacing: "0.02em" }}>{greeting}, {firstName}</p>
+        <h1 style={{ fontSize: isMobile ? 26 : 34, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: "0 0 20px", letterSpacing: "-0.025em" }}>Command Center</h1>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? 12 : 20, alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{qLabel}</span>
-            <span style={{ background: "rgba(22,163,74,0.2)", color: "#4ade80", fontSize: 11, padding: "2px 10px", borderRadius: 20, fontWeight: 600 }}>{daysLeft}d left</span>
-          </div>
-          <div style={{ display: "flex", gap: isMobile ? 8 : 20, flexWrap: "wrap" }}>
-            <span style={{ fontSize: isMobile ? 11 : 12, color: "#cbd5e1" }}>📊 {deals.length} deals</span>
-            <span style={{ fontSize: isMobile ? 11 : 12, color: "#cbd5e1" }}>💼 {fmtK(totalPipelineValue)} pipeline</span>
-            <span style={{ fontSize: isMobile ? 11 : 12, color: "#cbd5e1" }}>👥 {contactsCount} contacts</span>
-            {!isMobile && <span style={{ fontSize: 12, color: "#cbd5e1" }}>💰 {fmtK(capitalCommitted)} committed</span>}
-          </div>
+        {/* Key stats row */}
+        <div style={{ display: "flex", gap: isMobile ? 8 : 12, flexWrap: "wrap" }}>
+          {[
+            { label: qLabel, value: daysLeft + "d left", accent: "#22c55e" },
+            { label: "Pipeline", value: fmtK(totalPipelineValue), accent: "#3b82f6" },
+            { label: "Deals", value: String(deals.length), accent: "#8b5cf6" },
+            { label: "Contacts", value: String(contactsCount), accent: "#f59e0b" },
+            ...(!isMobile ? [{ label: "Committed", value: fmtK(capitalCommitted), accent: "#ec4899" }] : []),
+          ].map((s, i) => (
+            <div key={i} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: isMobile ? "8px 12px" : "10px 16px", display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: s.accent, boxShadow: "0 0 8px " + s.accent + "60" }} />
+              <div>
+                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", margin: 0, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{s.label}</p>
+                <p style={{ fontSize: 15, color: "#fff", margin: 0, fontWeight: 700, fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em" }}>{s.value}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div style={{ padding: isMobile ? "16px 12px 0" : "24px 32px 0" }}>
+      <div style={{ padding: isMobile ? "16px 12px 0" : "28px 36px 0" }}>
 
-      {/* Funnel Numbers */}
-      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: isMobile ? 8 : 12, marginBottom: isMobile ? 4 : 8 }}>
-        {funnelData.map((f, i) => (
-          <div key={f.label} style={{
-            background: f.gradient, border: "1px solid " + f.border, borderRadius: 14,
-            padding: isMobile ? "14px 8px" : "18px 12px", textAlign: "center",
-            transition: "transform 0.2s, box-shadow 0.2s", cursor: "default",
-          }}
-          onMouseEnter={e => { if (!isMobile) { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.1)"; } }}
-          onMouseLeave={e => { if (!isMobile) { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; } }}
-          >
-            <span style={{ fontSize: isMobile ? 16 : 20 }}>{f.emoji}</span>
-            <p style={{ fontSize: isMobile ? 26 : 34, fontWeight: 700, margin: "4px 0 0", color: f.text, fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{f.n}</p>
-            <p style={{ fontSize: isMobile ? 9 : 11, color: f.text, margin: "4px 0 0", textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 700, opacity: 0.7 }}>{f.label}</p>
+      {/* ═══ PIPELINE FUNNEL ═══ */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(6, 1fr)", gap: isMobile ? 8 : 10, marginBottom: 8 }}>
+        {funnelStages.map((f, i) => (
+          <div key={f.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? "14px 10px" : "18px 14px", textAlign: "center", position: "relative", overflow: "hidden", transition: "all 0.2s" }}
+            onMouseEnter={e => { if (!isMobile) { e.currentTarget.style.borderColor = f.color; e.currentTarget.style.boxShadow = "0 4px 20px " + f.color + "15"; } }}
+            onMouseLeave={e => { if (!isMobile) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; } }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: f.color, opacity: 0.8 }} />
+            <p style={{ fontSize: isMobile ? 28 : 36, fontWeight: 700, margin: "4px 0 2px", color: "#0f172a", fontFamily: "'DM Mono', monospace", lineHeight: 1 }}>{f.n}</p>
+            <p style={{ fontSize: 10, color: "#64748b", margin: 0, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>{f.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Funnel Bar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: isMobile ? 16 : 24, padding: "0 4px" }}>
-        <div style={{ flex: 1, display: "flex", height: 6, borderRadius: 3, overflow: "hidden", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.06)" }}>
-          {funnelData.map((f) => (
-            <div key={f.label} style={{ flex: Math.max(f.n, 1), height: "100%", background: f.border, transition: "flex 0.5s" }} />
+      {/* Funnel progress bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: isMobile ? 16 : 24, padding: "0 2px" }}>
+        <div style={{ flex: 1, display: "flex", height: 4, borderRadius: 2, overflow: "hidden", background: "#f1f5f9" }}>
+          {funnelStages.map((f) => (
+            <div key={f.label} style={{ flex: Math.max(f.n, 0.5), height: "100%", background: f.color, transition: "flex 0.5s" }} />
           ))}
         </div>
-        <span style={{ fontSize: 12, color: "#64748b", flexShrink: 0, fontWeight: 600 }}>
-          {closeRate}% <span style={{ color: "#94a3b8", fontWeight: 400 }}>close rate</span>
+        <span style={{ fontSize: 12, color: "#0f172a", flexShrink: 0, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>
+          {closeRate}%
         </span>
+        <span style={{ fontSize: 11, color: "#94a3b8", flexShrink: 0 }}>close rate</span>
       </div>
 
-      {/* Goals + Top Deals */}
-      <div style={{ display: "grid", gridTemplateColumns: midGrid, gap: isMobile ? 12 : 16, marginBottom: isMobile ? 12 : 20 }}>
+      {/* ═══ MAIN GRID: Goals + Top Deals ═══ */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 16, marginBottom: isMobile ? 12 : 20 }}>
 
         {/* Quarterly Goals */}
-        <CardWrap>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-            <p style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "#0f172a" }}>🎯 Quarterly Goals</p>
-            <button onClick={() => setEditingGoals(!editingGoals)} style={{ fontSize: 11, color: "#16a34a", background: editingGoals ? "rgba(22,163,74,0.08)" : "none", border: editingGoals ? "1px solid rgba(22,163,74,0.2)" : "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans', sans-serif", padding: "4px 10px" }}>{editingGoals ? "✓ Done" : "Edit"}</button>
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: 0, letterSpacing: "-0.01em" }}>Quarterly Goals</h3>
+            <button onClick={() => setEditingGoals(!editingGoals)} style={{ background: "none", border: "none", fontSize: 11, color: "#16a34a", fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{editingGoals ? "Done" : "Edit"}</button>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            {goals.map((g, i) => {
-              const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
-              const weeksLeft = Math.max(1, Math.ceil(daysLeft / 7));
-              const remaining = Math.max(0, g.target - g.current);
-              const perWeek = (remaining / weeksLeft).toFixed(1);
-              return (
-                <div key={i}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    {editingGoals ? (
-                      <input value={g.label} onChange={e => { const updated = [...goals]; updated[i].label = e.target.value; setGoals(updated); }} style={{ fontSize: 13, color: "#0f172a", border: "1px solid #e2e8f0", borderRadius: 8, padding: "4px 10px", fontFamily: "'DM Sans', sans-serif", outline: "none", flex: 1, marginRight: 8 }} />
-                    ) : (
-                      <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 500 }}>{g.emoji} {g.label}</span>
-                    )}
-                    <span style={{ fontSize: 14, fontWeight: 700, fontFamily: "'DM Mono', monospace", color: pct >= 100 ? "#16a34a" : "#0f172a", flexShrink: 0 }}>
-                      {g.isCurrency ? fmtK(g.current) : g.current}<span style={{ color: "#94a3b8", fontWeight: 400 }}> / {g.isCurrency ? fmtK(g.target) : g.target}</span>
-                    </span>
-                  </div>
-                  {editingGoals && (
-                    <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                      <input type="number" value={g.current} onChange={e => { const updated = [...goals]; updated[i].current = parseFloat(e.target.value) || 0; setGoals(updated); }} style={{ width: 80, fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 8, padding: "4px 8px", fontFamily: "'DM Mono', monospace" }} placeholder="Current" />
-                      <input type="number" value={g.target} onChange={e => { const updated = [...goals]; updated[i].target = parseFloat(e.target.value) || 0; setGoals(updated); }} style={{ width: 80, fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 8, padding: "4px 8px", fontFamily: "'DM Mono', monospace" }} placeholder="Target" />
-                    </div>
+          {goals.map((g, i) => {
+            const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
+            const pace = daysLeft > 0 ? ((g.target - g.current) / (daysLeft / 7)).toFixed(1) : 0;
+            return (
+              <div key={i} style={{ marginBottom: i < goals.length - 1 ? 16 : 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  {editingGoals ? (
+                    <input value={g.label} onChange={e => { const u = [...goals]; u[i].label = e.target.value; setGoals(u); }} style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "#0f172a", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", fontFamily: "'DM Sans', sans-serif", marginRight: 8 }} />
+                  ) : (
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{g.label}</span>
                   )}
-                  <div style={{ height: 10, background: "#f1f5f9", borderRadius: 5, overflow: "hidden" }}>
-                    <div style={{
-                      width: pct + "%", height: "100%", borderRadius: 5, transition: "width 0.8s cubic-bezier(0.25, 1, 0.5, 1)",
-                      background: pct >= 100 ? "linear-gradient(90deg, #16a34a, #22c55e)" : pct >= 60 ? "linear-gradient(90deg, " + g.color + ", " + g.color + "cc)" : g.color,
-                    }} />
-                  </div>
-                  <p style={{ fontSize: 11, margin: "4px 0 0", fontWeight: 500, color: pct >= 100 ? "#16a34a" : pct >= 80 ? "#16a34a" : pct >= 50 ? "#d97706" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {pct >= 100 ? "🎉 Goal reached!" : pct >= 80 ? "🔥 Almost there — " + remaining + " to go" : "📈 Need " + (g.isCurrency ? fmtK(parseFloat(perWeek)) : perWeek) + "/wk · " + daysLeft + "d left"}
-                  </p>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>
+                    {g.isCurrency ? fmtK(g.current) : g.current} / {g.isCurrency ? fmtK(g.target) : g.target}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
-        </CardWrap>
+                <div style={{ height: 6, borderRadius: 3, background: "#f1f5f9", overflow: "hidden" }}>
+                  <div style={{ width: pct + "%", height: "100%", borderRadius: 3, background: g.color, transition: "width 0.5s" }} />
+                </div>
+                <p style={{ fontSize: 10, color: "#94a3b8", margin: "4px 0 0" }}>Need {g.isCurrency ? fmtK(pace) : pace}/wk · {daysLeft}d left</p>
+                {editingGoals && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                    <input type="number" value={g.target} onChange={e => { const u = [...goals]; u[i].target = parseInt(e.target.value) || 0; setGoals(u); }} style={{ width: 80, fontSize: 12, padding: "4px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Mono', monospace" }} placeholder="Target" />
+                    <button onClick={() => setGoals(goals.filter((_, idx) => idx !== i))} style={{ fontSize: 10, color: "#dc2626", background: "none", border: "1px solid #fecaca", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}>Remove</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {editingGoals && (
+            <button onClick={() => setGoals([...goals, { label: "New Goal", current: 0, target: 10, color: "#64748b" }])} style={{ marginTop: 12, width: "100%", padding: "8px", border: "1px dashed #cbd5e1", borderRadius: 8, background: "transparent", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add Goal</button>
+          )}
+        </div>
 
         {/* Top Deals by REAP Score */}
-        <CardWrap>
-          <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: "#0f172a" }}>🏅 Top Deals by REAP Score</p>
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 24px" }}>
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 16px", letterSpacing: "-0.01em" }}>Top Deals by REAP Score</h3>
           {scoredDeals.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No scored deals yet — underwrite a deal to see rankings</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {scoredDeals.map((d, i) => {
-                const sc = scoreColor(d.reapScore);
-                const medals = ["🥇", "🥈", "🥉"];
-                return (
-                  <div key={i} onClick={() => onSelectDeal(d)} style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "10px 8px", borderRadius: 10,
-                    borderBottom: i < scoredDeals.length - 1 ? "1px solid #f1f5f9" : "none",
-                    cursor: "pointer", transition: "background 0.15s",
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                  >
-                    <span style={{ fontSize: 16, width: 24, textAlign: "center" }}>{i < 3 ? medals[i] : (i + 1)}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 13, color: "#0f172a", margin: 0, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.address}</p>
-                      <p style={{ fontSize: 11, color: "#94a3b8", margin: "1px 0 0" }}>{d.type || "—"} · {d.status}</p>
-                    </div>
-                    <span style={{
-                      fontSize: 14, fontWeight: 700, fontFamily: "'DM Mono', monospace",
-                      background: sc.bg, color: sc.color, padding: "4px 12px", borderRadius: 10,
-                      boxShadow: "0 2px 8px " + sc.glow,
-                    }}>{Math.round(num(d.reapScore))}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardWrap>
-      </div>
-
-      {/* Needs Attention + Recent Activity */}
-      <div style={{ display: "grid", gridTemplateColumns: midGrid, gap: isMobile ? 12 : 16, marginBottom: isMobile ? 12 : 20 }}>
-
-        {/* Needs Attention */}
-        <CardWrap>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <p style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "#0f172a" }}>🚨 Needs Attention</p>
-            {attentionItems.length > 0 && <span style={{
-              fontSize: 11, fontWeight: 700, color: "#fff", background: "linear-gradient(135deg, #ef4444, #dc2626)",
-              padding: "3px 10px", borderRadius: 20, minWidth: 20, textAlign: "center",
-              boxShadow: "0 2px 8px rgba(239,68,68,0.3)",
-            }}>{attentionItems.length}</span>}
-          </div>
-          {attentionItems.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "16px 0" }}>
-              <p style={{ fontSize: 28, margin: "0 0 6px" }}>✅</p>
-              <p style={{ fontSize: 13, color: "#16a34a", fontWeight: 600, margin: 0 }}>All clear — nothing needs attention</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {attentionItems.slice(0, 5).map((item, i) => (
-                <div key={i} onClick={() => item.deal ? onSelectDeal(item.deal) : null} style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "10px 4px",
-                  borderBottom: i < Math.min(attentionItems.length, 5) - 1 ? "1px solid #f1f5f9" : "none",
-                  cursor: item.deal ? "pointer" : "default", borderRadius: 6, transition: "background 0.15s",
-                }}
-                onMouseEnter={e => { if (item.deal) e.currentTarget.style.background = "#fef2f2"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <span style={{ fontSize: 14, flexShrink: 0 }}>{item.emoji}</span>
-                  <p style={{ fontSize: 13, margin: 0, color: "#0f172a", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.text}</p>
-                  {item.deal && <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2}><polyline points="9 18 15 12 9 6"/></svg>}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardWrap>
-
-        {/* Recent Activity */}
-        <CardWrap>
-          <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 14px", color: "#0f172a" }}>⚡ Recent Activity</p>
-          {recentActivities.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "16px 0" }}>
-              <p style={{ fontSize: 28, margin: "0 0 6px" }}>📭</p>
-              <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No activity yet — start logging calls, notes, and visits</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {recentActivities.slice(0, 5).map((a, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 4px", borderBottom: i < Math.min(recentActivities.length, 5) - 1 ? "1px solid #f1f5f9" : "none" }}>
-                  <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{activityEmojis[a.activity_type] || "📌"}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 13, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.description || a.activity_type}</p>
-                    <p style={{ fontSize: 11, color: "#94a3b8", margin: "1px 0 0" }}>{a.user_email ? a.user_email.split("@")[0] : ""} · {timeAgo(a.created_at)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardWrap>
-      </div>
-
-      {/* Pipeline Velocity */}
-      <CardWrap style={{ marginBottom: isMobile ? 12 : 20 }}>
-        <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: "#0f172a" }}>⏱️ Pipeline Velocity <span style={{ fontSize: 12, fontWeight: 400, color: "#94a3b8" }}>avg days per stage</span></p>
-        <div style={{ display: "grid", gridTemplateColumns: velGrid, gap: isMobile ? 8 : 12 }}>
-          {velocityData.map((v, i) => {
-            const pct = maxVelocity > 0 ? Math.max((v.days / maxVelocity) * 100, 5) : 5;
-            const isBottleneck = v.days > 12;
-            const velGradients = [
-              "linear-gradient(180deg, #93c5fd, #3b82f6)",
-              "linear-gradient(180deg, #c4b5fd, #7c3aed)",
-              "linear-gradient(180deg, #fdba74, #ea580c)",
-              "linear-gradient(180deg, #fcd34d, #d97706)",
-              "linear-gradient(180deg, #7dd3fc, #0284c7)",
-              "linear-gradient(180deg, #86efac, #16a34a)",
-            ];
-            const velEmojis = ["📥", "🔍", "📐", "📨", "🔐", "🏆"];
+            <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: 20 }}>No scored deals yet</p>
+          ) : scoredDeals.map((d, i) => {
+            const sc = scoreColor(d.reapScore);
             return (
-              <div key={v.status} style={{ textAlign: "center" }}>
-                <div style={{ height: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 8 }}>
-                  <div style={{
-                    width: "55%", maxWidth: 36, height: pct + "%", minHeight: 4,
-                    background: isBottleneck ? "linear-gradient(180deg, #fca5a5, #dc2626)" : velGradients[i],
-                    borderRadius: "6px 6px 2px 2px", transition: "height 0.8s cubic-bezier(0.25, 1, 0.5, 1)",
-                    boxShadow: isBottleneck ? "0 2px 8px rgba(220,38,38,0.25)" : "0 2px 6px rgba(0,0,0,0.08)",
-                  }} />
+              <div key={d.address || i} onClick={() => onSelectDeal(d)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < scoredDeals.length - 1 ? "1px solid #f8fafc" : "none", cursor: "pointer", transition: "opacity 0.15s" }}
+                onMouseEnter={e => e.currentTarget.style.opacity = "0.7"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1", fontFamily: "'DM Mono', monospace", width: 20, textAlign: "center" }}>{i + 1}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.address}</p>
+                  <p style={{ fontSize: 10, color: "#94a3b8", margin: "1px 0 0" }}>{d.type || ""} · {d.status || ""}</p>
                 </div>
-                <span style={{ fontSize: 14 }}>{velEmojis[i]}</span>
-                <p style={{ fontSize: 16, fontWeight: 700, fontFamily: "'DM Mono', monospace", margin: "2px 0 0", color: isBottleneck ? "#dc2626" : "#0f172a" }}>{v.days}d</p>
-                <p style={{ fontSize: isMobile ? 9 : 11, color: isBottleneck ? "#dc2626" : "#94a3b8", margin: "2px 0 0", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.03em" }}>{v.status === "Under Contract" ? "Escrow" : v.status}</p>
+                <div style={{ background: sc.bg, borderRadius: 8, padding: "4px 10px", boxShadow: "0 0 12px " + sc.glow }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: sc.color, fontFamily: "'DM Mono', monospace" }}>{Math.round(num(d.reapScore))}</span>
+                </div>
               </div>
             );
           })}
         </div>
-      </CardWrap>
+      </div>
 
-      {/* Quick Stats Footer */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: isMobile ? 8 : 12 }}>
-        <div style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", borderRadius: 14, padding: isMobile ? "14px 12px" : "18px 20px", textAlign: "center" }}>
-          <p style={{ fontSize: 11, color: "#64748b", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>🔥 Hot Contacts</p>
-          <p style={{ fontSize: 24, fontWeight: 700, color: "#f59e0b", margin: "4px 0 0", fontFamily: "'DM Mono', monospace" }}>{hotContactsCount}</p>
+      {/* ═══ ATTENTION + ACTIVITY ═══ */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 16, marginBottom: isMobile ? 12 : 20 }}>
+
+        {/* Needs Attention */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 24px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: 0 }}>Needs Attention</h3>
+            {attentionItems.length > 0 && <span style={{ background: "#fef2f2", color: "#dc2626", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, fontFamily: "'DM Mono', monospace", border: "1px solid #fecaca" }}>{attentionItems.length}</span>}
+          </div>
+          {attentionItems.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "20px 0", color: "#94a3b8", fontSize: 12 }}>All clear — no items need attention</div>
+          ) : attentionItems.slice(0, 6).map((item, i) => (
+            <div key={i} onClick={() => item.deal && onSelectDeal(item.deal)} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: i < Math.min(attentionItems.length, 6) - 1 ? "1px solid #f8fafc" : "none", cursor: item.deal ? "pointer" : "default" }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", marginTop: 6, flexShrink: 0, background: item.severity === "high" ? "#dc2626" : "#f59e0b", boxShadow: "0 0 6px " + (item.severity === "high" ? "rgba(220,38,38,0.3)" : "rgba(245,158,11,0.3)") }} />
+              <p style={{ fontSize: 12, color: "#334155", margin: 0, lineHeight: 1.5, flex: 1 }}>{item.text}</p>
+              {item.deal && <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2} style={{ flexShrink: 0, marginTop: 2 }}><polyline points="9 18 15 12 9 6"/></svg>}
+            </div>
+          ))}
         </div>
-        <div style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", borderRadius: 14, padding: isMobile ? "14px 12px" : "18px 20px", textAlign: "center" }}>
-          <p style={{ fontSize: 11, color: "#64748b", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>💰 Capital Committed</p>
-          <p style={{ fontSize: 24, fontWeight: 700, color: "#a78bfa", margin: "4px 0 0", fontFamily: "'DM Mono', monospace" }}>{fmtK(capitalCommitted)}</p>
+
+        {/* Recent Activity */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 24px" }}>
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 16px" }}>Recent Activity</h3>
+          {recentActivities.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "20px 0", color: "#94a3b8", fontSize: 12 }}>No recent activity</div>
+          ) : recentActivities.slice(0, 6).map((act, i) => (
+            <div key={act.id || i} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: i < Math.min(recentActivities.length, 6) - 1 ? "1px solid #f8fafc" : "none" }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11 }}>
+                {activityEmojis[act.activity_type] || "\u2022"}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 12, fontWeight: 500, color: "#0f172a", margin: 0, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{act.description || act.activity_type}</p>
+                <p style={{ fontSize: 10, color: "#94a3b8", margin: "2px 0 0" }}>{(act.user_email || "").split("@")[0]} · {timeAgo(act.created_at)}</p>
+              </div>
+            </div>
+          ))}
         </div>
-        <div style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", borderRadius: 14, padding: isMobile ? "14px 12px" : "18px 20px", textAlign: "center" }}>
-          <p style={{ fontSize: 11, color: "#64748b", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>📊 Avg REAP Score</p>
-          <p style={{ fontSize: 24, fontWeight: 700, color: "#4ade80", margin: "4px 0 0", fontFamily: "'DM Mono', monospace" }}>{scoredDeals.length > 0 ? Math.round(scoredDeals.reduce((s, d) => s + num(d.reapScore), 0) / scoredDeals.length) : "—"}</p>
+      </div>
+
+      {/* ═══ PIPELINE VELOCITY ═══ */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 24px", marginBottom: isMobile ? 12 : 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: 0 }}>Pipeline Velocity</h3>
+          <span style={{ fontSize: 10, color: "#94a3b8" }}>avg days per stage</span>
         </div>
-        <div style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", borderRadius: 14, padding: isMobile ? "14px 12px" : "18px 20px", textAlign: "center" }}>
-          <p style={{ fontSize: 11, color: "#64748b", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>🏢 Investors</p>
-          <p style={{ fontSize: 24, fontWeight: 700, color: "#38bdf8", margin: "4px 0 0", fontFamily: "'DM Mono', monospace" }}>{investorsData.length}</p>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(6, 1fr)", gap: isMobile ? 8 : 10 }}>
+          {velocityData.map((v, i) => {
+            const pct = maxVelocity > 0 ? (v.days / maxVelocity) * 100 : 0;
+            const isHigh = v.days > 30;
+            return (
+              <div key={v.status} style={{ textAlign: "center" }}>
+                <div style={{ height: 48, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 6 }}>
+                  <div style={{ width: "60%", minHeight: 4, height: pct + "%", borderRadius: "4px 4px 0 0", background: isHigh ? "linear-gradient(to top, #fecaca, #f87171)" : "linear-gradient(to top, #e2e8f0, #94a3b8)", transition: "height 0.5s" }} />
+                </div>
+                <p style={{ fontSize: 16, fontWeight: 700, color: isHigh ? "#dc2626" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: "0 0 2px" }}>{v.days}d</p>
+                <p style={{ fontSize: 9, color: "#94a3b8", margin: 0, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{v.status}</p>
+              </div>
+            );
+          })}
         </div>
+      </div>
+
+      {/* ═══ BOTTOM STATS ═══ */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: isMobile ? 8 : 10 }}>
+        {[
+          { label: "Hot Contacts", value: String(hotContactsCount), color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
+          { label: "Capital Committed", value: fmtK(capitalCommitted), color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
+          { label: "Avg REAP Score", value: String(scoredDeals.length > 0 ? Math.round(scoredDeals.reduce((s, d) => s + num(d.reapScore), 0) / scoredDeals.length) : 0), color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
+          { label: "Investors", value: String(investorsData.length), color: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe" },
+        ].map((s, i) => (
+          <div key={i} style={{ background: "#fff", border: "1px solid " + s.border, borderRadius: 12, padding: isMobile ? "14px 12px" : "16px 18px", textAlign: "center" }}>
+            <p style={{ fontSize: 9, color: s.color, margin: "0 0 4px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{s.label}</p>
+            <p style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0, letterSpacing: "-0.02em" }}>{s.value}</p>
+          </div>
+        ))}
       </div>
 
       </div>
@@ -7550,23 +7499,6 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
     </div>
   );
 }
-
-/* ═══════════════════════════════════════════════════════════
-   BUYER PIPELINE
-   ═══════════════════════════════════════════════════════════ */
-
-const BUYER_STATUS_CONFIG = {
-  "New":              { color: "#16a34a", bg: "rgba(22,163,74,0.08)",   dot: "#16a34a" },
-  "Contacted":        { color: "#d97706", bg: "rgba(217,119,6,0.08)",   dot: "#d97706" },
-  "Info Gathering":   { color: "#7c3aed", bg: "rgba(124,58,237,0.08)",  dot: "#7c3aed" },
-  "Confirmed Buyer":  { color: "#0891b2", bg: "rgba(8,145,178,0.08)",   dot: "#0891b2" },
-  "Active":           { color: "#2563eb", bg: "rgba(37,99,235,0.08)",   dot: "#2563eb" },
-  "Closed":           { color: "#64748b", bg: "rgba(100,116,139,0.08)", dot: "#64748b" },
-};
-const BUYER_STATUS_LIST = ["New", "Contacted", "Info Gathering", "Confirmed Buyer", "Active", "Closed"];
-const BUYER_PROPERTY_TYPES = ["Single Family", "Multifamily", "Commercial", "Office", "Industrial", "Mixed Use", "Land", "Retail"];
-const LENDER_TYPES = ["Hard Money", "Private Lender", "Bank/Credit Union", "DSCR Lender", "Bridge Lender", "SBA Lender"];
-const BUYER_MARKETS = ["Tampa", "Orlando", "Miami", "Jacksonville", "St. Petersburg", "Fort Lauderdale", "Clearwater", "Sarasota"];
 
 function BuyerStatusBadge({ status }) {
   const cfg = BUYER_STATUS_CONFIG[status] || BUYER_STATUS_CONFIG["New"];
@@ -17515,8 +17447,8 @@ export default function ReapApp() {
         {/* Desktop Sidebar */}
         {!isMobile && (
           <div style={{ width: 60, background: "#fff", borderRight: "1px solid #e2e8f0", display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 0", gap: 6, flexShrink: 0, marginTop: !isSubscribed && trialDaysLeft > 0 ? 42 : 0 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16, boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>
-              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            <div style={{ width: 36, height: 36, borderRadius: 10, overflow: "hidden", marginBottom: 16, boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>
+              <img src="/favicon.png" alt="REAP" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             </div>
             {navItems.map(item => (
               <button key={item.id} onClick={() => { setActiveNav(item.id); setShowProfile(false); }} title={item.label} style={{ width: 40, height: 40, borderRadius: 10, border: "none", background: activeNav === item.id && !showProfile ? (item.featured ? "linear-gradient(135deg, #16a34a, #15803d)" : "#f0fdf4") : "transparent", color: activeNav === item.id && !showProfile ? (item.featured ? "#fff" : "#16a34a") : "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s", boxShadow: activeNav === item.id && item.featured && !showProfile ? "0 2px 8px rgba(22,163,74,0.3)" : "none" }}>{item.icon}</button>
@@ -17784,12 +17716,10 @@ export default function ReapApp() {
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{
-                  width: 34, height: 34, borderRadius: 10,
-                  background: "linear-gradient(135deg, #16a34a, #15803d)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 34, height: 34, borderRadius: 10, overflow: "hidden",
                   boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
                 }}>
-                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                  <img src="/favicon.png" alt="REAP" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                 </div>
                 <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.06em" }}>REAP</span>
               </div>
