@@ -12950,15 +12950,14 @@ function EducationView({ session, isMobile, activeTab, onTabChange, updateHash, 
   );
 
   // ─── Course Builder Modal ───
-  const CourseBuilderModal = () => {
-    const addSection = () => setCourseForm(p => ({ ...p, sections: [...p.sections, { title: "New Section", lessons: [] }] }));
-    const updateSection = (idx, field, val) => setCourseForm(p => { const s = [...p.sections]; s[idx] = { ...s[idx], [field]: val }; return { ...p, sections: s }; });
-    const removeSection = (idx) => setCourseForm(p => ({ ...p, sections: p.sections.filter((_, i) => i !== idx) }));
-    const addLesson = (sIdx) => setCourseForm(p => { const s = [...p.sections]; s[sIdx] = { ...s[sIdx], lessons: [...(s[sIdx].lessons || []), { title: "New Lesson", video_url: "", description: "" }] }; return { ...p, sections: s }; });
-    const updateLesson = (sIdx, lIdx, field, val) => setCourseForm(p => { const s = [...p.sections]; const ls = [...s[sIdx].lessons]; ls[lIdx] = { ...ls[lIdx], [field]: val }; s[sIdx] = { ...s[sIdx], lessons: ls }; return { ...p, sections: s }; });
-    const removeLesson = (sIdx, lIdx) => setCourseForm(p => { const s = [...p.sections]; s[sIdx] = { ...s[sIdx], lessons: s[sIdx].lessons.filter((_, i) => i !== lIdx) }; return { ...p, sections: s }; });
+  const addSection = () => setCourseForm(p => ({ ...p, sections: [...p.sections, { title: "New Section", lessons: [] }] }));
+  const updateSection = (idx, field, val) => setCourseForm(p => { const s = [...p.sections]; s[idx] = { ...s[idx], [field]: val }; return { ...p, sections: s }; });
+  const removeSection = (idx) => setCourseForm(p => ({ ...p, sections: p.sections.filter((_, i) => i !== idx) }));
+  const addLesson = (sIdx) => setCourseForm(p => { const s = [...p.sections]; s[sIdx] = { ...s[sIdx], lessons: [...(s[sIdx].lessons || []), { title: "New Lesson", video_url: "", description: "" }] }; return { ...p, sections: s }; });
+  const updateLesson = (sIdx, lIdx, field, val) => setCourseForm(p => { const s = [...p.sections]; const ls = [...s[sIdx].lessons]; ls[lIdx] = { ...ls[lIdx], [field]: val }; s[sIdx] = { ...s[sIdx], lessons: ls }; return { ...p, sections: s }; });
+  const removeLesson = (sIdx, lIdx) => setCourseForm(p => { const s = [...p.sections]; s[sIdx] = { ...s[sIdx], lessons: s[sIdx].lessons.filter((_, i) => i !== lIdx) }; return { ...p, sections: s }; });
 
-    return (
+  const courseBuilderModalJSX = (
       <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", padding: 20 }}>
         <div style={{ background: "#fff", borderRadius: isMobile ? "16px 16px 0 0" : 16, width: "100%", maxWidth: isMobile ? "100%" : 720, padding: isMobile ? "20px 16px 32px" : 28, maxHeight: "90vh", overflowY: "auto" }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display', serif", color: "#0f172a", margin: "0 0 20px" }}>{editingCourse ? "Edit Course" : "Create Course"}</h2>
@@ -13010,8 +13009,7 @@ function EducationView({ session, isMobile, activeTab, onTabChange, updateHash, 
           </div>
         </div>
       </div>
-    );
-  };
+  );
 
   // ─── Video embed helper ───
   const getEmbedUrl = (url) => {
@@ -13103,7 +13101,7 @@ function EducationView({ session, isMobile, activeTab, onTabChange, updateHash, 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {showAddResource && <ResourceModal />}
-      {showCourseBuilder && <CourseBuilderModal />}
+      {showCourseBuilder && courseBuilderModalJSX}
 
       <div style={tabContentStyle}>
         {/* ═══ LIBRARY TAB ═══ */}
