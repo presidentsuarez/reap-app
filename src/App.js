@@ -14563,9 +14563,13 @@ function ContactInvestmentsTab({ contactId, deals, orgId, userEmail, isMobile })
 function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, investorFunds, contacts, userEmail, onRefresh, orgData, orgMembers }) {
   const [activeTab, setActiveTab] = useState("overview");
   const isInvestor = (contact.contactType || "").toLowerCase().includes("investor");
+  const contactTier = orgData?.plan_tier || "starter";
+  const isContactStarter = getTierRank(contactTier) <= 1;
+  const starterExcludedTabs = ["funds", "investments", "tasks", "communications", "documents", "portal access"];
   const baseTabs = ["overview", "companies", "investments", "tasks", "communications", "documents", "portal access"];
   const investorTabs = ["funds", "capital"];
-  const tabs = isInvestor ? ["overview", "companies", ...investorTabs, "investments", "tasks", "communications", "documents", "portal access"] : baseTabs;
+  const allTabs = isInvestor ? ["overview", "companies", ...investorTabs, "investments", "tasks", "communications", "documents", "portal access"] : baseTabs;
+  const tabs = isContactStarter ? allTabs.filter(t => !starterExcludedTabs.includes(t)) : allTabs;
   const initials = (contact.name || "??").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
   const linkedDeals = (deals || []).filter(d => (contact.linkedDealAddresses || []).includes(d.address));
 
@@ -17182,6 +17186,7 @@ export default function ReapApp() {
 
       const { data: insertedDeal, error: insertErr } = await supabase.from("deals").insert({
         user_email: session?.user?.email || "",
+        org_id: orgData?.id || null,
         deal_name: form.dealName,
         property_address: form.address,
         city: form.city,
