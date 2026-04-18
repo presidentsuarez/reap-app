@@ -12916,39 +12916,6 @@ function EducationView({ session, isMobile, activeTab, onTabChange, updateHash, 
   };
 
   // ─── Resource form modal ───
-  const ResourceModal = () => (
-    <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", padding: 20 }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 520, padding: 28, maxHeight: "90vh", overflowY: "auto" }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display', serif", color: "#0f172a", margin: "0 0 20px" }}>{editingResource ? "Edit Resource" : "Add Resource"}</h2>
-        {[
-          { label: "Title", key: "title", ph: "Resource title" },
-          { label: "Description", key: "description", ph: "Brief description" },
-          { label: "URL", key: "url", ph: "https://..." },
-          { label: "Thumbnail URL", key: "thumbnail_url", ph: "https://... (optional)" },
-        ].map(f => (
-          <div key={f.key} style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>{f.label}</label>
-            {f.key === "description" ? (
-              <textarea value={resourceForm[f.key]} onChange={e => setResourceForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.ph} rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: "vertical", boxSizing: "border-box" }} />
-            ) : (
-              <input value={resourceForm[f.key]} onChange={e => setResourceForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.ph} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
-            )}
-          </div>
-        ))}
-        <div style={{ marginBottom: 18 }}>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Type</label>
-          <select value={resourceForm.type} onChange={e => setResourceForm(p => ({ ...p, type: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }}>
-            <option value="article">Article</option><option value="video">Video</option><option value="link">Link</option><option value="document">Document</option>
-          </select>
-        </div>
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button onClick={() => { setShowAddResource(false); setEditingResource(null); setResourceForm({ title: "", description: "", type: "article", url: "", thumbnail_url: "" }); }} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
-          <button onClick={saveResource} disabled={!resourceForm.title || !resourceForm.url} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: !resourceForm.title || !resourceForm.url ? "#94a3b8" : "#16a34a", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Save</button>
-        </div>
-      </div>
-    </div>
-  );
-
   // ─── Course Builder Modal ───
   const addSection = () => setCourseForm(p => ({ ...p, sections: [...p.sections, { title: "New Section", lessons: [] }] }));
   const updateSection = (idx, field, val) => setCourseForm(p => { const s = [...p.sections]; s[idx] = { ...s[idx], [field]: val }; return { ...p, sections: s }; });
@@ -12957,59 +12924,7 @@ function EducationView({ session, isMobile, activeTab, onTabChange, updateHash, 
   const updateLesson = (sIdx, lIdx, field, val) => setCourseForm(p => { const s = [...p.sections]; const ls = [...s[sIdx].lessons]; ls[lIdx] = { ...ls[lIdx], [field]: val }; s[sIdx] = { ...s[sIdx], lessons: ls }; return { ...p, sections: s }; });
   const removeLesson = (sIdx, lIdx) => setCourseForm(p => { const s = [...p.sections]; s[sIdx] = { ...s[sIdx], lessons: s[sIdx].lessons.filter((_, i) => i !== lIdx) }; return { ...p, sections: s }; });
 
-  const courseBuilderModalJSX = (
-      <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", padding: 20 }}>
-        <div style={{ background: "#fff", borderRadius: isMobile ? "16px 16px 0 0" : 16, width: "100%", maxWidth: isMobile ? "100%" : 720, padding: isMobile ? "20px 16px 32px" : 28, maxHeight: "90vh", overflowY: "auto" }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display', serif", color: "#0f172a", margin: "0 0 20px" }}>{editingCourse ? "Edit Course" : "Create Course"}</h2>
-          {[
-            { label: "Course Title", key: "title", ph: "e.g. Real Estate Underwriting 101" },
-            { label: "Description", key: "description", ph: "What students will learn..." },
-            { label: "Thumbnail URL", key: "thumbnail_url", ph: "https://... (optional)" },
-          ].map(f => (
-            <div key={f.key} style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>{f.label}</label>
-              {f.key === "description" ? (
-                <textarea value={courseForm[f.key]} onChange={e => setCourseForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.ph} rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: "vertical", boxSizing: "border-box" }} />
-              ) : (
-                <input value={courseForm[f.key]} onChange={e => setCourseForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.ph} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
-              )}
-            </div>
-          ))}
 
-          <div style={{ marginTop: 20, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>Sections</h3>
-            <button onClick={addSection} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #16a34a", background: "#F0FDF4", color: "#16a34a", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add Section</button>
-          </div>
-
-          {courseForm.sections.map((section, sIdx) => (
-            <div key={sIdx} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, marginBottom: 12, background: "#fafbfc" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                <input value={section.title} onChange={e => updateSection(sIdx, "title", e.target.value)} style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }} />
-                <button onClick={() => removeSection(sIdx)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#FEF2F2", color: "#DC2626", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Remove</button>
-              </div>
-
-              {(section.lessons || []).map((lesson, lIdx) => (
-                <div key={lIdx} style={{ background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0", padding: 12, marginBottom: 8, marginLeft: 12 }}>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                    <input value={lesson.title} onChange={e => updateLesson(sIdx, lIdx, "title", e.target.value)} placeholder="Lesson title" style={{ flex: 1, padding: "7px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }} />
-                    <button onClick={() => removeLesson(sIdx, lIdx)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#FEF2F2", color: "#DC2626", fontSize: 11, cursor: "pointer" }}>X</button>
-                  </div>
-                  <input value={lesson.video_url || ""} onChange={e => updateLesson(sIdx, lIdx, "video_url", e.target.value)} placeholder="Video URL (YouTube, Vimeo, etc.)" style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", marginBottom: 6, boxSizing: "border-box" }} />
-                  <input value={lesson.description || ""} onChange={e => updateLesson(sIdx, lIdx, "description", e.target.value)} placeholder="Lesson description (optional)" style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
-                </div>
-              ))}
-
-              <button onClick={() => addLesson(sIdx)} style={{ padding: "5px 12px", borderRadius: 8, border: "1px dashed #cbd5e1", background: "transparent", color: "#64748b", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginLeft: 12, marginTop: 4 }}>+ Add Lesson</button>
-            </div>
-          ))}
-
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
-            <button onClick={() => { setShowCourseBuilder(false); setEditingCourse(null); setCourseForm({ title: "", description: "", thumbnail_url: "", sections: [] }); }} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
-            <button onClick={saveCourse} disabled={!courseForm.title} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: !courseForm.title ? "#94a3b8" : "#16a34a", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Save Course</button>
-          </div>
-        </div>
-      </div>
-  );
 
   // ─── Video embed helper ───
   const getEmbedUrl = (url) => {
@@ -13100,8 +13015,91 @@ function EducationView({ session, isMobile, activeTab, onTabChange, updateHash, 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {showAddResource && <ResourceModal />}
-      {showCourseBuilder && courseBuilderModalJSX}
+      {showAddResource && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", padding: 20 }}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 520, padding: 28, maxHeight: "90vh", overflowY: "auto" }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display', serif", color: "#0f172a", margin: "0 0 20px" }}>{editingResource ? "Edit Resource" : "Add Resource"}</h2>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Title</label>
+              <input value={resourceForm.title} onChange={e => setResourceForm(p => ({ ...p, title: e.target.value }))} placeholder="Resource title" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Description</label>
+              <textarea value={resourceForm.description} onChange={e => setResourceForm(p => ({ ...p, description: e.target.value }))} placeholder="Brief description" rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: "vertical", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>URL</label>
+              <input value={resourceForm.url} onChange={e => setResourceForm(p => ({ ...p, url: e.target.value }))} placeholder="https://..." style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Thumbnail URL</label>
+              <input value={resourceForm.thumbnail_url} onChange={e => setResourceForm(p => ({ ...p, thumbnail_url: e.target.value }))} placeholder="https://... (optional)" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Type</label>
+              <select value={resourceForm.type} onChange={e => setResourceForm(p => ({ ...p, type: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }}>
+                <option value="article">Article</option><option value="video">Video</option><option value="link">Link</option><option value="document">Document</option>
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => { setShowAddResource(false); setEditingResource(null); setResourceForm({ title: "", description: "", type: "article", url: "", thumbnail_url: "" }); }} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+              <button onClick={saveResource} disabled={!resourceForm.title || !resourceForm.url} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: !resourceForm.title || !resourceForm.url ? "#94a3b8" : "#16a34a", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showCourseBuilder && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", padding: 20 }}>
+          <div style={{ background: "#fff", borderRadius: isMobile ? "16px 16px 0 0" : 16, width: "100%", maxWidth: isMobile ? "100%" : 720, padding: isMobile ? "20px 16px 32px" : 28, maxHeight: "90vh", overflowY: "auto" }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display', serif", color: "#0f172a", margin: "0 0 20px" }}>{editingCourse ? "Edit Course" : "Create Course"}</h2>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Course Title</label>
+              <input value={courseForm.title} onChange={e => setCourseForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. Real Estate Underwriting 101" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Description</label>
+              <textarea value={courseForm.description} onChange={e => setCourseForm(p => ({ ...p, description: e.target.value }))} placeholder="What students will learn..." rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: "vertical", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>Thumbnail URL</label>
+              <input value={courseForm.thumbnail_url} onChange={e => setCourseForm(p => ({ ...p, thumbnail_url: e.target.value }))} placeholder="https://... (optional)" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+            </div>
+
+            <div style={{ marginTop: 20, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>Sections</h3>
+              <button onClick={addSection} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #16a34a", background: "#F0FDF4", color: "#16a34a", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add Section</button>
+            </div>
+
+            {courseForm.sections.map((section, sIdx) => (
+              <div key={sIdx} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, marginBottom: 12, background: "#fafbfc" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <input value={section.title} onChange={e => updateSection(sIdx, "title", e.target.value)} style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }} />
+                  <button onClick={() => removeSection(sIdx)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#FEF2F2", color: "#DC2626", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Remove</button>
+                </div>
+
+                {(section.lessons || []).map((lesson, lIdx) => (
+                  <div key={lIdx} style={{ background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0", padding: 12, marginBottom: 8, marginLeft: 12 }}>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                      <input value={lesson.title} onChange={e => updateLesson(sIdx, lIdx, "title", e.target.value)} placeholder="Lesson title" style={{ flex: 1, padding: "7px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }} />
+                      <button onClick={() => removeLesson(sIdx, lIdx)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#FEF2F2", color: "#DC2626", fontSize: 11, cursor: "pointer" }}>X</button>
+                    </div>
+                    <input value={lesson.video_url || ""} onChange={e => updateLesson(sIdx, lIdx, "video_url", e.target.value)} placeholder="Video URL (YouTube, Vimeo, etc.)" style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", marginBottom: 6, boxSizing: "border-box" }} />
+                    <input value={lesson.description || ""} onChange={e => updateLesson(sIdx, lIdx, "description", e.target.value)} placeholder="Lesson description (optional)" style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+                  </div>
+                ))}
+
+                <button onClick={() => addLesson(sIdx)} style={{ padding: "5px 12px", borderRadius: 8, border: "1px dashed #cbd5e1", background: "transparent", color: "#64748b", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginLeft: 12, marginTop: 4 }}>+ Add Lesson</button>
+              </div>
+            ))}
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+              <button onClick={() => { setShowCourseBuilder(false); setEditingCourse(null); setCourseForm({ title: "", description: "", thumbnail_url: "", sections: [] }); }} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+              <button onClick={saveCourse} disabled={!courseForm.title} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: !courseForm.title ? "#94a3b8" : "#16a34a", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Save Course</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={tabContentStyle}>
         {/* ═══ LIBRARY TAB ═══ */}
