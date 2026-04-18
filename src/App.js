@@ -7283,13 +7283,13 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
 
 
   return (
-    <div style={{ flex: 1, overflow: "auto", background: "#0a0f1a", fontFamily: "'DM Sans', sans-serif", minHeight: "100vh", overflowX: "hidden", WebkitOverflowScrolling: "touch", minWidth: 0 }}>
+    <div style={{ flex: 1, overflow: "auto", background: "#0a0f1a", fontFamily: "'DM Sans', sans-serif", overflowX: "hidden", WebkitOverflowScrolling: "touch", minWidth: 0, minHeight: 0 }}>
       <style>{`
         @keyframes ccPulse { 0%,100% { opacity: 0.4; } 50% { opacity: 0.8; } }
         @keyframes ccGlow { 0%,100% { box-shadow: 0 0 20px rgba(22,163,74,0.1); } 50% { box-shadow: 0 0 40px rgba(22,163,74,0.2); } }
       `}</style>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: isMobile ? "0 0 100px" : "0 24px 60px", overflowX: "hidden" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: isMobile ? "0 0 160px" : "0 24px 60px", overflowX: "hidden" }}>
 
         {/* ═══ HERO HEADER ═══ */}
         <div style={{ padding: isMobile ? "20px 14px 0" : "40px 12px 0", position: "relative" }}>
