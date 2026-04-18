@@ -16359,6 +16359,7 @@ export default function ReapApp() {
   const [features, setFeatures] = useState({});            // { pipeline: true, portfolio: false, ... }
   const [orgLoading, setOrgLoading] = useState(true);
   const [hasFullAccess, setHasFullAccess] = useState(false); // user can see all data, not just team
+  const [userTier, setUserTier] = useState("starter");       // current user's effective plan tier
   const [pendingInvite, setPendingInvite] = useState(null); // invite awaiting acceptance
   const [orgMembers, setOrgMembers] = useState([]);        // all members in the user's org
   const [allAppUsers, setAllAppUsers] = useState([]);       // all user emails in the app (for Owner dropdown)
@@ -16626,6 +16627,7 @@ export default function ReapApp() {
       if (email === PLATFORM_ADMIN_EMAIL.toLowerCase()) {
         setIsSubscribed(true);
         setShowPaywall(false);
+        setUserTier("enterprise");
         const onboarded = localStorage.getItem("reap_onboarded");
         if (!onboarded) setShowOnboarding(true);
         return;
@@ -16862,6 +16864,7 @@ export default function ReapApp() {
         const { data: flags } = await supabase.from("feature_flags").select("*");
         setFeatureFlags(flags || []);
         const userTier = foundOrg?.plan_tier || "starter";
+        setUserTier(userTier);
         const userRank = getTierRank(userTier);
         console.log("[REAP Org] Feature flags loaded:", flags?.length || 0, "tier:", userTier);
 
@@ -17460,6 +17463,15 @@ export default function ReapApp() {
   const userEmail = session?.user?.email || "";
   const userName = session?.user?.user_metadata?.full_name || userEmail;
   const initials = userName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+  // ── Tier-based access restrictions ──
+  const isStarterTier = getTierRank(userTier) <= 1 && userEmail.toLowerCase() !== PLATFORM_ADMIN_EMAIL.toLowerCase();
+
+  // Nav items starter can access
+  const STARTER_NAV_IDS = ["command", "realestate", "contacts"];
+  // Sub-tabs starter can access
+  const STARTER_RE_TABS = ["dashboard", "pipeline", "portfolios"];
+  const STARTER_CONTACTS_TABS = ["dashboard", "contacts", "lenders", "buyers", "wholesalers", "investorContacts"];
+
   const FEATURE_NAV_MAP = {
     command: "dashboard", realestate: "pipeline", contacts: "contacts", marketplace: "market_intel"
   };
@@ -17471,13 +17483,25 @@ export default function ReapApp() {
     { id: "education", label: "Education", mobileBottom: false, mobileOrder: 5, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="14" y2="11"/></svg> },
     { id: "assignments", label: "Assignments", mobileOrder: 4, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
   ];
-  // Filter nav items by feature flags (fallback: show all if features haven't loaded yet)
-  const navItems = Object.keys(features).length === 0
-    ? allNavItems
-    : allNavItems.filter(item => {
-        const featureKey = FEATURE_NAV_MAP[item.id];
-        return !featureKey || features[featureKey] !== false;
-      });
+  // Filter nav items by feature flags AND tier restrictions
+  const navItems = (() => {
+    let items = Object.keys(features).length === 0
+      ? allNavItems
+      : allNavItems.filter(item => {
+          const featureKey = FEATURE_NAV_MAP[item.id];
+          return !featureKey || features[featureKey] !== false;
+        });
+    if (isStarterTier) {
+      items = items.filter(item => STARTER_NAV_IDS.includes(item.id));
+    }
+    return items;
+  })();
+
+  // Tier-filtered sub-tabs
+  const allRealEstateTabs = [{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }, { id: "offerings", label: "Offerings" }, { id: "management", label: "Management" }];
+  const allContactsTabs = [{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "wholesalers", label: "Wholesalers" }, { id: "investorContacts", label: "Investors" }, { id: "investors", label: "Company Library" }, { id: "import", label: "Import" }];
+  const realEstateTabs = isStarterTier ? allRealEstateTabs.filter(t => STARTER_RE_TABS.includes(t.id)) : allRealEstateTabs;
+  const contactsTabs = isStarterTier ? allContactsTabs.filter(t => STARTER_CONTACTS_TABS.includes(t.id)) : allContactsTabs;
 
   const SubTabBar = ({ tabs, active, onChange, title }) => (
     <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "0 12px" : "0 20px", flexShrink: 0, maxWidth: "100vw", overflow: "hidden" }}>
@@ -17493,6 +17517,15 @@ export default function ReapApp() {
       </div>
     </div>
   );
+
+  // Guard: if starter user has a restricted tab selected, reset to default
+  useEffect(() => {
+    if (isStarterTier) {
+      if (!STARTER_RE_TABS.includes(realEstateTab)) setRealEstateTab("dashboard");
+      if (!STARTER_CONTACTS_TABS.includes(contactsTab)) setContactsTab("dashboard");
+      if (!STARTER_NAV_IDS.includes(activeNav)) setActiveNav("command");
+    }
+  }, [isStarterTier, realEstateTab, contactsTab, activeNav]);
 
   if (authLoading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
@@ -17626,7 +17659,7 @@ export default function ReapApp() {
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "wholesalers", label: "Wholesalers" }, { id: "investorContacts", label: "Investors" }, { id: "investors", label: "Company Library" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash("contacts/" + tab); }} title="Contacts" />
+                <SubTabBar tabs={contactsTabs} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash("contacts/" + tab); }} title="Contacts" />
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {contactsTab === "import"
                     ? <ContactImporterView session={session} isMobile={true} onImported={() => setContactsTab("dashboard")} />
@@ -17662,7 +17695,7 @@ export default function ReapApp() {
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }, { id: "offerings", label: "Offerings" }, { id: "management", label: "Management" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
+                  <SubTabBar tabs={realEstateTabs} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto", minHeight: 0, WebkitOverflowScrolling: "touch" }}>
                     {realEstateTab === "dashboard"
                       ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
@@ -17703,7 +17736,7 @@ export default function ReapApp() {
               ? <MLSListingDetailView listing={selectedMLSListing} onBack={handleMLSBack} isMobile={false} session={session} updateHash={updateHash} onAddToPipeline={fetchDeals} />
               : activeNav === "realestate"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "pipeline", label: "Pipeline" }, { id: "portfolios", label: "Portfolios" }, { id: "mls", label: "MLS Feed" }, { id: "offerings", label: "Offerings" }, { id: "management", label: "Management" }]} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
+                  <SubTabBar tabs={realEstateTabs} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {realEstateTab === "dashboard"
                       ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
@@ -17723,7 +17756,7 @@ export default function ReapApp() {
                 </div>
               : activeNav === "contacts"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <SubTabBar tabs={[{ id: "dashboard", label: "Dashboard" }, { id: "contacts", label: "Contacts" }, { id: "lenders", label: "Lenders" }, { id: "buyers", label: "Buyers" }, { id: "wholesalers", label: "Wholesalers" }, { id: "investorContacts", label: "Investors" }, { id: "investors", label: "Company Library" }, { id: "import", label: "Import" }]} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash("contacts/" + tab); }} title="Contacts" />
+                  <SubTabBar tabs={contactsTabs} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash("contacts/" + tab); }} title="Contacts" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {contactsTab === "import"
                       ? <ContactImporterView session={session} isMobile={false} onImported={() => setContactsTab("dashboard")} />
