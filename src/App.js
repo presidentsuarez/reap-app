@@ -3040,6 +3040,7 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
 
 function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDeal, updateHash, pendingDealTab, onClearPendingDealTab, orgData, orgMembers }) {
   const [activeTab, setActiveTab] = useState("overview");
+  const [heroMapMode, setHeroMapMode] = useState("street");
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
   const hasMlsSource = deal?.source === "MLS Feed" || deal?.metadata?.mls_number;
@@ -3838,9 +3839,9 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
         {/* ═══ DEAL HERO: Street View + Scorecard ═══ */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 16 : 20, marginBottom: isMobile ? 20 : 28 }}>
           {/* Street View Photo */}
-          <div style={{ borderRadius: 14, overflow: "hidden", position: "relative", background: "#f1f5f9", border: "1px solid #e2e8f0", height: isMobile ? 180 : 260 }}>
+          <div style={{ borderRadius: 14, overflow: "hidden", position: "relative", background: "#f1f5f9", border: "1px solid #e2e8f0", minHeight: isMobile ? 180 : 200 }}>
             <img
-              src={`https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${encodeURIComponent(deal.address)}&fov=90&pitch=0&key=AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU`}
+              src={heroMapMode === "map" ? `https://maps.googleapis.com/maps/api/staticmap?size=800x400&zoom=15&maptype=roadmap&markers=color:green|${encodeURIComponent(deal.address + " " + (deal.city || "") + " " + (deal.state || ""))}&key=AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU` : `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${encodeURIComponent(deal.address)}&fov=90&pitch=0&key=AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU`}
               alt={deal.address}
               style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
               onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }}
@@ -3849,7 +3850,10 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
               <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.2}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
               <p style={{ color: "#16a34a", fontSize: 11, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, margin: 0 }}>No street view available</p>
             </div>
-            <div style={{ position: "absolute", bottom: 10, right: 10, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)", borderRadius: 8, padding: "4px 10px", fontSize: 10, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>Street View</div>
+            <div style={{ position: "absolute", bottom: 10, right: 10, display: "flex", gap: 0, borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.2)" }}>
+              <button onClick={() => setHeroMapMode && setHeroMapMode("street")} style={{ background: heroMapMode !== "map" ? "rgba(22,163,74,0.85)" : "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)", border: "none", padding: "5px 10px", fontSize: 10, fontWeight: 600, color: "#fff", fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>Street</button>
+              <button onClick={() => setHeroMapMode && setHeroMapMode("map")} style={{ background: heroMapMode === "map" ? "rgba(22,163,74,0.85)" : "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)", border: "none", borderLeft: "1px solid rgba(255,255,255,0.2)", padding: "5px 10px", fontSize: 10, fontWeight: 600, color: "#fff", fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>Map</button>
+            </div>
             {/* Property tags overlay */}
             <div style={{ position: "absolute", top: 10, left: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
               {deal.type && <span style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 6, fontFamily: "'DM Sans', sans-serif" }}>{deal.type}</span>}
@@ -3921,53 +3925,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
         </div>
 
         {activeTab === "overview" && (
-          <>
-            {/* ═══ MERGED AI UNDERWRITING + OVERVIEW ═══ */}
-            <AIUnderwritingTab deal={deal} isMobile={isMobile} />
-
-            {/* Property Details (collapsed section below AI analysis) */}
-            <section style={{ marginTop: 28 }}>
-              <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                Property Details <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-              </h2>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12 }}>
-                <MetricCard label="Property Type" value={deal.type || "\u2014"} />
-                <MetricCard label="Class" value={deal.dealClass || "\u2014"} />
-                <MetricCard label="Square Footage" value={fmtNum(deal.sqft)} sub="sq ft" />
-                <MetricCard label="Units" value={deal.units || "\u2014"} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
-                <MetricCard label="City" value={deal.city || "\u2014"} />
-                <MetricCard label="State" value={deal.state || "\u2014"} />
-                <MetricCard label="Zip Code" value={deal.zip || "\u2014"} />
-                <MetricCard label="Source" value={deal.source || "Manual"} />
-              </div>
-              {deal.dealName && deal.dealName !== deal.address && (
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
-                  <MetricCard label="Deal Name" value={deal.dealName} />
-                </div>
-              )}
-            </section>
-
-            {/* Investment Overview */}
-            <section style={{ marginTop: 24, marginBottom: 16 }}>
-              <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                Investment Overview <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-              </h2>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12 }}>
-                <MetricCard label="Purchase Price" value={fmt(deal.purchasePrice)} />
-                <MetricCard label="Improvement Budget" value={fmt(deal.improvementBudget)} />
-                <MetricCard label="As Completed Value" value={fmt(deal.arv)} />
-                <MetricCard label="Projected Profit" value={fmt(deal.profit)} highlight good={num(deal.profit) > 0} warn={num(deal.profit) !== null && num(deal.profit) <= 0} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
-                <MetricCard label="ROI" value={fmtPct(deal.roi)} highlight good={num(deal.roi) >= 15} warn={num(deal.roi) !== null && num(deal.roi) < 5} />
-                <MetricCard label="Cost / Value" value={fmtPct(deal.ctv)} good={num(deal.ctv) !== null && num(deal.ctv) <= 75} warn={num(deal.ctv) > 90} />
-                <MetricCard label="Equity Multiple" value={deal.equityMultiple || "\u2014"} good={num(deal.equityMultiple) >= 1.5} />
-                <MetricCard label="Profitability" value={fmtPct(deal.profitability)} good={num(deal.profitability) >= 15} warn={num(deal.profitability) !== null && num(deal.profitability) < 5} />
-              </div>
-            </section>
-          </>
+          <AIUnderwritingTab deal={deal} isMobile={isMobile} />
         )}
 
         {/* ── CASH FLOW TAB ── */}
