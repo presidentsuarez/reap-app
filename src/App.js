@@ -6191,7 +6191,6 @@ function AuthScreen({ onAuth }) {
   const [success, setSuccess] = useState("");
   const [pageLoaded, setPageLoaded] = useState(false);
   const [hoverBtn, setHoverBtn] = useState(false);
-  const [hoverGoogle, setHoverGoogle] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -6230,14 +6229,6 @@ function AuthScreen({ onAuth }) {
   };
 
   const switchMode = (m) => { setMode(m); setError(""); setSuccess(""); setEmail(""); setPassword(""); setName(""); };
-
-  const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
-    if (error) setError(error.message);
-  };
 
   // ─── SHARED FORM (used by both mobile and desktop) ───
   const formContent = (
@@ -6509,7 +6500,7 @@ function AuthScreen({ onAuth }) {
   );
 }
 
-function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading }) {
+function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDismiss }) {
   const isMobile = window.innerWidth < 768;
   const expired = daysLeft <= 0;
   const [hoveredPlan, setHoveredPlan] = useState(null);
@@ -6624,11 +6615,18 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading }) {
 
         {/* Free trial info + Sign out */}
         <div style={{ textAlign: "center" }}>
-          {daysLeft > 0 && !expired && (
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", margin: "0 0 12px", fontFamily: "'DM Sans', sans-serif" }}>
-              Not ready yet? You still have {daysLeft} day{daysLeft !== 1 ? "s" : ""} of free access.
-            </p>
+          {daysLeft > 0 && !expired && onDismiss && (
+            <button onClick={onDismiss} style={{
+              background: "none", border: "2px solid rgba(34,197,94,0.4)", borderRadius: 12,
+              color: "#22C55E", fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
+              cursor: "pointer", padding: "14px 32px", transition: "all 0.2s", marginBottom: 16,
+              display: "inline-flex", alignItems: "center", gap: 8,
+            }}>
+              Continue with free trial ({daysLeft} day{daysLeft !== 1 ? "s" : ""} left)
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
           )}
+          {daysLeft > 0 && !expired && onDismiss && <br />}
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", margin: "0 0 16px", fontFamily: "'DM Sans', sans-serif" }}>Secure payment via Stripe. Cancel anytime.</p>
           <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "rgba(255,255,255,0.5)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "8px 20px", transition: "all 0.2s" }}>Sign out</button>
         </div>
@@ -16510,10 +16508,10 @@ export default function ReapApp() {
           setShowPaywall(false);
         }
       });
-      // Show onboarding for first-time users
+      // Show pricing page for first-time users (they can pick a plan or continue with free trial)
       const onboarded = localStorage.getItem("reap_onboarded");
       if (!onboarded) {
-        setShowOnboarding(true);
+        setShowPaywall(true);
       }
     }
   }, [session]);
@@ -17444,7 +17442,7 @@ export default function ReapApp() {
     );
   }
 
-  if (showPaywall) return <PricingScreen userEmail={session?.user?.email} daysLeft={trialDaysLeft} onCheckout={handleCheckout} checkoutLoading={checkoutLoading} />;
+  if (showPaywall) return <PricingScreen userEmail={session?.user?.email} daysLeft={trialDaysLeft} onCheckout={handleCheckout} checkoutLoading={checkoutLoading} onDismiss={trialDaysLeft > 0 ? () => { setShowPaywall(false); const onboarded = localStorage.getItem("reap_onboarded"); if (!onboarded) setShowOnboarding(true); } : null} />;
 
   return (
     <>
