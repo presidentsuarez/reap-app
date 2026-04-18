@@ -17435,8 +17435,32 @@ export default function ReapApp() {
           temperature: form.temperature, manager: form.manager, notes: form.notes,
           lead_source: form.leadSource,
         }).eq("id", editingBuyer.rowId);
-        if (error) throw new Error(error.message);
+        if (error) throw error;
       } else {
+        // Check for existing contact with same email before inserting
+        if (form.email && form.email.trim()) {
+          const { data: existing } = await supabase.from("contacts").select("id, contact_name, email").eq("email", form.email.trim().toLowerCase()).maybeSingle();
+          if (existing) {
+            const doUpdate = window.confirm(`A contact with email "${form.email}" already exists (${existing.contact_name || "unnamed"}). Would you like to update the existing contact instead?`);
+            if (doUpdate) {
+              const { error } = await supabase.from("contacts").update({
+                contact_name: form.name, first_name: form.name.split(" ")[0],
+                phone: form.phone, company: form.company,
+                contact_type: form.contactType || "Buyer (Client)", buyer_status: form.buyerStatus || "New",
+                asset_preference: form.assetPreference, temperature: form.temperature,
+                manager: form.manager, notes: form.notes, lead_source: form.leadSource,
+              }).eq("id", existing.id);
+              if (error) throw error;
+              setShowBuyerModal(false);
+              setEditingBuyer(null);
+              setBuyerRefreshKey(prev => prev + 1);
+              return;
+            } else {
+              setSavingBuyer(false);
+              return; // User cancelled, keep modal open
+            }
+          }
+        }
         const { error } = await supabase.from("contacts").insert({
           user_email: session?.user?.email || "",
           contact_name: form.name, first_name: form.name.split(" ")[0],
@@ -17445,7 +17469,7 @@ export default function ReapApp() {
           asset_preference: form.assetPreference, temperature: form.temperature,
           manager: form.manager, notes: form.notes, lead_source: form.leadSource,
         });
-        if (error) throw new Error(error.message);
+        if (error) throw error;
       }
 
       setShowBuyerModal(false);
@@ -17453,7 +17477,12 @@ export default function ReapApp() {
       // Signal BuyerPipelineView to refetch
       setBuyerRefreshKey(prev => prev + 1);
     } catch (err) {
-      alert("Error saving buyer: " + err.message);
+      const msg = err?.message || String(err);
+      if (msg.includes("contacts_email_unique") || msg.includes("duplicate key")) {
+        alert("A contact with this email already exists. Try editing the existing contact instead.");
+      } else {
+        alert("Error saving contact: " + msg);
+      }
     } finally {
       setSavingBuyer(false);
     }
