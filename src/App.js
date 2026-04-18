@@ -14566,12 +14566,18 @@ function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, in
   const contactTier = orgData?.plan_tier || "starter";
   const isContactStarter = getTierRank(contactTier) <= 1;
   const starterExcludedTabs = ["funds", "investments", "tasks", "communications", "documents", "portal access"];
-  const baseTabs = ["overview", "companies", "investments", "tasks", "communications", "documents", "portal access"];
+  const baseTabs = ["overview", "companies", "related properties", "investments", "tasks", "communications", "documents", "portal access"];
   const investorTabs = ["funds", "capital"];
-  const allTabs = isInvestor ? ["overview", "companies", ...investorTabs, "investments", "tasks", "communications", "documents", "portal access"] : baseTabs;
+  const allTabs = isInvestor ? ["overview", "companies", ...investorTabs, "related properties", "investments", "tasks", "communications", "documents", "portal access"] : baseTabs;
   const tabs = isContactStarter ? allTabs.filter(t => !starterExcludedTabs.includes(t)) : allTabs;
   const initials = (contact.name || "??").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
   const linkedDeals = (deals || []).filter(d => (contact.linkedDealAddresses || []).includes(d.address));
+
+  // Related Properties state
+  const [rpSearch, setRpSearch] = useState("");
+  const [rpNotes, setRpNotes] = useState({});
+  const [rpSaving, setRpSaving] = useState(false);
+  const [showRpAdd, setShowRpAdd] = useState(false);
 
   // Communications
   const [commsLog, setCommsLog] = useState([]);
@@ -15126,6 +15132,105 @@ function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, in
             )}
           </>
         )}
+
+        {activeTab === "related properties" && (() => {
+          const currentAddrs = contact.linkedDealAddresses || [];
+          const relatedDeals = (deals || []).filter(d => currentAddrs.includes(d.address));
+          const availableDeals = (deals || []).filter(d =>
+            d.address && !currentAddrs.includes(d.address) &&
+            (rpSearch === "" || (d.address || "").toLowerCase().includes(rpSearch.toLowerCase()) || (d.dealName || "").toLowerCase().includes(rpSearch.toLowerCase()) || (d.city || "").toLowerCase().includes(rpSearch.toLowerCase()))
+          );
+
+          const handleLinkDeal = async (dealAddr) => {
+            setRpSaving(true);
+            try {
+              const newAddrs = [...currentAddrs, dealAddr];
+              const note = rpNotes[dealAddr] || "";
+              const currentMeta = contact.metadata || {};
+              const propNotes = currentMeta.related_property_notes || {};
+              if (note) propNotes[dealAddr] = note;
+              await supabase.from("contacts").update({ linked_deal_addresses: newAddrs.join("|||"), metadata: { ...currentMeta, related_property_notes: propNotes } }).eq("id", contact.rowId);
+              if (onRefresh) onRefresh();
+              setRpNotes(p => { const n = { ...p }; delete n[dealAddr]; return n; });
+            } catch (err) { alert("Error linking property: " + err.message); }
+            finally { setRpSaving(false); }
+          };
+
+          const handleUnlinkDeal = async (dealAddr) => {
+            if (!window.confirm("Remove this property from related properties?")) return;
+            setRpSaving(true);
+            try {
+              const newAddrs = currentAddrs.filter(a => a !== dealAddr);
+              const currentMeta = contact.metadata || {};
+              const propNotes = { ...(currentMeta.related_property_notes || {}) };
+              delete propNotes[dealAddr];
+              await supabase.from("contacts").update({ linked_deal_addresses: newAddrs.join("|||"), metadata: { ...currentMeta, related_property_notes: propNotes } }).eq("id", contact.rowId);
+              if (onRefresh) onRefresh();
+            } catch (err) { alert("Error: " + err.message); }
+            finally { setRpSaving(false); }
+          };
+
+          const propNotes = contact.metadata?.related_property_notes || {};
+          const fmt = (v) => { const n = parseFloat(String(v || "0").replace(/[$,]/g, "")); return isNaN(n) ? "\u2014" : "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 }); };
+
+          return (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Related Properties ({relatedDeals.length})</div>
+                <button onClick={() => setShowRpAdd(!showRpAdd)} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: showRpAdd ? "#f1f5f9" : "linear-gradient(135deg, #16a34a, #15803d)", color: showRpAdd ? "#64748b" : "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{showRpAdd ? "Cancel" : "+ Add Property"}</button>
+              </div>
+
+              {showRpAdd && (
+                <div style={{ marginBottom: 16, padding: 16, borderRadius: 12, border: "1px solid #e2e8f0", background: "#fafbfc" }}>
+                  <input value={rpSearch} onChange={e => setRpSearch(e.target.value)} placeholder="Search pipeline by address, name, or city..." style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box", marginBottom: 10 }} />
+                  <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                    {availableDeals.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: 16, color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>{rpSearch ? "No matching properties found." : "All pipeline properties are already linked."}</div>
+                    ) : availableDeals.slice(0, 20).map((d, i) => (
+                      <div key={d.address + i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, border: "1px solid #f1f5f9", marginBottom: 6, background: "#fff" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.address}</div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{d.city ? d.city + ", " : ""}{d.state || ""} \u00b7 {d.status || "\u2014"} \u00b7 {d.type || "\u2014"}</div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, alignItems: "flex-end" }}>
+                          <input value={rpNotes[d.address] || ""} onChange={e => setRpNotes(p => ({ ...p, [d.address]: e.target.value }))} placeholder="Note (optional)" style={{ width: 140, padding: "5px 8px", borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 11, fontFamily: "'DM Sans', sans-serif" }} />
+                          <button onClick={() => handleLinkDeal(d.address)} disabled={rpSaving} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "#16a34a", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{rpSaving ? "..." : "Add"}</button>
+                        </div>
+                      </div>
+                    ))}
+                    {availableDeals.length > 20 && <div style={{ textAlign: "center", fontSize: 11, color: "#94a3b8", padding: 8 }}>Showing first 20 results. Refine your search.</div>}
+                  </div>
+                </div>
+              )}
+
+              {relatedDeals.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>No related properties yet. Click "+ Add Property" to link deals from your pipeline.</div>
+              ) : (
+                <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr auto" : "2fr 1fr 1fr 1fr auto", padding: "10px 16px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Property</div>
+                    {!isMobile && <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Status</div>}
+                    {!isMobile && <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Value</div>}
+                    {!isMobile && <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Note</div>}
+                    <div />
+                  </div>
+                  {relatedDeals.map((d, i) => (
+                    <div key={d.address + i} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr auto" : "2fr 1fr 1fr 1fr auto", padding: "12px 16px", borderBottom: i < relatedDeals.length - 1 ? "1px solid #f1f5f9" : "none", alignItems: "center", cursor: "pointer", transition: "background 0.1s" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{d.address}</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{d.city ? d.city + ", " : ""}{d.state || ""}{d.type ? " \u00b7 " + d.type : ""}{d.units ? " \u00b7 " + d.units + " units" : ""}</div>
+                      </div>
+                      {!isMobile && <div><span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: d.status === "Closed" ? "#f0fdf4" : d.status === "Under Contract" ? "#eff6ff" : "#f8fafc", color: d.status === "Closed" ? "#16a34a" : d.status === "Under Contract" ? "#3b82f6" : "#64748b", border: "1px solid " + (d.status === "Closed" ? "#bbf7d0" : d.status === "Under Contract" ? "#bfdbfe" : "#e2e8f0") }}>{d.status || "\u2014"}</span></div>}
+                      {!isMobile && <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>{d.offer ? fmt(d.offer) : d.purchasePrice ? fmt(d.purchasePrice) : "\u2014"}</div>}
+                      {!isMobile && <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", fontStyle: propNotes[d.address] ? "normal" : "italic" }}>{propNotes[d.address] || "\u2014"}</div>}
+                      <button onClick={(e) => { e.stopPropagation(); handleUnlinkDeal(d.address); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #fecaca", background: "#FEF2F2", color: "#DC2626", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Remove</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {activeTab === "portal access" && (
           <div>
