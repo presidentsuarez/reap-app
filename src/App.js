@@ -17456,7 +17456,7 @@ export default function ReapApp() {
         )}
 
         {/* Main Content */}
-        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 70 : 0, paddingTop: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : (!isSubscribed && trialDaysLeft > 0 ? 42 : 0), position: "relative", maxWidth: "100%", minWidth: 0 }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 88 : 0, paddingTop: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : (!isSubscribed && trialDaysLeft > 0 ? 42 : 0), position: "relative", maxWidth: "100%", minWidth: 0 }}>
           {isMobile ? (
             showProfile ? (
               <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} onUpdateDataAccess={handleUpdateDataAccess} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
@@ -17601,11 +17601,13 @@ export default function ReapApp() {
         {/* Mobile Bottom Nav */}
         {isMobile && (
           <div style={{
-            position: "fixed", bottom: 0, left: 0, right: 0, height: 70,
-            background: "#fff", borderTop: "1px solid #e2e8f0",
-            display: "flex", alignItems: "flex-end", justifyContent: "space-around",
-            padding: "0 4px 6px", zIndex: 100,
-            boxShadow: "0 -2px 12px rgba(0,0,0,0.06)",
+            position: "fixed", bottom: 12, left: 12, right: 12, height: 64,
+            background: "rgba(255,255,255,0.97)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+            borderRadius: 22,
+            display: "flex", alignItems: "center", justifyContent: "space-around",
+            padding: "0 8px", zIndex: 100,
+            boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)",
+            border: "1px solid rgba(0,0,0,0.06)",
           }}>
             {(() => { const bottomItems = [...navItems.filter(item => item.mobileBottom !== false)].sort((a, b) => (a.mobileOrder ?? 99) - (b.mobileOrder ?? 99)); return bottomItems; })().map(item => {
               const isActive = activeNav === item.id && !showProfile;
@@ -17614,17 +17616,17 @@ export default function ReapApp() {
                   <button key={item.id} onClick={() => { setActiveNav(item.id); setShowProfile(false); }} style={{
                     flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
                     background: "none", border: "none", cursor: "pointer",
-                    padding: "0", marginTop: -18, WebkitTapHighlightColor: "transparent",
+                    padding: "0", marginTop: -22, WebkitTapHighlightColor: "transparent",
                     position: "relative",
                   }}>
                     <div style={{
-                      width: 48, height: 48, borderRadius: 16,
+                      width: 50, height: 50, borderRadius: 18,
                       background: isActive ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #22c55e, #16a34a)",
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      boxShadow: isActive ? "0 4px 16px rgba(22,163,74,0.45)" : "0 3px 12px rgba(22,163,74,0.3)",
+                      boxShadow: isActive ? "0 4px 20px rgba(22,163,74,0.5)" : "0 3px 14px rgba(22,163,74,0.35)",
                       transition: "all 0.2s", color: "#fff",
-                      transform: isActive ? "scale(1.08)" : "scale(1)",
-                      border: "3px solid #fff",
+                      transform: isActive ? "scale(1.1)" : "scale(1)",
+                      border: "3px solid rgba(255,255,255,0.9)",
                     }}>
                       {item.icon}
                     </div>
@@ -17633,14 +17635,15 @@ export default function ReapApp() {
               }
               return (
                 <button key={item.id} onClick={() => { setActiveNav(item.id); setShowProfile(false); }} style={{
-                  flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                  flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                   background: "none", border: "none",
                   color: isActive ? "#16a34a" : "#94a3b8",
-                  cursor: "pointer", padding: "8px 0",
+                  cursor: "pointer", padding: "6px 0",
                   transition: "color 0.2s", WebkitTapHighlightColor: "transparent",
                 }}>
                   {item.icon}
                   <span style={{ fontSize: 9, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{item.mobileLabel || item.label}</span>
+                  {isActive && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#16a34a", marginTop: -2 }} />}
                 </button>
               );
             })}
@@ -17664,9 +17667,12 @@ export default function ReapApp() {
             }}>
               <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
-            <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", letterSpacing: "-0.01em" }}>
-              {showProfile ? "Profile" : (navItems.find(i => i.id === activeNav)?.mobileLabel || navItems.find(i => i.id === activeNav)?.label || "REAP")}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <img src="/favicon.png" alt="REAP" style={{ width: 24, height: 24, borderRadius: 6 }} />
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", letterSpacing: "-0.01em" }}>
+                {showProfile ? "Profile" : (navItems.find(i => i.id === activeNav)?.mobileLabel || navItems.find(i => i.id === activeNav)?.label || "REAP")}
+              </span>
+            </div>
             <div style={{ width: 40 }} />
           </div>
         )}
