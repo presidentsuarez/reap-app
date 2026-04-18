@@ -7283,20 +7283,20 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
 
 
   return (
-    <div style={{ flex: 1, overflow: "auto", background: "#0a0f1a", fontFamily: "'DM Sans', sans-serif", minHeight: "100vh" }}>
+    <div style={{ flex: 1, overflow: "auto", background: "#0a0f1a", fontFamily: "'DM Sans', sans-serif", minHeight: "100vh", overflowX: "hidden", WebkitOverflowScrolling: "touch", minWidth: 0 }}>
       <style>{`
         @keyframes ccPulse { 0%,100% { opacity: 0.4; } 50% { opacity: 0.8; } }
         @keyframes ccGlow { 0%,100% { box-shadow: 0 0 20px rgba(22,163,74,0.1); } 50% { box-shadow: 0 0 40px rgba(22,163,74,0.2); } }
       `}</style>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: isMobile ? "0 0 100px" : "0 24px 60px" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: isMobile ? "0 0 100px" : "0 24px 60px", overflowX: "hidden" }}>
 
         {/* ═══ HERO HEADER ═══ */}
-        <div style={{ padding: isMobile ? "28px 16px 0" : "40px 12px 0", position: "relative" }}>
-          <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 16 : 0, marginBottom: 32 }}>
+        <div style={{ padding: isMobile ? "20px 14px 0" : "40px 12px 0", position: "relative" }}>
+          <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 12 : 0, marginBottom: 24 }}>
             <div>
               <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: "0 0 4px", fontWeight: 500 }}>{greeting}, {firstName}</p>
-              <h1 style={{ fontSize: isMobile ? 28 : 38, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.03em" }}>Command Center</h1>
+              <h1 style={{ fontSize: isMobile ? 24 : 38, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.03em" }}>Command Center</h1>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 10, padding: "8px 16px", display: "flex", alignItems: "center", gap: 8 }}>
@@ -7308,7 +7308,7 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
           </div>
 
           {/* ═══ TOP METRICS BAR ═══ */}
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: isMobile ? 10 : 12, marginBottom: 28 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)", gap: isMobile ? 8 : 12, marginBottom: 20 }}>
             {[
               { label: "Pipeline Value", value: fmtK(totalPipelineValue), sub: deals.length + " deals", color: "#3b82f6" },
               { label: "Close Rate", value: closeRate + "%", sub: closings + " of " + added + " " + qLabel, color: "#22c55e" },
@@ -7316,17 +7316,17 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
               { label: "Active Contacts", value: String(contactsCount), sub: hotContactsCount + " hot leads", color: "#f59e0b" },
               ...(!isMobile ? [{ label: "Avg REAP Score", value: String(scoredDeals.length > 0 ? Math.round(scoredDeals.reduce((s, d) => s + num(d.reapScore), 0) / scoredDeals.length) : 0), sub: scoredDeals.length + " scored deals", color: "#06b6d4" }] : []),
             ].map((m, i) => (
-              <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px", position: "relative", overflow: "hidden" }}>
+              <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: isMobile ? "12px 12px" : "20px 20px", position: "relative", overflow: "hidden" }}>
                 <div style={{ position: "absolute", top: 0, left: 0, width: 3, height: "100%", background: m.color, borderRadius: "3px 0 0 3px" }} />
                 <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: "0 0 6px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>{m.label}</p>
-                <p style={{ fontSize: isMobile ? 24 : 30, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace", margin: "0 0 4px", letterSpacing: "-0.03em", lineHeight: 1 }}>{m.value}</p>
+                <p style={{ fontSize: isMobile ? 20 : 30, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace", margin: "0 0 4px", letterSpacing: "-0.03em", lineHeight: 1 }}>{m.value}</p>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", margin: 0 }}>{m.sub}</p>
               </div>
             ))}
           </div>
 
           {/* ═══ PIPELINE FLOW ═══ */}
-          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: isMobile ? "16px 14px" : "24px 28px", marginBottom: 20 }}>
+          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "14px 12px" : "24px 28px", marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Pipeline Flow — {qLabel}</p>
             </div>
@@ -7336,8 +7336,8 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
                 const h = Math.max((f.n / maxN) * 100, 8);
                 return (
                   <div key={f.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: isMobile ? 18 : 28, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace" }}>{f.n}</span>
-                    <div style={{ width: "70%", height: isMobile ? 40 : 64, borderRadius: "6px 6px 0 0", position: "relative", overflow: "hidden" }}>
+                    <span style={{ fontSize: isMobile ? 16 : 28, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace" }}>{f.n}</span>
+                    <div style={{ width: "65%", height: isMobile ? 32 : 64, borderRadius: "6px 6px 0 0", position: "relative", overflow: "hidden" }}>
                       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: h + "%", background: f.color, borderRadius: "6px 6px 0 0", transition: "height 0.6s ease", opacity: 0.85 }} />
                     </div>
                     <span style={{ fontSize: isMobile ? 8 : 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{f.label}</span>
@@ -7353,10 +7353,10 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
           </div>
 
           {/* ═══ MAIN GRID ═══ */}
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: isMobile ? 12 : 14, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: isMobile ? 10 : 14, marginBottom: 12 }}>
 
             {/* Needs Attention */}
-            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px" }}>
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: isMobile ? "14px 12px" : "20px 20px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Attention</p>
                 {attentionItems.length > 0 && <span style={{ background: "rgba(239,68,68,0.15)", color: "#f87171", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8, fontFamily: "'DM Mono', monospace" }}>{attentionItems.length}</span>}
@@ -7372,7 +7372,7 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
             </div>
 
             {/* Top Deals */}
-            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px" }}>
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: isMobile ? "14px 12px" : "20px 20px" }}>
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: "0 0 14px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Top Deals</p>
               {scoredDeals.length === 0 ? (
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", textAlign: "center", padding: "16px 0" }}>No scored deals</p>
@@ -7393,7 +7393,7 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
             </div>
 
             {/* Recent Activity */}
-            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px" }}>
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: isMobile ? "14px 12px" : "20px 20px" }}>
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: "0 0 14px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Activity</p>
               {recentActivities.length === 0 ? (
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", textAlign: "center", padding: "16px 0" }}>No recent activity</p>
@@ -7410,10 +7410,10 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
           </div>
 
           {/* ═══ BOTTOM ROW: Goals + Velocity ═══ */}
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 10 : 14 }}>
 
             {/* Quarterly Goals */}
-            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px" }}>
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: isMobile ? "14px 12px" : "20px 20px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Quarterly Goals</p>
                 <button onClick={() => setEditingGoals(!editingGoals)} style={{ background: "none", border: "none", fontSize: 11, color: "#22c55e", fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{editingGoals ? "Done" : "Edit"}</button>
@@ -7450,7 +7450,7 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
             </div>
 
             {/* Pipeline Velocity */}
-            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: isMobile ? "16px 14px" : "20px 20px" }}>
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: isMobile ? "14px 12px" : "20px 20px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Velocity</p>
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>avg days per stage</span>
