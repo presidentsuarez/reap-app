@@ -17437,11 +17437,17 @@ export default function ReapApp() {
         }).eq("id", editingBuyer.rowId);
         if (error) throw error;
       } else {
-        // Check for existing contact with same email before inserting
+        // Check for existing contact with same email within the same org/user scope
         if (form.email && form.email.trim()) {
-          const { data: existing } = await supabase.from("contacts").select("id, contact_name, email").eq("email", form.email.trim().toLowerCase()).maybeSingle();
+          let existingQuery = supabase.from("contacts").select("id, contact_name, email").eq("email", form.email.trim().toLowerCase());
+          if (orgData?.id) {
+            existingQuery = existingQuery.eq("org_id", orgData.id);
+          } else {
+            existingQuery = existingQuery.eq("user_email", session?.user?.email || "");
+          }
+          const { data: existing } = await existingQuery.maybeSingle();
           if (existing) {
-            const doUpdate = window.confirm(`A contact with email "${form.email}" already exists (${existing.contact_name || "unnamed"}). Would you like to update the existing contact instead?`);
+            const doUpdate = window.confirm(`You already have a contact with email "${form.email}" (${existing.contact_name || "unnamed"}). Would you like to update them instead?`);
             if (doUpdate) {
               const { error } = await supabase.from("contacts").update({
                 contact_name: form.name, first_name: form.name.split(" ")[0],
@@ -17457,12 +17463,13 @@ export default function ReapApp() {
               return;
             } else {
               setSavingBuyer(false);
-              return; // User cancelled, keep modal open
+              return;
             }
           }
         }
         const { error } = await supabase.from("contacts").insert({
           user_email: session?.user?.email || "",
+          org_id: orgData?.id || null,
           contact_name: form.name, first_name: form.name.split(" ")[0],
           email: form.email, phone: form.phone, company: form.company,
           contact_type: form.contactType || "Buyer (Client)", buyer_status: form.buyerStatus || "New",
