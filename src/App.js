@@ -9879,12 +9879,12 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
               )}
             </span>
           );
-          const FeatureRow = ({ label, starter, team, pro }) => (
+          const FeatureRow = ({ label, starter, pro, team }) => (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 80px 80px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>
               <span style={{ fontSize: 13, color: "#334155", fontFamily: "'DM Sans', sans-serif" }}>{label}</span>
               <span style={{ textAlign: "center" }}><PricingCheck included={starter} /></span>
-              <span style={{ textAlign: "center" }}><PricingCheck included={team} /></span>
               <span style={{ textAlign: "center" }}><PricingCheck included={pro} /></span>
+              <span style={{ textAlign: "center" }}><PricingCheck included={team} /></span>
             </div>
           );
 
@@ -9923,13 +9923,13 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
                     <div key={plan.key} style={{
                       position: "relative", background: "#fff", borderRadius: 16, padding: "24px 20px",
                       border: plan.popular ? "2px solid " + plan.color : isCurrent ? "2px solid #16a34a" : "1px solid #e2e8f0",
-                      boxShadow: plan.popular ? "0 8px 32px rgba(124, 58, 237, 0.12)" : "0 1px 4px rgba(0,0,0,0.04)",
+                      boxShadow: plan.popular ? "0 8px 32px " + plan.color + "20" : "0 1px 4px rgba(0,0,0,0.04)",
                       transform: plan.popular && !isMobile ? "scale(1.03)" : "none",
                       transition: "all 0.2s",
                     }}>
                       {/* Popular badge */}
                       {plan.popular && (
-                        <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg, #7c3aed, #6d28d9)", padding: "4px 16px", borderRadius: 20, fontSize: 10, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace", letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>MOST POPULAR</div>
+                        <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: plan.key === "pro" ? "linear-gradient(135deg, #d97706, #b45309)" : plan.key === "team" ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : "linear-gradient(135deg, #16a34a, #15803d)", padding: "4px 16px", borderRadius: 20, fontSize: 10, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace", letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>MOST POPULAR</div>
                       )}
                       {/* Current badge */}
                       {isCurrent && (
@@ -9947,7 +9947,7 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
                       {/* CTA Button */}
                       <button onClick={isUpgrade ? onCheckout : undefined} disabled={isCurrent || isDowngrade} style={{
                         width: "100%", padding: "10px 16px", border: "none", borderRadius: 10,
-                        background: isCurrent ? "#f1f5f9" : isUpgrade ? (plan.popular ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : plan.key === "starter" ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #d97706, #b45309)") : "#f8fafc",
+                        background: isCurrent ? "#f1f5f9" : isUpgrade ? (plan.key === "starter" ? "linear-gradient(135deg, #16a34a, #15803d)" : plan.key === "pro" ? "linear-gradient(135deg, #d97706, #b45309)" : "linear-gradient(135deg, #7c3aed, #6d28d9)") : "#f8fafc",
                         color: isCurrent ? "#94a3b8" : isUpgrade ? "#fff" : "#94a3b8",
                         fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
                         cursor: isCurrent || isDowngrade ? "default" : "pointer",
@@ -9958,11 +9958,11 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
                       {/* Feature highlights */}
                       <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
                         {(plan.key === "starter" ? [
-                          "Unlimited deal analysis", "Live financial metrics", "AI Executive Summaries", "Pipeline management", "MLS Feed access", "Portfolio tracking", "Google Street View",
-                        ] : plan.key === "team" ? [
-                          "Everything in Starter, plus:", "Shared team pipeline", "Shared contacts & investors", "Organization management", "Manager & assignee roles", "Data access controls", "Assignments view",
+                          "Unlimited deal analysis", "Live financial metrics", "AI Underwriting & REAP Score", "Pipeline management", "Contact & investor CRM", "Portfolio tracking", "Google Street View",
+                        ] : plan.key === "pro" ? [
+                          "Everything in Starter, plus:", "Advanced AI analysis", "Document generation", "Investment memo builder", "Submit offers & LOIs", "Enhanced reporting", "Priority support",
                         ] : [
-                          "Everything in Team, plus:", "Advanced AI analysis", "Document generation", "Enhanced reporting", "Priority features",
+                          "Everything in Pro, plus:", "Unlimited team members", "Shared team pipeline", "Shared contacts & investors", "Organization management", "Manager & assignee roles", "MLS Feed access", "Education & assignments",
                         ]).map((feat, i) => (
                           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: i === 0 && plan.key !== "starter" ? plan.color : "#475569", fontFamily: "'DM Sans', sans-serif", fontWeight: i === 0 && plan.key !== "starter" ? 600 : 400 }}>
                             {(i === 0 && plan.key !== "starter") ? null : <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={plan.color} strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>}
@@ -9982,26 +9982,27 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 80px 80px", alignItems: "center", padding: "8px 0", borderBottom: "2px solid #e2e8f0", marginBottom: 4 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", textTransform: "uppercase" }}>Feature</span>
                   <span style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>Starter</span>
-                  <span style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#7c3aed", fontFamily: "'DM Mono', monospace" }}>Team</span>
                   <span style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#d97706", fontFamily: "'DM Mono', monospace" }}>Pro</span>
+                  <span style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#7c3aed", fontFamily: "'DM Mono', monospace" }}>Team</span>
                 </div>
-                <FeatureRow label="Deal Pipeline" starter={true} team={true} pro={true} />
-                <FeatureRow label="Contacts & CRM" starter={true} team={true} pro={true} />
-                <FeatureRow label="Dashboard / Command Center" starter={true} team={true} pro={true} />
-                <FeatureRow label="Portfolio Tracking" starter={true} team={true} pro={true} />
-                <FeatureRow label="AI Executive Summaries" starter={true} team={true} pro={true} />
-                <FeatureRow label="AI Underwriting" starter={true} team={true} pro={true} />
-                <FeatureRow label="MLS Feed" starter={true} team={true} pro={true} />
-                <FeatureRow label="File Uploader" starter={true} team={true} pro={true} />
-                <FeatureRow label="Marketplace" starter={true} team={true} pro={true} />
-                <FeatureRow label="Google Street View" starter={true} team={true} pro={true} />
-                <FeatureRow label="Team Collaboration" starter={false} team={true} pro={true} />
-                <FeatureRow label="Shared Pipeline & Contacts" starter={false} team={true} pro={true} />
-                <FeatureRow label="Manager / Assignee Roles" starter={false} team={true} pro={true} />
-                <FeatureRow label="Data Access Controls" starter={false} team={true} pro={true} />
-                <FeatureRow label="Assignments View" starter={false} team={true} pro={true} />
-                <FeatureRow label="Advanced AI Analysis" starter={false} team={false} pro={true} />
-                <FeatureRow label="Document Generation" starter={false} team={false} pro={true} />
+                <FeatureRow label="Deal Pipeline" starter={true} pro={true} team={true} />
+                <FeatureRow label="Contacts & CRM" starter={true} pro={true} team={true} />
+                <FeatureRow label="Dashboard / Command Center" starter={true} pro={true} team={true} />
+                <FeatureRow label="Portfolio Tracking" starter={true} pro={true} team={true} />
+                <FeatureRow label="AI Underwriting & REAP Score" starter={true} pro={true} team={true} />
+                <FeatureRow label="Google Street View" starter={true} pro={true} team={true} />
+                <FeatureRow label="Advanced AI Analysis" starter={false} pro={true} team={true} />
+                <FeatureRow label="Document Generation" starter={false} pro={true} team={true} />
+                <FeatureRow label="Investment Memo Builder" starter={false} pro={true} team={true} />
+                <FeatureRow label="Submit Offers & LOIs" starter={false} pro={true} team={true} />
+                <FeatureRow label="Enhanced Reporting" starter={false} pro={true} team={true} />
+                <FeatureRow label="Priority Support" starter={false} pro={true} team={true} />
+                <FeatureRow label="Unlimited Team Members" starter={false} pro={false} team={true} />
+                <FeatureRow label="Shared Pipeline & Contacts" starter={false} pro={false} team={true} />
+                <FeatureRow label="Organization Management" starter={false} pro={false} team={true} />
+                <FeatureRow label="Manager / Assignee Roles" starter={false} pro={false} team={true} />
+                <FeatureRow label="MLS Feed Access" starter={false} pro={false} team={true} />
+                <FeatureRow label="Education & Assignments" starter={false} pro={false} team={true} />
               </div>
 
               {/* Enterprise CTA */}
