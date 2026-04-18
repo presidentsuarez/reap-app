@@ -3839,20 +3839,20 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
         {/* ═══ DEAL HERO: Street View + Scorecard ═══ */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 16 : 20, marginBottom: isMobile ? 20 : 28 }}>
           {/* Street View Photo */}
-          <div style={{ borderRadius: 14, overflow: "hidden", position: "relative", background: "#f1f5f9", border: "1px solid #e2e8f0", minHeight: isMobile ? 180 : 200 }}>
+          <div key={heroMapMode} style={{ borderRadius: 14, overflow: "hidden", position: "relative", background: "#f1f5f9", border: "1px solid #e2e8f0", minHeight: isMobile ? 180 : 200 }}>
             <img
-              src={heroMapMode === "map" ? `https://maps.googleapis.com/maps/api/staticmap?size=800x400&zoom=15&maptype=roadmap&markers=color:green|${encodeURIComponent(deal.address + " " + (deal.city || "") + " " + (deal.state || ""))}&key=AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU` : `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${encodeURIComponent(deal.address)}&fov=90&pitch=0&key=AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU`}
+              src={heroMapMode === "map" ? `https://maps.googleapis.com/maps/api/staticmap?size=800x400&zoom=15&maptype=roadmap&markers=color:green|${encodeURIComponent((deal.address || "") + " " + (deal.city || "") + " " + (deal.state || "") + " " + (deal.zip || ""))}&key=AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU` : `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${encodeURIComponent(deal.address)}&fov=90&pitch=0&key=AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU`}
               alt={deal.address}
               style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
               onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }}
             />
             <div style={{ display: "none", position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8, background: "linear-gradient(135deg, #f0fdf4, #dcfce7)" }}>
               <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={1.2}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              <p style={{ color: "#16a34a", fontSize: 11, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, margin: 0 }}>No street view available</p>
+              <p style={{ color: "#16a34a", fontSize: 11, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, margin: 0 }}>{heroMapMode === "map" ? "Map not available" : "No street view available"}</p>
             </div>
             <div style={{ position: "absolute", bottom: 10, right: 10, display: "flex", gap: 0, borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.2)" }}>
-              <button onClick={() => setHeroMapMode && setHeroMapMode("street")} style={{ background: heroMapMode !== "map" ? "rgba(22,163,74,0.85)" : "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)", border: "none", padding: "5px 10px", fontSize: 10, fontWeight: 600, color: "#fff", fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>Street</button>
-              <button onClick={() => setHeroMapMode && setHeroMapMode("map")} style={{ background: heroMapMode === "map" ? "rgba(22,163,74,0.85)" : "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)", border: "none", borderLeft: "1px solid rgba(255,255,255,0.2)", padding: "5px 10px", fontSize: 10, fontWeight: 600, color: "#fff", fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>Map</button>
+              <button onClick={() => setHeroMapMode("street")} style={{ background: heroMapMode !== "map" ? "rgba(22,163,74,0.85)" : "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)", border: "none", padding: "5px 10px", fontSize: 10, fontWeight: 600, color: "#fff", fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>Street</button>
+              <button onClick={() => setHeroMapMode("map")} style={{ background: heroMapMode === "map" ? "rgba(22,163,74,0.85)" : "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)", border: "none", borderLeft: "1px solid rgba(255,255,255,0.2)", padding: "5px 10px", fontSize: 10, fontWeight: 600, color: "#fff", fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>Map</button>
             </div>
             {/* Property tags overlay */}
             <div style={{ position: "absolute", top: 10, left: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
