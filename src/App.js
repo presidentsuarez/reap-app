@@ -3043,7 +3043,11 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [scrolled, setScrolled] = useState(false);
   const scrollRef = useRef(null);
   const hasMlsSource = deal?.source === "MLS Feed" || deal?.metadata?.mls_number;
-  const tabs = ["overview", "cash flow", "financing", "improvements", "units", ...(hasMlsSource ? ["mls"] : []), "offerings", "ai underwriting", "ai summary", "notes", "tasks", "documents", "shared deal", "activity", "investor updates"];
+  const dealTier = orgData?.plan_tier || "starter";
+  const isDealStarter = getTierRank(dealTier) <= 1;
+  const starterExcludedDealTabs = ["offerings", "ai summary", "tasks", "documents", "shared deal", "investor updates"];
+  const allDealTabs = ["overview", "cash flow", "financing", "improvements", "units", ...(hasMlsSource ? ["mls"] : []), "offerings", "ai underwriting", "ai summary", "notes", "tasks", "documents", "shared deal", "activity", "investor updates"];
+  const tabs = isDealStarter ? allDealTabs.filter(t => !starterExcludedDealTabs.includes(t)) : allDealTabs;
 
   // Resolve pending deal tab from URL
   useEffect(() => {
@@ -3821,7 +3825,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               Edit Deal
             </button>
-            <button style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: isMobile ? "10px 18px" : "10px 22px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap", flex: isMobile ? 1 : "none", textAlign: "center" }}>Submit Offer</button>
+            {!isDealStarter && <button style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: isMobile ? "10px 18px" : "10px 22px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap", flex: isMobile ? 1 : "none", textAlign: "center" }}>Submit Offer</button>}
           </div>
         </div>
       </div>
