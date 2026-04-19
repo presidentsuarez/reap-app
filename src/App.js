@@ -3059,7 +3059,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const dealTier = orgData?.plan_tier || "starter";
   const isDealStarter = getTierRank(dealTier) <= 1;
   const starterExcludedDealTabs = ["offerings", "ai summary", "tasks", "documents", "shared deal", "investor updates"];
-  const allDealTabs = ["overview", "cash flow", "financing", "improvements", "units", ...(hasMlsSource ? ["mls"] : []), "offerings", "ai summary", "tasks", "documents", "shared deal", "activity log", "investor updates"];
+  const allDealTabs = ["overview", "cash flow", "financing", "equity", "improvements", "units", ...(hasMlsSource ? ["mls"] : []), "offerings", "ai summary", "tasks", "documents", "shared deal", "activity log", "investor updates"];
   const tabs = isDealStarter ? allDealTabs.filter(t => !starterExcludedDealTabs.includes(t)) : allDealTabs;
 
   // Resolve pending deal tab from URL
@@ -4262,6 +4262,96 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                   </section>
                 </div>
               )}
+            </div>
+          );
+        })()}
+
+        {/* ── EQUITY TAB ── */}
+        {activeTab === "equity" && (() => {
+          const purchasePrice = num(deal.purchasePrice) || num(deal.offer) || num(deal.askingPrice) || 0;
+          const improvBudget = num(deal.improvementBudget) || 0;
+          const closingCostPct = num(deal.closingCostPct) || 3;
+          const closingCosts = purchasePrice * (closingCostPct / 100);
+          const totalProjectCost = purchasePrice + improvBudget + closingCosts;
+
+          const bridgeLoanTotal = num(deal.bridgeLoanTotal) || 0;
+          const refiLoanAmount = num(deal.refiLoanAmount) || 0;
+          const totalFinancing = bridgeLoanTotal || refiLoanAmount;
+
+          const equityRequired = Math.max(0, totalProjectCost - totalFinancing);
+          const equityPct = totalProjectCost > 0 ? ((equityRequired / totalProjectCost) * 100).toFixed(1) : "0";
+          const financingPct = totalProjectCost > 0 ? ((totalFinancing / totalProjectCost) * 100).toFixed(1) : "0";
+
+          const fmtD = (v) => { const n = parseFloat(v); return isNaN(n) || n === 0 ? "\u2014" : "$" + n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }); };
+
+          return (
+            <div style={{ padding: isMobile ? "16px 0" : "0" }}>
+              <section style={{ marginBottom: 28 }}>
+                <h2 style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                  Equity Summary <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+                </h2>
+
+                {/* Capital Stack Visual */}
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? 16 : 24, marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>Capital Stack</span>
+                    <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>Total: {fmtD(totalProjectCost)}</span>
+                  </div>
+                  <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", marginBottom: 16, background: "#f1f5f9" }}>
+                    {totalFinancing > 0 && <div style={{ width: financingPct + "%", background: "linear-gradient(90deg, #3b82f6, #2563eb)", transition: "width 0.5s" }} />}
+                    {equityRequired > 0 && <div style={{ width: equityPct + "%", background: "linear-gradient(90deg, #16a34a, #15803d)", transition: "width 0.5s" }} />}
+                  </div>
+                  <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: 3, background: "#3b82f6" }} />
+                      <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Debt: {fmtD(totalFinancing)} ({financingPct}%)</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: 3, background: "#16a34a" }} />
+                      <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Equity: {fmtD(equityRequired)} ({equityPct}%)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cost Breakdown */}
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? 16 : 20 }}>
+                    <h3 style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>Total Project Cost</h3>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ fontSize: 13, color: "#334155" }}>Purchase Price</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmtD(purchasePrice)}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ fontSize: 13, color: "#334155" }}>Improvement Budget</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmtD(improvBudget)}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ fontSize: 13, color: "#334155" }}>Closing Costs ({closingCostPct}%)</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmtD(closingCosts)}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 0", marginTop: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Total</span>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmtD(totalProjectCost)}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: isMobile ? 16 : 20 }}>
+                    <h3 style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>Cash to Close</h3>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ fontSize: 13, color: "#334155" }}>Total Project Cost</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmtD(totalProjectCost)}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ fontSize: 13, color: "#3b82f6" }}>Less: Financing</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#3b82f6", fontFamily: "'DM Mono', monospace" }}>({fmtD(totalFinancing)})</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px", marginTop: 8, background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", borderRadius: 10, border: "1px solid #bbf7d0" }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "#15803d" }}>Equity Required</span>
+                      <span style={{ fontSize: 18, fontWeight: 700, color: "#15803d", fontFamily: "'DM Mono', monospace" }}>{fmtD(equityRequired)}</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
           );
         })()}
@@ -9564,6 +9654,37 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
 
 function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckout, onSignOut, onClose, orgData, orgMembers, inviteEmail, setInviteEmail, inviteSaving, inviteSuccess, onInviteMember, onRemoveMember, onUpdateDataAccess, features, featureFlags, onToggleFeature, isAdmin }) {
   const [activeTab, setActiveTab] = useState("profile");
+  const [presets, setPresets] = useState(null);
+  const [presetsLoading, setPresetsLoading] = useState(true);
+  const [presetsSaving, setPresetsSaving] = useState(false);
+  const [presetsMsg, setPresetsMsg] = useState("");
+
+  // Load presets when presets tab is active
+  useEffect(() => {
+    if (activeTab !== "presets") return;
+    async function loadPresets() {
+      setPresetsLoading(true);
+      try {
+        if (orgData?.id) {
+          const { data } = await supabase.from("deal_presets").select("*").eq("org_id", orgData.id).maybeSingle();
+          if (data) { setPresets(data); } else {
+            const { data: created } = await supabase.from("deal_presets").insert({ org_id: orgData.id }).select().single();
+            setPresets(created);
+          }
+        } else {
+          const uid = session?.user?.id;
+          const { data } = await supabase.from("deal_presets").select("*").eq("user_id", uid).maybeSingle();
+          if (data) { setPresets(data); } else {
+            const { data: created } = await supabase.from("deal_presets").insert({ user_id: uid }).select().single();
+            setPresets(created);
+          }
+        }
+      } catch (err) { console.error("Presets load error:", err); }
+      setPresetsLoading(false);
+    }
+    loadPresets();
+  }, [activeTab]);
+
   const user = session?.user || {};
   const email = user.email || "—";
   const fullName = user.user_metadata?.full_name || "";
@@ -9578,6 +9699,7 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
     { id: "team", label: "Team" },
     { id: "permissions", label: "Permissions" },
     { id: "pricing", label: "Pricing" },
+    { id: "presets", label: "Presets" },
     ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
   ];
 
@@ -9936,6 +10058,117 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
         })()}
 
         {/* ═══ ADMIN TAB ═══ */}
+
+        {activeTab === "presets" && (() => {
+          const userEmail = session?.user?.email?.toLowerCase() || "";
+          const isOrgOwner = orgData?.owner_email?.toLowerCase() === userEmail;
+          const canEdit = isOrgOwner || !orgData;
+
+
+
+          const savePresets = async () => {
+            if (!presets || !canEdit) return;
+            setPresetsSaving(true); setPresetsMsg("");
+            try {
+              const { error } = await supabase.from("deal_presets").update({
+                closing_cost_pct: presets.closing_cost_pct,
+                project_months: presets.project_months,
+                cost_to_sell_pct: presets.cost_to_sell_pct,
+                proforma_opex_pct: presets.proforma_opex_pct,
+                proforma_rent_per_sqft: presets.proforma_rent_per_sqft,
+                bridge_acquisition_pct: presets.bridge_acquisition_pct,
+                bridge_rehab_pct: presets.bridge_rehab_pct,
+                bridge_interest_rate: presets.bridge_interest_rate,
+                bridge_points_pct: presets.bridge_points_pct,
+                refi_ltv_pct: presets.refi_ltv_pct,
+                refi_interest_rate: presets.refi_interest_rate,
+                refi_points_pct: presets.refi_points_pct,
+                refi_term_years: presets.refi_term_years,
+                equity_financed_pct: presets.equity_financed_pct,
+                equity_rate: presets.equity_rate,
+                equity_profit_split_pct: presets.equity_profit_split_pct,
+                proforma_vacancy_pct: presets.proforma_vacancy_pct,
+                exit_cap_rate: presets.exit_cap_rate,
+                existing_opex_pct: presets.existing_opex_pct,
+                updated_at: new Date().toISOString(),
+              }).eq("id", presets.id);
+              if (error) throw error;
+              setPresetsMsg("Presets saved!");
+              setTimeout(() => setPresetsMsg(""), 3000);
+            } catch (err) { setPresetsMsg("Error: " + err.message); }
+            setPresetsSaving(false);
+          };
+
+          const up = (key, val) => setPresets(p => ({ ...p, [key]: val }));
+          const Field = ({ label, field, suffix, type }) => (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{label}</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input type={type || "number"} value={presets?.[field] ?? ""} onChange={e => up(field, e.target.value === "" ? null : type === "number" || !type ? parseFloat(e.target.value) : e.target.value)} disabled={!canEdit} style={{ flex: 1, padding: "10px 12px", fontSize: 14, fontFamily: "'DM Mono', monospace", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", background: canEdit ? "#fff" : "#f8fafc", color: "#0f172a", boxSizing: "border-box", opacity: canEdit ? 1 : 0.6 }} />
+                {suffix && <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{suffix}</span>}
+              </div>
+            </div>
+          );
+
+          if (presetsLoading) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Loading presets...</div>;
+
+          return (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Deal Presets</h2>
+                  <p style={{ fontSize: 12, color: "#64748b", margin: 0, fontFamily: "'DM Sans', sans-serif" }}>{orgData ? orgData.name + " defaults" : "Your personal defaults"} — applied to every new deal</p>
+                </div>
+                {!canEdit && <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", background: "#f1f5f9", padding: "4px 10px", borderRadius: 6 }}>VIEW ONLY</span>}
+              </div>
+
+              {presetsMsg && <div style={{ padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 600, background: presetsMsg.includes("Error") ? "#fef2f2" : "#f0fdf4", color: presetsMsg.includes("Error") ? "#dc2626" : "#16a34a", border: "1px solid " + (presetsMsg.includes("Error") ? "#fecaca" : "#bbf7d0") }}>{presetsMsg}</div>}
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 0 : 24 }}>
+                <div>
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>Acquisition & Sale <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                  <Field label="Closing Cost" field="closing_cost_pct" suffix="%" />
+                  <Field label="Project Duration" field="project_months" suffix="months" />
+                  <Field label="Cost to Sell (Dispositions)" field="cost_to_sell_pct" suffix="%" />
+                  <Field label="Exit Cap Rate" field="exit_cap_rate" suffix="%" />
+
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "20px 0 12px", display: "flex", alignItems: "center", gap: 8 }}>Proforma Assumptions <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                  <Field label="Operating Expenses" field="proforma_opex_pct" suffix="%" />
+                  <Field label="Rent per Sq Ft" field="proforma_rent_per_sqft" suffix="$/sqft" />
+                  <Field label="Vacancy" field="proforma_vacancy_pct" suffix="%" />
+                  <Field label="Existing Operating Expenses" field="existing_opex_pct" suffix="%" />
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>Bridge Financing <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                  <Field label="Acquisition LTC" field="bridge_acquisition_pct" suffix="%" />
+                  <Field label="Rehab LTC" field="bridge_rehab_pct" suffix="%" />
+                  <Field label="Interest Rate" field="bridge_interest_rate" suffix="%" />
+                  <Field label="Points" field="bridge_points_pct" suffix="%" />
+
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "20px 0 12px", display: "flex", alignItems: "center", gap: 8 }}>Refinance <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                  <Field label="LTV" field="refi_ltv_pct" suffix="%" />
+                  <Field label="Interest Rate" field="refi_interest_rate" suffix="%" />
+                  <Field label="Points" field="refi_points_pct" suffix="%" />
+                  <Field label="Term" field="refi_term_years" suffix="years" />
+
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "20px 0 12px", display: "flex", alignItems: "center", gap: 8 }}>Equity <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                  <Field label="Equity Financed" field="equity_financed_pct" suffix="%" />
+                  <Field label="Return Rate" field="equity_rate" suffix="%" />
+                  <Field label="Profit Split" field="equity_profit_split_pct" suffix="%" />
+                </div>
+              </div>
+
+              {canEdit && (
+                <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+                  <button onClick={savePresets} disabled={presetsSaving} style={{ padding: "12px 32px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 12px rgba(22,163,74,0.35)" }}>{presetsSaving ? "Saving..." : "Save Presets"}</button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+
         {activeTab === "admin" && isAdmin && (
           <AdminView session={session} isMobile={isMobile} />
         )}
