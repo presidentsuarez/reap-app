@@ -10660,6 +10660,17 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
         "Source": "MLS Feed",
         "MLS Number": listing.mlsNumber,
       };
+      // Fetch presets
+      let mlsPresets = {};
+      try {
+        const { data: userProfile } = await supabase.from("user_profiles").select("org_id").eq("email", session?.user?.email?.toLowerCase()).maybeSingle();
+        const pq = userProfile?.org_id
+          ? supabase.from("deal_presets").select("*").eq("org_id", userProfile.org_id).maybeSingle()
+          : supabase.from("deal_presets").select("*").eq("user_id", session?.user?.id).maybeSingle();
+        const { data: pData } = await pq;
+        if (pData) mlsPresets = pData;
+      } catch (e) { console.log("MLS presets fetch skipped:", e); }
+
       const { error: insertErr } = await supabase.from("deals").insert({
         user_email: session?.user?.email || "",
         deal_name: dealData["Deal / Name"],
@@ -10676,6 +10687,27 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
         deal_status: "New",
         source: "MLS Feed",
         metadata: listing.mlsNumber ? { mls_number: listing.mlsNumber } : {},
+        // Preset defaults
+        closing_cost_pct: mlsPresets.closing_cost_pct ?? null,
+        acq_cost_to_close_pct: mlsPresets.closing_cost_pct ?? null,
+        project_months: mlsPresets.project_months ?? null,
+        disp_cost_of_sale_pct: mlsPresets.cost_to_sell_pct ?? null,
+        proforma_expenses_pct: mlsPresets.proforma_opex_pct ?? null,
+        proforma_rent_per_sf: mlsPresets.proforma_rent_per_sqft ?? null,
+        bridge_acq_financed_pct: mlsPresets.bridge_acquisition_pct ?? null,
+        bridge_improv_financed_pct: mlsPresets.bridge_rehab_pct ?? null,
+        bridge_interest_rate: mlsPresets.bridge_interest_rate ?? null,
+        bridge_points_pct: mlsPresets.bridge_points_pct ?? null,
+        refi_pct_arv: mlsPresets.refi_ltv_pct ?? null,
+        refi_interest_rate: mlsPresets.refi_interest_rate ?? null,
+        refi_points_pct: mlsPresets.refi_points_pct ?? null,
+        refi_term_years: mlsPresets.refi_term_years ?? null,
+        equity_financed_pct: mlsPresets.equity_financed_pct ?? null,
+        equity_rate: mlsPresets.equity_rate ?? null,
+        equity_profit_split_pct: mlsPresets.equity_profit_split_pct ?? null,
+        proforma_vacancy_pct: mlsPresets.proforma_vacancy_pct ?? null,
+        exit_cap_rate: mlsPresets.exit_cap_rate ?? null,
+        existing_expense_pct: mlsPresets.existing_opex_pct ?? null,
       });
       if (insertErr) throw new Error(insertErr.message);
       if (onAddToPipeline) onAddToPipeline();
@@ -17181,6 +17213,16 @@ export default function ReapApp() {
         "Source": "REAP App",
       };
 
+      // Fetch presets for this user/org
+      let dealPresets = {};
+      try {
+        const presetsQuery = orgData?.id
+          ? supabase.from("deal_presets").select("*").eq("org_id", orgData.id).maybeSingle()
+          : supabase.from("deal_presets").select("*").eq("user_id", session?.user?.id).maybeSingle();
+        const { data: pData } = await presetsQuery;
+        if (pData) dealPresets = pData;
+      } catch (e) { console.log("Presets fetch skipped:", e); }
+
       const { data: insertedDeal, error: insertErr } = await supabase.from("deals").insert({
         user_email: session?.user?.email || "",
         org_id: orgData?.id || null,
@@ -17199,6 +17241,27 @@ export default function ReapApp() {
         lot_acres: parseFloat(form.lotAcres) || null,
         class: form.class || null,
         source: "REAP App",
+        // Preset defaults
+        closing_cost_pct: dealPresets.closing_cost_pct ?? null,
+        acq_cost_to_close_pct: dealPresets.closing_cost_pct ?? null,
+        project_months: dealPresets.project_months ?? null,
+        disp_cost_of_sale_pct: dealPresets.cost_to_sell_pct ?? null,
+        proforma_expenses_pct: dealPresets.proforma_opex_pct ?? null,
+        proforma_rent_per_sf: dealPresets.proforma_rent_per_sqft ?? null,
+        bridge_acq_financed_pct: dealPresets.bridge_acquisition_pct ?? null,
+        bridge_improv_financed_pct: dealPresets.bridge_rehab_pct ?? null,
+        bridge_interest_rate: dealPresets.bridge_interest_rate ?? null,
+        bridge_points_pct: dealPresets.bridge_points_pct ?? null,
+        refi_pct_arv: dealPresets.refi_ltv_pct ?? null,
+        refi_interest_rate: dealPresets.refi_interest_rate ?? null,
+        refi_points_pct: dealPresets.refi_points_pct ?? null,
+        refi_term_years: dealPresets.refi_term_years ?? null,
+        equity_financed_pct: dealPresets.equity_financed_pct ?? null,
+        equity_rate: dealPresets.equity_rate ?? null,
+        equity_profit_split_pct: dealPresets.equity_profit_split_pct ?? null,
+        proforma_vacancy_pct: dealPresets.proforma_vacancy_pct ?? null,
+        exit_cap_rate: dealPresets.exit_cap_rate ?? null,
+        existing_expense_pct: dealPresets.existing_opex_pct ?? null,
       }).select("id").single();
       if (insertErr) throw new Error(insertErr.message);
 
