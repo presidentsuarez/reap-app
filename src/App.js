@@ -2709,29 +2709,31 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
   const [quickAddSaving, setQuickAddSaving] = useState(false);
   const contactSearchRef = useRef(null);
 
-  // Fetch lender contacts
+  // Fetch lender contacts (scoped to org or user)
   const fetchLenderContacts = useCallback(async () => {
     try {
-      // Paginate: Supabase/PostgREST has a default 1000 row limit
       let allContacts = [];
-      {
-        let from = 0;
-        const pageSize = 1000;
-        while (true) {
-          const { data, error } = await supabase.from("contacts").select("id, contact_name, company, email, phone, contact_type").order("contact_name").range(from, from + pageSize - 1);
-          if (error) break;
-          if (!data || data.length === 0) break;
-          allContacts = allContacts.concat(data);
-          if (data.length < pageSize) break;
-          from += pageSize;
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        let query = supabase.from("contacts").select("id, contact_name, company, email, phone, contact_type").order("contact_name").range(from, from + pageSize - 1);
+        if (orgId) {
+          query = query.eq("org_id", orgId);
+        } else {
+          query = query.eq("user_email", userEmail);
         }
+        const { data, error } = await query;
+        if (error) break;
+        if (!data || data.length === 0) break;
+        allContacts = allContacts.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
       }
-      // Prioritize lenders but show all contacts
       const lenders = allContacts.filter(c => (c.contact_type || "").toLowerCase().includes("lender"));
       const others = allContacts.filter(c => !(c.contact_type || "").toLowerCase().includes("lender"));
       setLenderContacts([...lenders, ...others]);
     } catch (e) { console.error("Fetch lender contacts:", e); }
-  }, []);
+  }, [orgId, userEmail]);
 
   useEffect(() => { fetchLenderContacts(); }, [fetchLenderContacts]);
 
