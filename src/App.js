@@ -843,7 +843,7 @@ function UWTag({ children, color, bg }) {
   );
 }
 
-function AIUnderwritingTab({ deal, isMobile }) {
+function AIUnderwritingTab({ deal, isMobile, isStarter }) {
   var hoveredCta = null;
 
   var reapScore = num(deal.reapScore) || 0;
@@ -919,7 +919,7 @@ function AIUnderwritingTab({ deal, isMobile }) {
           </div>
         </div>
 
-        <div style={{ marginBottom: 24 }}>
+        {!isStarter && <div style={{ marginBottom: 24 }}>
           <h3 style={sectionLabel}>Cash-on-Cash Projection <span style={dividerStyle} /></h3>
           <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "16px 14px 10px" }}>
             <CoCChart data={cocData} />
@@ -934,16 +934,16 @@ function AIUnderwritingTab({ deal, isMobile }) {
               </div>
             </div>
           </div>
-        </div>
+        </div>}
 
-        <div>
+        {!isStarter && <div>
           <h3 style={sectionLabel}>Rent Comps <span style={dividerStyle} /></h3>
           <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "6px 14px" }}>
             <UWRentComp address={deal.city ? "Near " + deal.address : "Comparable 1"} rent={fmt(num(deal.proformaRevenueMonthly) / (num(deal.units) || 1)) + "/unit"} sqft={deal.sqft || "—"} distance="0.2 mi" match={92} />
             <UWRentComp address={deal.city ? deal.city + " Area Comp" : "Comparable 2"} rent={fmt((num(deal.proformaRevenueMonthly) / (num(deal.units) || 1)) * 0.94) + "/unit"} sqft={deal.sqft || "—"} distance="0.5 mi" match={85} />
             <UWRentComp address={deal.city ? "Greater " + deal.city : "Comparable 3"} rent={fmt((num(deal.proformaRevenueMonthly) / (num(deal.units) || 1)) * 1.06) + "/unit"} sqft={deal.sqft || "—"} distance="0.8 mi" match={78} />
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* RIGHT PANEL */}
@@ -1063,7 +1063,7 @@ function AIUnderwritingTab({ deal, isMobile }) {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, padding: "20px 0 8px", borderTop: "1px solid #e2e8f0", flexWrap: "wrap" }}>
+        {!isStarter && <div style={{ display: "flex", gap: 10, padding: "20px 0 8px", borderTop: "1px solid #e2e8f0", flexWrap: "wrap" }}>
           <button style={{
             flex: 1, minWidth: 160, background: "linear-gradient(135deg, #16a34a, #15803d)",
             border: "none", borderRadius: 10, padding: "14px 24px", color: "#fff", fontSize: 14, fontWeight: 700,
@@ -1081,7 +1081,7 @@ function AIUnderwritingTab({ deal, isMobile }) {
             <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
             Share Deal
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );
@@ -3939,7 +3939,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
         </div>
 
         {activeTab === "overview" && (
-          <AIUnderwritingTab deal={deal} isMobile={isMobile} />
+          <AIUnderwritingTab deal={deal} isMobile={isMobile} isStarter={isDealStarter} />
         )}
 
         {/* ── CASH FLOW TAB ── */}
