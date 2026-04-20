@@ -10662,16 +10662,23 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
         "Source": "MLS Feed",
         "MLS Number": listing.mlsNumber,
       };
-      // Fetch presets
-      let mlsPresets = {};
+      // Fetch presets (auto-create with defaults if none exist)
+      const MLS_DEFAULT_PRESETS = { closing_cost_pct: 3, project_months: 12, cost_to_sell_pct: 7, proforma_opex_pct: 30, proforma_rent_per_sqft: 2, bridge_acquisition_pct: 75, bridge_rehab_pct: 100, bridge_interest_rate: 12, bridge_points_pct: 2, refi_ltv_pct: 70, refi_interest_rate: 8, refi_points_pct: 2, refi_term_years: 30, equity_financed_pct: 100, equity_rate: 12, equity_profit_split_pct: 0, proforma_vacancy_pct: 10, exit_cap_rate: 6.5, existing_opex_pct: 30 };
+      let mlsPresets = { ...MLS_DEFAULT_PRESETS };
       try {
         const { data: userProfile } = await supabase.from("user_profiles").select("org_id").eq("email", session?.user?.email?.toLowerCase()).maybeSingle();
         const pq = userProfile?.org_id
           ? supabase.from("deal_presets").select("*").eq("org_id", userProfile.org_id).maybeSingle()
           : supabase.from("deal_presets").select("*").eq("user_id", session?.user?.id).maybeSingle();
         const { data: pData } = await pq;
-        if (pData) mlsPresets = pData;
-      } catch (e) { console.log("MLS presets fetch skipped:", e); }
+        if (pData) {
+          mlsPresets = pData;
+        } else {
+          const insertPayload = userProfile?.org_id ? { org_id: userProfile.org_id } : { user_id: session?.user?.id };
+          const { data: created } = await supabase.from("deal_presets").insert(insertPayload).select().single();
+          if (created) mlsPresets = created;
+        }
+      } catch (e) { console.log("MLS presets fetch skipped, using defaults:", e); }
 
       const { error: insertErr } = await supabase.from("deals").insert({
         user_email: session?.user?.email || "",
@@ -17221,15 +17228,23 @@ export default function ReapApp() {
         "Source": "REAP App",
       };
 
-      // Fetch presets for this user/org
-      let dealPresets = {};
+      // Fetch presets for this user/org (auto-create with defaults if none exist)
+      const DEFAULT_PRESETS = { closing_cost_pct: 3, project_months: 12, cost_to_sell_pct: 7, proforma_opex_pct: 30, proforma_rent_per_sqft: 2, bridge_acquisition_pct: 75, bridge_rehab_pct: 100, bridge_interest_rate: 12, bridge_points_pct: 2, refi_ltv_pct: 70, refi_interest_rate: 8, refi_points_pct: 2, refi_term_years: 30, equity_financed_pct: 100, equity_rate: 12, equity_profit_split_pct: 0, proforma_vacancy_pct: 10, exit_cap_rate: 6.5, existing_opex_pct: 30 };
+      let dealPresets = { ...DEFAULT_PRESETS };
       try {
         const presetsQuery = orgData?.id
           ? supabase.from("deal_presets").select("*").eq("org_id", orgData.id).maybeSingle()
           : supabase.from("deal_presets").select("*").eq("user_id", session?.user?.id).maybeSingle();
         const { data: pData } = await presetsQuery;
-        if (pData) dealPresets = pData;
-      } catch (e) { console.log("Presets fetch skipped:", e); }
+        if (pData) {
+          dealPresets = pData;
+        } else {
+          // Auto-create presets for this user/org
+          const insertPayload = orgData?.id ? { org_id: orgData.id } : { user_id: session?.user?.id };
+          const { data: created } = await supabase.from("deal_presets").insert(insertPayload).select().single();
+          if (created) dealPresets = created;
+        }
+      } catch (e) { console.log("Presets fetch skipped, using defaults:", e); }
 
       const { data: insertedDeal, error: insertErr } = await supabase.from("deals").insert({
         user_email: session?.user?.email || "",
