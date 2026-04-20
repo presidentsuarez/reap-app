@@ -6614,10 +6614,48 @@ function AuthScreen({ onAuth }) {
   );
 }
 
-function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDismiss }) {
+function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDismiss, session }) {
   const isMobile = window.innerWidth < 768;
   const expired = daysLeft <= 0;
   const [hoveredPlan, setHoveredPlan] = useState(null);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoMsg, setPromoMsg] = useState("");
+
+  const redeemCode = async () => {
+    if (!promoCode.trim() || promoLoading) return;
+    setPromoLoading(true); setPromoMsg("");
+    try {
+      // Look up the code
+      const { data: codeData, error: codeErr } = await supabase.from("promo_codes").select("*").eq("code", promoCode.trim().toUpperCase()).eq("is_active", true).maybeSingle();
+      if (codeErr || !codeData) { setPromoMsg("Invalid code. Please check and try again."); setPromoLoading(false); return; }
+      // Check expiry
+      if (codeData.expires_at && new Date(codeData.expires_at) < new Date()) { setPromoMsg("This code has expired."); setPromoLoading(false); return; }
+      // Check max uses
+      if (codeData.max_uses && codeData.times_used >= codeData.max_uses) { setPromoMsg("This code has been fully used."); setPromoLoading(false); return; }
+      // Check if user already redeemed this code
+      const uid = session?.user?.id;
+      const { data: existing } = await supabase.from("promo_redemptions").select("id").eq("promo_code_id", codeData.id).eq("user_id", uid).maybeSingle();
+      if (existing) { setPromoMsg("You've already used this code."); setPromoLoading(false); return; }
+      // Card required check
+      if (codeData.requires_card) {
+        // For card-required codes, redirect to Stripe checkout with trial period
+        setPromoMsg("This code requires a card on file. Redirecting to checkout...");
+        setTimeout(() => { /* TODO: Stripe checkout with trial_period_days */ }, 1500);
+        setPromoLoading(false); return;
+      }
+      // Redeem — insert redemption and set trial
+      const trialEnds = new Date(Date.now() + (codeData.trial_days || 14) * 86400000).toISOString();
+      const { error: redeemErr } = await supabase.from("promo_redemptions").insert({ promo_code_id: codeData.id, user_id: uid, user_email: userEmail, trial_ends_at: trialEnds });
+      if (redeemErr) throw redeemErr;
+      // Increment times_used
+      await supabase.from("promo_codes").update({ times_used: (codeData.times_used || 0) + 1 }).eq("id", codeData.id);
+      setPromoMsg("Code applied! Your " + (codeData.trial_days || 14) + "-day trial is now active.");
+      // Reload after a moment
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (e) { setPromoMsg("Error: " + (e.message || "Something went wrong")); }
+    setPromoLoading(false);
+  };
 
   const plans = [
     {
@@ -6742,6 +6780,17 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
           )}
           {daysLeft > 0 && !expired && onDismiss && <br />}
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", margin: "0 0 16px", fontFamily: "'DM Sans', sans-serif" }}>Secure payment via Stripe. Cancel anytime.</p>
+
+          {/* Promo Code Section */}
+          <div style={{ marginBottom: 20, width: "100%", maxWidth: 340 }}>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", margin: "0 0 8px", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.04em" }}>Have a promo or trial code?</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={promoCode} onChange={e => setPromoCode(e.target.value.toUpperCase())} placeholder="Enter code" style={{ flex: 1, padding: "10px 14px", fontSize: 14, fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, color: "#fff", outline: "none" }} onKeyDown={e => { if (e.key === "Enter") redeemCode(); }} />
+              <button onClick={redeemCode} disabled={promoLoading || !promoCode.trim()} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: promoCode.trim() ? "linear-gradient(135deg, #16a34a, #15803d)" : "rgba(255,255,255,0.06)", color: promoCode.trim() ? "#fff" : "rgba(255,255,255,0.3)", fontSize: 13, fontWeight: 700, cursor: promoCode.trim() ? "pointer" : "default", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s" }}>{promoLoading ? "..." : "Apply"}</button>
+            </div>
+            {promoMsg && <p style={{ fontSize: 12, margin: "8px 0 0", color: promoMsg.includes("Error") || promoMsg.includes("Invalid") || promoMsg.includes("expired") || promoMsg.includes("used") ? "#f87171" : "#4ade80", fontFamily: "'DM Sans', sans-serif" }}>{promoMsg}</p>}
+          </div>
+
           <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "rgba(255,255,255,0.5)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "8px 20px", transition: "all 0.2s" }}>Sign out</button>
         </div>
       </div>
@@ -16373,6 +16422,7 @@ export default function ReapApp() {
   const [mlsTab, setMlsTab] = useState("feed");
   const [selectedMLSListing, setSelectedMLSListing] = useState(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState(TRIAL_DAYS);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -16682,7 +16732,7 @@ export default function ReapApp() {
         supabase.from("user_profiles").select("is_subscribed").eq("email", email).single(),
         supabase.from("org_members").select("id, org_id").eq("user_email", email).eq("status", "active"),
         supabase.from("organizations").select("id").eq("owner_email", email)
-      ]).then(([{ data: subData }, { data: profileData }, { data: memberRows }, { data: ownedOrgs }]) => {
+      ]).then(async ([{ data: subData }, { data: profileData }, { data: memberRows }, { data: ownedOrgs }]) => {
         const hasActiveSub = !!subData;
         const adminOverride = !!profileData?.is_subscribed;
         const isOrgMember = (memberRows && memberRows.length > 0) || (ownedOrgs && ownedOrgs.length > 0);
@@ -16690,25 +16740,31 @@ export default function ReapApp() {
 
         setIsSubscribed(subscribed);
 
-        const createdAt = new Date(session.user.created_at);
-        const now = new Date();
-        const daysSinceSignup = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
-        const daysLeft = Math.max(0, TRIAL_DAYS - daysSinceSignup);
-        setTrialDaysLeft(daysLeft);
+        // Check for active promo code trial
+        let promoTrialActive = false;
+        let promoDaysLeft = 0;
+        try {
+          const { data: redemptions } = await supabase.from("promo_redemptions").select("trial_ends_at").eq("user_id", session.user.id).order("redeemed_at", { ascending: false }).limit(1);
+          if (redemptions && redemptions.length > 0 && redemptions[0].trial_ends_at) {
+            const trialEnd = new Date(redemptions[0].trial_ends_at);
+            const now = new Date();
+            promoDaysLeft = Math.max(0, Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24)));
+            promoTrialActive = promoDaysLeft > 0;
+          }
+        } catch (e) { console.log("Promo check skipped:", e); }
 
-        if (subscribed) {
+        setTrialDaysLeft(promoTrialActive ? promoDaysLeft : 0);
+
+        if (subscribed || promoTrialActive) {
           setShowPaywall(false);
-        } else if (daysLeft <= 0) {
-          setShowPaywall(true);
+          setIsPreviewMode(false);
         } else {
+          // No subscription, no active trial → preview mode (can view, can't create)
           setShowPaywall(false);
+          setIsPreviewMode(true);
         }
       });
-      // Show pricing page for first-time users (they can pick a plan or continue with free trial)
-      const onboarded = localStorage.getItem("reap_onboarded");
-      if (!onboarded) {
-        setShowPaywall(true);
-      }
+      // Preview mode handles first-time users — no auto-paywall
     }
   }, [session]);
 
@@ -16832,7 +16888,6 @@ export default function ReapApp() {
           await supabase.from("user_profiles").insert({
             id: uid, email: email,
             full_name: session.user.user_metadata?.full_name || "",
-            trial_ends_at: new Date(Date.now() + 14 * 86400000).toISOString(),
           });
         }
 
@@ -17682,7 +17737,7 @@ export default function ReapApp() {
     );
   }
 
-  if (showPaywall) return <PricingScreen userEmail={session?.user?.email} daysLeft={trialDaysLeft} onCheckout={handleCheckout} checkoutLoading={checkoutLoading} onDismiss={trialDaysLeft > 0 ? () => { setShowPaywall(false); const onboarded = localStorage.getItem("reap_onboarded"); if (!onboarded) setShowOnboarding(true); } : null} />;
+  if (showPaywall) return <PricingScreen userEmail={session?.user?.email} daysLeft={trialDaysLeft} onCheckout={handleCheckout} checkoutLoading={checkoutLoading} session={session} onDismiss={trialDaysLeft > 0 ? () => { setShowPaywall(false); const onboarded = localStorage.getItem("reap_onboarded"); if (!onboarded) setShowOnboarding(true); } : null} />;
 
   return (
     <>
@@ -17733,7 +17788,7 @@ export default function ReapApp() {
             padding: "8px 16px",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
           }}>
-            <span>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""} left on your free trial</span>
+            <span>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""} left on your trial</span>
             <button onClick={handleCheckout} style={{
               background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)",
               borderRadius: 6, padding: "4px 12px", color: "#fff", fontSize: 12,
@@ -17742,9 +17797,27 @@ export default function ReapApp() {
             }}>Upgrade Now</button>
           </div>
         )}
+        {isPreviewMode && !isSubscribed && trialDaysLeft <= 0 && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, zIndex: 200,
+            background: "linear-gradient(135deg, #0f172a, #1e293b)",
+            color: "#fff", fontSize: 13, fontWeight: 600,
+            fontFamily: "'DM Sans', sans-serif",
+            padding: "8px 16px",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+          }}>
+            <span>Preview Mode — Choose a plan to unlock deal creation</span>
+            <button onClick={() => setShowPaywall(true)} style={{
+              background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none",
+              borderRadius: 6, padding: "4px 14px", color: "#fff", fontSize: 12,
+              fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+              boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
+            }}>Get Started</button>
+          </div>
+        )}
         {/* Desktop Sidebar */}
         {!isMobile && (
-          <div style={{ width: 60, background: "#fff", borderRight: "1px solid #e2e8f0", display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 0", gap: 6, flexShrink: 0, marginTop: !isSubscribed && trialDaysLeft > 0 ? 42 : 0 }}>
+          <div style={{ width: 60, background: "#fff", borderRight: "1px solid #e2e8f0", display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 0", gap: 6, flexShrink: 0, marginTop: (!isSubscribed && trialDaysLeft > 0) || isPreviewMode ? 42 : 0 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, overflow: "hidden", marginBottom: 16, boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>
               <img src="/favicon.png" alt="REAP" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             </div>
@@ -17761,7 +17834,7 @@ export default function ReapApp() {
           <div style={{
             background: "linear-gradient(135deg, #7c3aed, #6d28d9)", padding: "12px 20px",
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
-            position: isMobile ? "fixed" : "relative", top: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56) : undefined,
+            position: isMobile ? "fixed" : "relative", top: isMobile ? (((!isSubscribed && trialDaysLeft > 0) || isPreviewMode ? 42 : 0) + 56) : undefined,
             left: 0, right: 0, zIndex: 90,
           }}>
             <div style={{ fontSize: 13, fontWeight: 500, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>
@@ -17775,7 +17848,7 @@ export default function ReapApp() {
         )}
 
         {/* Main Content */}
-        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 88 : 0, paddingTop: isMobile ? ((!isSubscribed && trialDaysLeft > 0 ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : (!isSubscribed && trialDaysLeft > 0 ? 42 : 0), position: "relative", maxWidth: "100%", minWidth: 0 }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 88 : 0, paddingTop: isMobile ? (((!isSubscribed && trialDaysLeft > 0) || isPreviewMode ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : ((!isSubscribed && trialDaysLeft > 0) || isPreviewMode ? 42 : 0), position: "relative", maxWidth: "100%", minWidth: 0 }}>
           {isMobile ? (
             showProfile ? (
               <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} onUpdateDataAccess={handleUpdateDataAccess} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
@@ -17833,7 +17906,7 @@ export default function ReapApp() {
                       ? <OfferingsView deals={deals} isMobile={true} session={session} userEmail={userEmail} updateHash={updateHash} />
                       : realEstateTab === "management"
                       ? <ManagementView deals={deals} isMobile={true} session={session} onRetry={fetchDeals} />
-                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={true} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} initialFilters={pipelineFilterState} onFilterChange={setPipelineFilterState} orgMembers={orgMembers} allAppUsers={allAppUsers} />
+                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => { if (isPreviewMode) { setShowProfile(true); setActiveNav("profile"); return; } setShowNewDeal(true); }} isMobile={true} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} initialFilters={pipelineFilterState} onFilterChange={setPipelineFilterState} orgMembers={orgMembers} allAppUsers={allAppUsers} />
                     }
                   </div>
                 </div>
@@ -17874,7 +17947,7 @@ export default function ReapApp() {
                       ? <ManagementView deals={deals} isMobile={false} session={session} onRetry={fetchDeals} />
                       : realEstateTab === "offerings"
                       ? <OfferingsView deals={deals} isMobile={false} session={session} userEmail={userEmail} updateHash={updateHash} />
-                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => setShowNewDeal(true)} isMobile={false} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} initialFilters={pipelineFilterState} onFilterChange={setPipelineFilterState} orgMembers={orgMembers} allAppUsers={allAppUsers} />
+                      : <PipelineView deals={deals} loading={loading} error={error} onRetry={fetchDeals} onSelectDeal={handleSelectDeal} onNewDeal={() => { if (isPreviewMode) { setShowProfile(true); setActiveNav("profile"); return; } setShowNewDeal(true); }} isMobile={false} initialView={pendingPipelineView || activePipelineView} onViewChange={(v) => { setActivePipelineView(v); setPendingPipelineView(null); updateHash("realestate/pipeline/" + v); }} initialFilters={pipelineFilterState} onFilterChange={setPipelineFilterState} orgMembers={orgMembers} allAppUsers={allAppUsers} />
                     }
                   </div>
                 </div>
@@ -17972,7 +18045,7 @@ export default function ReapApp() {
         {/* Mobile Top Header Bar */}
         {isMobile && (
           <div style={{
-            position: "fixed", top: !isSubscribed && trialDaysLeft > 0 ? 42 : 0, left: 0, right: 0, height: 56,
+            position: "fixed", top: (!isSubscribed && trialDaysLeft > 0) || isPreviewMode ? 42 : 0, left: 0, right: 0, height: 56,
             background: "#fff", borderBottom: "1px solid #e2e8f0",
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "0 16px", zIndex: 110,
