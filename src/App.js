@@ -17175,7 +17175,7 @@ export default function ReapApp() {
         profitAtRefi: v(r.profit_at_refi),
         equityAfterRefi: v(r.equity_after_refi),
         refiValuation: v(r.refi_valuation),
-        reapScore: v(r.reap_score),
+        reapScore: r.reap_score != null && !isNaN(parseFloat(r.reap_score)) ? Math.round(parseFloat(r.reap_score)) : null,
         equityMultiple: v(r.equity_multiple),
         askingPrice: v(r.asking_price),
         acqCostToClose: v(r.acq_cost_to_close_pct),
