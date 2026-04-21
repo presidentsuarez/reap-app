@@ -7349,7 +7349,7 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
     }));
   }, [closings, offersMade]);
 
-  const scoredDeals = deals.filter(d => num(d.reapScore) > 0).sort((a, b) => num(b.reapScore) - num(a.reapScore)).slice(0, 5);
+  const scoredDeals = deals.filter(d => num(d.reapScore) > 0 && !["Dead", "Closed"].includes(d.status)).sort((a, b) => num(b.reapScore) - num(a.reapScore)).slice(0, 5);
 
   const attentionItems = [];
   const daysSince = (dateStr) => { if (!dateStr) return 999; return Math.floor((now - new Date(dateStr)) / 86400000); };
