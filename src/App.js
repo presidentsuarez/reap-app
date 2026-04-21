@@ -6616,8 +6616,7 @@ function AuthScreen({ onAuth }) {
 
 function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDismiss, session }) {
   const isMobile = window.innerWidth < 768;
-  const expired = daysLeft <= 0;
-  const [hoveredPlan, setHoveredPlan] = useState(null);
+  const [activeTier, setActiveTier] = useState("starter");
   const [promoCode, setPromoCode] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoMsg, setPromoMsg] = useState("");
@@ -6626,173 +6625,147 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
     if (!promoCode.trim() || promoLoading) return;
     setPromoLoading(true); setPromoMsg("");
     try {
-      // Look up the code
       const { data: codeData, error: codeErr } = await supabase.from("promo_codes").select("*").eq("code", promoCode.trim().toUpperCase()).eq("is_active", true).maybeSingle();
-      if (codeErr || !codeData) { setPromoMsg("Invalid code. Please check and try again."); setPromoLoading(false); return; }
-      // Check expiry
+      if (codeErr || !codeData) { setPromoMsg("Invalid code."); setPromoLoading(false); return; }
       if (codeData.expires_at && new Date(codeData.expires_at) < new Date()) { setPromoMsg("This code has expired."); setPromoLoading(false); return; }
-      // Check max uses
       if (codeData.max_uses && codeData.times_used >= codeData.max_uses) { setPromoMsg("This code has been fully used."); setPromoLoading(false); return; }
-      // Check if user already redeemed this code
       const uid = session?.user?.id;
       const { data: existing } = await supabase.from("promo_redemptions").select("id").eq("promo_code_id", codeData.id).eq("user_id", uid).maybeSingle();
       if (existing) { setPromoMsg("You've already used this code."); setPromoLoading(false); return; }
-      // Card required check
-      if (codeData.requires_card) {
-        // For card-required codes, redirect to Stripe checkout with trial period
-        setPromoMsg("This code requires a card on file. Redirecting to checkout...");
-        setTimeout(() => { /* TODO: Stripe checkout with trial_period_days */ }, 1500);
-        setPromoLoading(false); return;
-      }
-      // Redeem — insert redemption and set trial
+      if (codeData.requires_card) { setPromoMsg("Card required — redirecting..."); setPromoLoading(false); return; }
       const trialEnds = new Date(Date.now() + (codeData.trial_days || 14) * 86400000).toISOString();
-      const { error: redeemErr } = await supabase.from("promo_redemptions").insert({ promo_code_id: codeData.id, user_id: uid, user_email: userEmail, trial_ends_at: trialEnds });
-      if (redeemErr) throw redeemErr;
-      // Increment times_used
+      await supabase.from("promo_redemptions").insert({ promo_code_id: codeData.id, user_id: uid, user_email: userEmail, trial_ends_at: trialEnds });
       await supabase.from("promo_codes").update({ times_used: (codeData.times_used || 0) + 1 }).eq("id", codeData.id);
-      setPromoMsg("Code applied! Your " + (codeData.trial_days || 14) + "-day trial is now active.");
-      // Reload after a moment
-      setTimeout(() => window.location.reload(), 1500);
+      setPromoMsg("Trial activated!");
+      setTimeout(() => window.location.reload(), 1200);
     } catch (e) { setPromoMsg("Error: " + (e.message || "Something went wrong")); }
     setPromoLoading(false);
   };
 
-  const plans = [
-    {
-      key: "starter", label: "Starter", price: "$99", period: "/mo",
+  const tiers = {
+    starter: {
+      label: "Starter", price: "$99", period: "/mo", weeklyPrice: "$24.75/week",
       desc: "For individual investors & analysts",
-      color: "#16a34a", bg: "#f0fdf4", borderColor: "#bbf7d0", gradient: "linear-gradient(135deg, #16a34a, #15803d)",
+      color: "#16a34a", gradient: "linear-gradient(160deg, #064e3b 0%, #0f172a 50%, #0a0f1a 100%)",
+      btnGradient: "linear-gradient(135deg, #16a34a, #15803d)",
       stripeUrl: "https://buy.stripe.com/fZu9AScIZ9sjc0QbF163K03",
-      features: ["Unlimited deal analysis", "Live financial metrics", "AI Underwriting & REAP Score", "Deal pipeline management", "Contact & investor CRM", "Google Street View", "Portfolio tracking"],
+      features: ["Unlimited deal analysis", "AI Underwriting & REAP Score", "Live financial metrics", "Deal pipeline management", "Contact & investor CRM", "Portfolio tracking", "Google Street View"],
     },
-    {
-      key: "pro", label: "Pro", price: "$249", period: "/mo",
-      desc: "Advanced AI & document tools", popular: true,
-      color: "#d97706", bg: "#fffbeb", borderColor: "#fde68a", gradient: "linear-gradient(135deg, #d97706, #b45309)",
+    pro: {
+      label: "Pro", price: "$249", period: "/mo", weeklyPrice: "$62.25/week",
+      desc: "Advanced AI & document tools",
+      color: "#d97706", gradient: "linear-gradient(160deg, #451a03 0%, #1c1008 50%, #0a0f1a 100%)",
+      btnGradient: "linear-gradient(135deg, #d97706, #b45309)",
       stripeUrl: null,
-      features: ["Everything in Starter, plus:", "Document generation", "Investment memo builder", "Submit offers & LOIs", "Advanced reporting", "Priority support"],
+      features: ["Everything in Starter, plus:", "Advanced AI analysis", "Document generation", "Investment memo builder", "Submit offers & LOIs", "Enhanced reporting", "Priority support"],
     },
-    {
-      key: "team", label: "Team", price: "$499", period: "/mo",
+    team: {
+      label: "Team", price: "$499", period: "/mo", weeklyPrice: "$124.75/week",
       desc: "For teams & small firms",
-      color: "#7c3aed", bg: "#f5f3ff", borderColor: "#ddd6fe", gradient: "linear-gradient(135deg, #7c3aed, #6d28d9)",
+      color: "#7c3aed", gradient: "linear-gradient(160deg, #2e1065 0%, #150d24 50%, #0a0f1a 100%)",
+      btnGradient: "linear-gradient(135deg, #7c3aed, #6d28d9)",
       stripeUrl: null,
-      features: ["Everything in Pro, plus:", "Shared team pipeline", "Shared contacts & investors", "Organization management", "Manager & assignee roles", "MLS Feed access", "Education & assignments", "AI Executive Summaries"],
+      features: ["Everything in Pro, plus:", "Unlimited team members", "Shared pipeline & contacts", "Organization management", "Manager & assignee roles", "MLS Feed access", "Education & assignments"],
     },
-  ];
-
-  const handlePlanCheckout = (plan) => {
-    if (plan.stripeUrl) {
-      window.location.href = plan.stripeUrl + "?prefilled_email=" + encodeURIComponent(userEmail || "");
-    } else {
-      alert("Coming soon! " + plan.label + " tier will be available shortly. For now, start with Starter.");
-    }
   };
+
+  const tier = tiers[activeTier];
 
   return (
     <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      background: "linear-gradient(170deg, #051E15 0%, #0B3D2C 40%, #0E4D37 80%, #0A3425 100%)",
-      fontFamily: "'DM Sans', sans-serif", padding: 20,
+      minHeight: "100vh", background: tier.gradient, transition: "background 0.5s ease",
+      display: "flex", flexDirection: "column", alignItems: "center",
+      padding: isMobile ? "40px 16px 40px" : "50px 24px 50px",
+      fontFamily: "'DM Sans', sans-serif", overflowY: "auto",
     }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap');
-        @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 20px rgba(34,197,94,0.15); } 50% { box-shadow: 0 0 40px rgba(34,197,94,0.3); } }
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-      `}</style>
-      <div style={{ maxWidth: 960, width: "100%", animation: "fadeUp 0.5s ease" }}>
-        {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 20 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#22C55E", display: "flex", alignItems: "center", justifyContent: "center", animation: "pulseGlow 3s ease-in-out infinite" }}>
-              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-            </div>
-            <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>REAP</span>
-          </div>
-          {expired ? (
-            <>
-              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: isMobile ? 24 : 32, fontWeight: 700, color: "#fff", margin: "0 0 10px", letterSpacing: "-0.02em" }}>Your free trial has ended</h1>
-              <p style={{ fontSize: 15, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.6 }}>Choose a plan to continue analyzing deals and closing faster.</p>
-            </>
-          ) : (
-            <>
-              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: isMobile ? 24 : 32, fontWeight: 700, color: "#fff", margin: "0 0 10px", letterSpacing: "-0.02em" }}>Choose your plan</h1>
-              <p style={{ fontSize: 15, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.6 }}>{daysLeft > 0 ? <>You have <strong style={{ color: "#22C55E" }}>{daysLeft} day{daysLeft !== 1 ? "s" : ""}</strong> left on your free trial. Upgrade anytime.</> : "Scale your real estate operations with the right tier."}</p>
-            </>
-          )}
-        </div>
+      {/* Close / Already subscribed */}
+      <div style={{ position: "absolute", top: 16, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {onDismiss ? <button onClick={onDismiss} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 22, cursor: "pointer", padding: 8 }}>&times;</button> : <div />}
+        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Already subscribed?</span>
+      </div>
 
-        {/* Pricing Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 16, marginBottom: 32 }}>
-          {plans.map(plan => (
-            <div key={plan.key}
-              onMouseEnter={() => setHoveredPlan(plan.key)}
-              onMouseLeave={() => setHoveredPlan(null)}
-              style={{
-                position: "relative", background: "#fff", borderRadius: 20, padding: "28px 24px",
-                border: plan.popular ? "2px solid " + plan.color : "1px solid #e2e8f0",
-                boxShadow: hoveredPlan === plan.key ? "0 16px 48px rgba(0,0,0,0.15)" : plan.popular ? "0 8px 32px rgba(124,58,237,0.15)" : "0 2px 8px rgba(0,0,0,0.06)",
-                transform: hoveredPlan === plan.key ? "translateY(-4px)" : plan.popular && !isMobile ? "scale(1.02)" : "none",
-                transition: "all 0.25s ease",
-              }}>
-              {plan.popular && (
-                <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: plan.gradient, padding: "5px 18px", borderRadius: 20, fontSize: 10, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace", letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>MOST POPULAR</div>
-              )}
-              <div style={{ fontSize: 11, fontWeight: 700, color: plan.color, fontFamily: "'DM Mono', monospace", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>{plan.label}</div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 2, marginBottom: 4 }}>
-                <span style={{ fontSize: 44, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.03em", lineHeight: 1 }}>{plan.price}</span>
-                <span style={{ fontSize: 15, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>{plan.period}</span>
-              </div>
-              <p style={{ fontSize: 13, color: "#64748b", fontFamily: "'DM Sans', sans-serif", margin: "0 0 20px", lineHeight: 1.4 }}>{plan.desc}</p>
-              <button onClick={() => handlePlanCheckout(plan)} style={{
-                width: "100%", padding: "12px 16px", border: "none", borderRadius: 10,
-                background: plan.gradient, color: "#fff",
-                fontSize: 14, fontWeight: 700, fontFamily: "'DM Sans', sans-serif",
-                cursor: "pointer", transition: "all 0.2s",
-                boxShadow: "0 4px 14px " + plan.color + "40",
-              }}>
-                {plan.stripeUrl ? "Get " + plan.label : "Coming Soon"}
-              </button>
-              <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
-                {plan.features.map((feat, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: i === 0 && plan.key !== "starter" ? plan.color : "#475569", fontFamily: "'DM Sans', sans-serif", fontWeight: i === 0 && plan.key !== "starter" ? 600 : 400 }}>
-                    {(i === 0 && plan.key !== "starter") ? null : <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={plan.color} strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>}
-                    {feat}
-                  </div>
-                ))}
-              </div>
+      {/* Tier Toggle */}
+      <div style={{
+        display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: 30, padding: 4,
+        marginBottom: 28, border: "1px solid rgba(255,255,255,0.1)",
+      }}>
+        {Object.entries(tiers).map(([key, t]) => (
+          <button key={key} onClick={() => setActiveTier(key)} style={{
+            padding: isMobile ? "10px 24px" : "10px 36px", borderRadius: 26, border: "none",
+            background: activeTier === key ? t.btnGradient : "transparent",
+            color: activeTier === key ? "#fff" : "rgba(255,255,255,0.5)",
+            fontSize: 14, fontWeight: 700, cursor: "pointer",
+            fontFamily: "'DM Sans', sans-serif", transition: "all 0.3s",
+            boxShadow: activeTier === key ? "0 4px 16px rgba(0,0,0,0.3)" : "none",
+            textTransform: "uppercase", letterSpacing: "0.04em",
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* Plan Card */}
+      <div style={{
+        width: "100%", maxWidth: 420, borderRadius: 20,
+        background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+        padding: isMobile ? "28px 20px" : "32px 28px", marginBottom: 20,
+        backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <img src="/favicon.png" alt="REAP" style={{ width: 28, height: 28, borderRadius: 8 }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: tier.color, background: "rgba(255,255,255,0.08)", padding: "3px 10px", borderRadius: 6, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'DM Mono', monospace" }}>{tier.label}</span>
+        </div>
+        <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.8)", margin: "0 0 4px" }}>{tier.desc}</p>
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: "0 0 20px" }}>Everything you need to underwrite deals faster.</p>
+
+        {/* Features */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 4 }}>
+          {tier.features.map((feat, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: i === 0 && activeTier !== "starter" ? tier.color : "rgba(255,255,255,0.6)", fontWeight: i === 0 && activeTier !== "starter" ? 700 : 400 }}>
+              {(i === 0 && activeTier !== "starter") ? null : <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={tier.color} strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>}
+              {feat}
             </div>
           ))}
         </div>
+      </div>
 
-        {/* Free trial info + Sign out */}
-        <div style={{ textAlign: "center" }}>
-          {daysLeft > 0 && !expired && onDismiss && (
-            <button onClick={onDismiss} style={{
-              background: "none", border: "2px solid rgba(34,197,94,0.4)", borderRadius: 12,
-              color: "#22C55E", fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
-              cursor: "pointer", padding: "14px 32px", transition: "all 0.2s", marginBottom: 16,
-              display: "inline-flex", alignItems: "center", gap: 8,
-            }}>
-              Continue with free trial ({daysLeft} day{daysLeft !== 1 ? "s" : ""} left)
-              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </button>
-          )}
-          {daysLeft > 0 && !expired && onDismiss && <br />}
-          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", margin: "0 0 16px", fontFamily: "'DM Sans', sans-serif" }}>Secure payment via Stripe. Cancel anytime.</p>
-
-          {/* Promo Code Section */}
-          <div style={{ marginBottom: 20, width: "100%", maxWidth: 340 }}>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", margin: "0 0 8px", fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.04em" }}>Have a promo or trial code?</p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input value={promoCode} onChange={e => setPromoCode(e.target.value.toUpperCase())} placeholder="Enter code" style={{ flex: 1, padding: "10px 14px", fontSize: 14, fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, color: "#fff", outline: "none" }} onKeyDown={e => { if (e.key === "Enter") redeemCode(); }} />
-              <button onClick={redeemCode} disabled={promoLoading || !promoCode.trim()} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: promoCode.trim() ? "linear-gradient(135deg, #16a34a, #15803d)" : "rgba(255,255,255,0.06)", color: promoCode.trim() ? "#fff" : "rgba(255,255,255,0.3)", fontSize: 13, fontWeight: 700, cursor: promoCode.trim() ? "pointer" : "default", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s" }}>{promoLoading ? "..." : "Apply"}</button>
-            </div>
-            {promoMsg && <p style={{ fontSize: 12, margin: "8px 0 0", color: promoMsg.includes("Error") || promoMsg.includes("Invalid") || promoMsg.includes("expired") || promoMsg.includes("used") ? "#f87171" : "#4ade80", fontFamily: "'DM Sans', sans-serif" }}>{promoMsg}</p>}
+      {/* Price Card */}
+      <div style={{ width: "100%", maxWidth: 420, marginBottom: 16 }}>
+        <div style={{
+          border: "2px solid " + tier.color + "60", borderRadius: 14,
+          padding: "16px 20px", marginBottom: 10,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          background: "rgba(255,255,255,0.03)",
+        }}>
+          <div>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: 0 }}>Monthly Plan</p>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: "2px 0 0" }}>{tier.weeklyPrice}</p>
           </div>
-
-          <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "rgba(255,255,255,0.5)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "8px 20px", transition: "all 0.2s" }}>Sign out</button>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace" }}>{tier.price}<span style={{ fontSize: 13, color: "rgba(255,255,255,0.4)" }}>/mo</span></span>
         </div>
+      </div>
+
+      {/* CTA */}
+      <button onClick={() => { if (tier.stripeUrl) window.open(tier.stripeUrl, "_blank"); else onCheckout(); }} disabled={checkoutLoading} style={{
+        width: "100%", maxWidth: 420, padding: "16px 24px", border: "none", borderRadius: 14,
+        background: tier.btnGradient, color: "#fff", fontSize: 17, fontWeight: 700,
+        cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+        boxShadow: "0 6px 24px " + tier.color + "40",
+        transition: "all 0.2s", marginBottom: 20,
+      }}>{checkoutLoading ? "Loading..." : "Get Started"}</button>
+
+      {/* Promo Code */}
+      <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
+        <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", margin: "0 0 8px" }}>Have a promo or trial code?</p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input value={promoCode} onChange={e => setPromoCode(e.target.value.toUpperCase())} placeholder="Enter code" onKeyDown={e => { if (e.key === "Enter") redeemCode(); }} style={{ flex: 1, padding: "10px 14px", fontSize: 14, fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#fff", outline: "none" }} />
+          <button onClick={redeemCode} disabled={promoLoading || !promoCode.trim()} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: promoCode.trim() ? tier.btnGradient : "rgba(255,255,255,0.06)", color: promoCode.trim() ? "#fff" : "rgba(255,255,255,0.3)", fontSize: 13, fontWeight: 700, cursor: promoCode.trim() ? "pointer" : "default", fontFamily: "'DM Sans', sans-serif" }}>{promoLoading ? "..." : "Apply"}</button>
+        </div>
+        {promoMsg && <p style={{ fontSize: 12, margin: "8px 0 0", color: promoMsg.includes("Error") || promoMsg.includes("Invalid") || promoMsg.includes("expired") || promoMsg.includes("used") ? "#f87171" : "#4ade80" }}>{promoMsg}</p>}
+      </div>
+
+      {/* Footer */}
+      <div style={{ marginTop: 24, textAlign: "center" }}>
+        <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", margin: "0 0 12px" }}>Secure payment via Stripe. Cancel anytime.</p>
+        <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "rgba(255,255,255,0.35)", fontSize: 12, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "8px 20px" }}>Sign out</button>
       </div>
     </div>
   );
@@ -17803,15 +17776,16 @@ export default function ReapApp() {
             background: "linear-gradient(135deg, #0f172a, #1e293b)",
             color: "#fff", fontSize: 13, fontWeight: 600,
             fontFamily: "'DM Sans', sans-serif",
-            padding: "8px 16px",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+            padding: "10px 16px",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
           }}>
-            <span>Preview Mode — Choose a plan to unlock deal creation</span>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", animation: "ccPulse 2s ease-in-out infinite", flexShrink: 0 }} />
+            <span style={{ fontSize: 12 }}>Preview Mode</span>
             <button onClick={() => setShowPaywall(true)} style={{
               background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none",
-              borderRadius: 6, padding: "4px 14px", color: "#fff", fontSize: 12,
+              borderRadius: 20, padding: "6px 18px", color: "#fff", fontSize: 12,
               fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-              boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
+              boxShadow: "0 2px 12px rgba(22,163,74,0.4)", whiteSpace: "nowrap",
             }}>Get Started</button>
           </div>
         )}
