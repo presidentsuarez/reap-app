@@ -6679,10 +6679,9 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
       fontFamily: "'DM Sans', sans-serif", overflowY: "auto", overflowX: "hidden",
       boxSizing: "border-box", width: "100%",
     }}>
-      {/* Close / Already subscribed */}
-      <div style={{ position: "absolute", top: 16, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button onClick={() => { if (onDismiss) onDismiss(); else window.location.reload(); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 22, cursor: "pointer", padding: 8 }}>&times;</button>
-        <button onClick={() => { if (onDismiss) onDismiss(); else window.location.reload(); }} style={{ background: "none", border: "none", fontSize: 12, color: "rgba(255,255,255,0.4)", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Already subscribed?</button>
+      {/* Already subscribed */}
+      <div style={{ width: "100%", display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <button onClick={() => { if (onDismiss) onDismiss(); else window.location.reload(); }} style={{ background: "none", border: "none", fontSize: 12, color: "rgba(255,255,255,0.4)", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", padding: "4px 0" }}>Already subscribed?</button>
       </div>
 
       {/* Tier Toggle */}
