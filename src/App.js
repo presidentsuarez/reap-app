@@ -17755,7 +17755,7 @@ export default function ReapApp() {
         deal={selectedDeal}
       />
 
-      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", width: "100%", maxWidth: "100vw", background: activeNav === "commandcenter" && !showProfile ? "#0a0f1a" : "#f8fafc", overflow: "hidden", transition: "background 0.3s" }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", width: "100%", maxWidth: "100vw", background: "#f8fafc", overflow: "hidden" }}>
 
         {/* Trial Banner */}
         {!isSubscribed && trialDaysLeft > 0 && (
@@ -17828,7 +17828,7 @@ export default function ReapApp() {
         )}
 
         {/* Main Content */}
-        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: isMobile ? 88 : 0, paddingTop: isMobile ? (((!isSubscribed && trialDaysLeft > 0) || isPreviewMode ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : ((!isSubscribed && trialDaysLeft > 0) || isPreviewMode ? 42 : 0), position: "relative", maxWidth: "100%", minWidth: 0 }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingTop: isMobile ? (((!isSubscribed && trialDaysLeft > 0) || isPreviewMode ? 42 : 0) + 56 + (pendingInvite ? 48 : 0)) : ((!isSubscribed && trialDaysLeft > 0) || isPreviewMode ? 42 : 0), position: "relative", maxWidth: "100%", minWidth: 0 }}>
           {isMobile ? (
             showProfile ? (
               <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} onUpdateDataAccess={handleUpdateDataAccess} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
@@ -17974,7 +17974,7 @@ export default function ReapApp() {
         {isMobile && (
           <div style={{
             position: "fixed", bottom: 12, left: 12, right: 12, height: 64,
-            background: "rgba(255,255,255,0.97)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+            background: "rgba(255,255,255,0.85)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)",
             borderRadius: 22,
             display: "flex", alignItems: "center", justifyContent: "space-around",
             padding: "0 8px", zIndex: 100,
