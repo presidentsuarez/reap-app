@@ -17971,15 +17971,17 @@ export default function ReapApp() {
         </div>
 
         {/* Mobile Bottom Nav */}
-        {isMobile && (
+        {isMobile && (() => {
+          const isDarkPage = activeNav === "commandcenter" && !showProfile;
+          return (
           <div style={{
             position: "fixed", bottom: 12, left: 12, right: 12, height: 64,
-            background: "rgba(255,255,255,0.97)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+            background: isDarkPage ? "rgba(15,23,42,0.92)" : "rgba(255,255,255,0.97)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
             borderRadius: 22,
             display: "flex", alignItems: "center", justifyContent: "space-around",
             padding: "0 8px", zIndex: 100,
-            boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)",
-            border: "1px solid rgba(0,0,0,0.06)",
+            boxShadow: isDarkPage ? "0 4px 24px rgba(0,0,0,0.4)" : "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)",
+            border: isDarkPage ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.06)",
           }}>
             {(() => { const bottomItems = [...navItems.filter(item => item.mobileBottom !== false)].sort((a, b) => (a.mobileOrder ?? 99) - (b.mobileOrder ?? 99)); return bottomItems; })().map(item => {
               const isActive = activeNav === item.id && !showProfile;
@@ -18009,7 +18011,7 @@ export default function ReapApp() {
                 <button key={item.id} onClick={() => { setActiveNav(item.id); setShowProfile(false); }} style={{
                   flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                   background: "none", border: "none",
-                  color: isActive ? "#16a34a" : "#94a3b8",
+                  color: isActive ? "#16a34a" : (isDarkPage ? "rgba(255,255,255,0.45)" : "#94a3b8"),
                   cursor: "pointer", padding: "6px 0",
                   transition: "color 0.2s", WebkitTapHighlightColor: "transparent",
                 }}>
@@ -18020,7 +18022,8 @@ export default function ReapApp() {
               );
             })}
           </div>
-        )}
+          );
+        })()}
 
         {/* Mobile Top Header Bar */}
         {isMobile && (
