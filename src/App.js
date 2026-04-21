@@ -17146,7 +17146,7 @@ export default function ReapApp() {
         city: r.city || "",
         state: r.state || "",
         capRate: v(r.cap_rate),
-        dscr: v(r.dscr),
+        dscr: r.dscr != null && !isNaN(parseFloat(r.dscr)) ? parseFloat(parseFloat(r.dscr).toFixed(2)) : null,
         noiAnnual: v(r.noi_annual),
         noiMonthly: v(r.noi_monthly),
         noiPerSF: v(r.noi_per_sf),
