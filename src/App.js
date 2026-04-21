@@ -6781,6 +6781,49 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
   );
 }
 
+function PreviewOverlay({ onGetStarted, pageName }) {
+  const isMobile = window.innerWidth < 768;
+  return (
+    <div style={{ flex: 1, overflow: "auto", background: "linear-gradient(160deg, #0a0f1a 0%, #111827 40%, #0f172a 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobile ? "40px 20px 120px" : "60px 40px", fontFamily: "'DM Sans', sans-serif", textAlign: "center", minHeight: 0 }}>
+      <div style={{ width: 64, height: 64, borderRadius: 16, overflow: "hidden", marginBottom: 24, boxShadow: "0 4px 20px rgba(22,163,74,0.3)" }}>
+        <img src="/favicon.png" alt="REAP" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      </div>
+      <h1 style={{ fontSize: isMobile ? 26 : 34, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: "0 0 12px", letterSpacing: "-0.03em" }}>
+        {pageName === "realestate" ? "Your Deal Pipeline Awaits" : pageName === "contacts" ? "Your CRM is Ready" : "Unlock Full Access"}
+      </h1>
+      <p style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", margin: "0 0 32px", maxWidth: 380, lineHeight: 1.6 }}>
+        {pageName === "realestate"
+          ? "Analyze deals with AI underwriting, track your pipeline, and generate investment memos — all in one place."
+          : pageName === "contacts"
+          ? "Manage investors, lenders, buyers, and wholesalers. Build your network and close deals faster."
+          : "Get full access to REAP's powerful real estate analytics platform."}
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 320, marginBottom: 32 }}>
+        {[
+          pageName === "realestate" ? "AI-powered REAP Score on every deal" : "Contact & investor CRM",
+          pageName === "realestate" ? "Live financial metrics & cash flow" : "Track lenders, buyers & wholesalers",
+          pageName === "realestate" ? "Google Street View integration" : "Link deals to contacts",
+          pageName === "realestate" ? "Pipeline management & portfolios" : "Hot lead tracking & follow-ups",
+        ].map((feat, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left" }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth={2.5} style={{ flexShrink: 0 }}><polyline points="20 6 9 17 4 12"/></svg>
+            <span style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>{feat}</span>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={onGetStarted} style={{
+        width: "100%", maxWidth: 320, padding: "16px 24px", border: "none", borderRadius: 14,
+        background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff",
+        fontSize: 17, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+        boxShadow: "0 6px 24px rgba(22,163,74,0.4)", transition: "all 0.2s",
+      }}>Start Your First Deal</button>
+      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", margin: "12px 0 0" }}>Choose a plan to unlock full access</p>
+    </div>
+  );
+}
+
 function OnboardingScreen({ userName, onComplete, onCreateDeal }) {
   const [pageLoaded, setPageLoaded] = useState(false);
   const firstName = userName ? userName.split(" ")[0] : "there";
@@ -17682,9 +17725,6 @@ export default function ReapApp() {
 
   // Guard: if starter user has a restricted tab selected, reset to default
   useEffect(() => {
-    if (isPreviewMode && activeNav !== "commandcenter") {
-      setActiveNav("commandcenter");
-    }
     if (isStarterTier) {
       if (!STARTER_RE_TABS.includes(realEstateTab)) setRealEstateTab("dashboard");
       if (!STARTER_CONTACTS_TABS.includes(contactsTab)) setContactsTab("dashboard");
@@ -17808,7 +17848,7 @@ export default function ReapApp() {
             <div style={{ width: 36, height: 36, borderRadius: 10, overflow: "hidden", marginBottom: 16, boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>
               <img src="/favicon.png" alt="REAP" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             </div>
-            {(isPreviewMode ? navItems.filter(item => item.id === "commandcenter") : navItems).map(item => (
+            {navItems.map(item => (
               <button key={item.id} onClick={() => { setActiveNav(item.id); setShowProfile(false); }} title={item.label} style={{ width: 40, height: 40, borderRadius: 10, border: "none", background: activeNav === item.id && !showProfile ? (item.featured ? "linear-gradient(135deg, #16a34a, #15803d)" : "#f0fdf4") : "transparent", color: activeNav === item.id && !showProfile ? (item.featured ? "#fff" : "#16a34a") : "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s", boxShadow: activeNav === item.id && item.featured && !showProfile ? "0 2px 8px rgba(22,163,74,0.3)" : "none" }}>{item.icon}</button>
             ))}
             <div style={{ flex: 1 }} />
@@ -17841,6 +17881,8 @@ export default function ReapApp() {
               <ProfileView session={session} isMobile={true} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} onUpdateDataAccess={handleUpdateDataAccess} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
             ) : activeNav === "command" ? (
               <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
+            ) : activeNav === "contacts" && isPreviewMode ? (
+              <PreviewOverlay pageName="contacts" onGetStarted={() => setShowPaywall(true)} />
             ) : activeNav === "contacts" ? (
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                 <SubTabBar tabs={contactsTabs} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash("contacts/" + tab); }} title="Contacts" />
@@ -17867,6 +17909,8 @@ export default function ReapApp() {
                   }
                 </div>
               </div>
+            ) : activeNav === "realestate" && isPreviewMode ? (
+              <PreviewOverlay pageName="realestate" onGetStarted={() => setShowPaywall(true)} />
             ) : activeNav === "realestate" ? (
             <>
               {selectedDeal ? (
@@ -17914,6 +17958,8 @@ export default function ReapApp() {
               ? <ProfileView session={session} isMobile={false} isSubscribed={isSubscribed} trialDaysLeft={trialDaysLeft} onCheckout={handleCheckout} onSignOut={() => supabase.auth.signOut()} onClose={() => setShowProfile(false)} orgData={orgData} orgMembers={orgMembers} inviteEmail={inviteEmail} setInviteEmail={setInviteEmail} inviteSaving={inviteSaving} inviteSuccess={inviteSuccess} onInviteMember={handleInviteMember} onRemoveMember={handleRemoveMember} onUpdateDataAccess={handleUpdateDataAccess} features={features} featureFlags={featureFlags} onToggleFeature={handleToggleFeature} isAdmin={userEmail.toLowerCase() === PLATFORM_ADMIN_EMAIL} />
               : activeNav === "command"
               ? <CommandCenterView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} teamEmails={teamEmails} hasFullAccess={hasFullAccess} />
+              : activeNav === "realestate" && isPreviewMode
+              ? <PreviewOverlay pageName="realestate" onGetStarted={() => setShowPaywall(true)} />
               : activeNav === "realestate" && selectedDeal
               ? <DealDetailView deal={selectedDeal} onBack={handleBack} onEdit={() => setShowEditDeal(true)} isMobile={false} userEmail={userEmail} onUpdateDeal={fetchDeals} updateHash={updateHash} pendingDealTab={pendingDealTab} onClearPendingDealTab={() => setPendingDealTab(null)} orgData={orgData} orgMembers={orgMembers} hasFullAccess={hasFullAccess} />
               : activeNav === "realestate" && selectedMLSListing
@@ -17938,6 +17984,8 @@ export default function ReapApp() {
                     }
                   </div>
                 </div>
+              : activeNav === "contacts" && isPreviewMode
+              ? <PreviewOverlay pageName="contacts" onGetStarted={() => setShowPaywall(true)} />
               : activeNav === "contacts"
               ? <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                   <SubTabBar tabs={contactsTabs} active={contactsTab} onChange={(tab) => { setContactsTab(tab); updateHash("contacts/" + tab); }} title="Contacts" />
@@ -17988,7 +18036,7 @@ export default function ReapApp() {
             boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)",
             border: "1px solid rgba(0,0,0,0.06)",
           }}>
-            {(() => { let bottomItems = [...navItems.filter(item => item.mobileBottom !== false)].sort((a, b) => (a.mobileOrder ?? 99) - (b.mobileOrder ?? 99)); if (isPreviewMode) bottomItems = bottomItems.filter(item => item.id === "commandcenter"); return bottomItems; })().map(item => {
+            {(() => { let bottomItems = [...navItems.filter(item => item.mobileBottom !== false)].sort((a, b) => (a.mobileOrder ?? 99) - (b.mobileOrder ?? 99)); return bottomItems; })().map(item => {
               const isActive = activeNav === item.id && !showProfile;
               if (item.featured) {
                 return (
@@ -18098,7 +18146,7 @@ export default function ReapApp() {
 
             {/* Drawer Nav Items */}
             <div style={{ flex: 1, padding: "12px 12px", overflow: "auto" }}>
-              {(isPreviewMode ? navItems.filter(item => item.id === "commandcenter") : navItems).map(item => {
+              {navItems.map(item => {
                 const isActive = activeNav === item.id && !showProfile;
                 return (
                   <button key={item.id} onClick={() => {
