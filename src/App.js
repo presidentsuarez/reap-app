@@ -10275,6 +10275,11 @@ function AdminView({ session, isMobile }) {
   const [newOrgTier, setNewOrgTier] = useState("team");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [promoCodes, setPromoCodes] = useState([]);
+  const [promoRedemptions, setPromoRedemptions] = useState([]);
+  const [editingPromo, setEditingPromo] = useState(null);
+  const [newPromoModal, setNewPromoModal] = useState(false);
+  const [newPromo, setNewPromo] = useState({ code: "", description: "", trial_days: 14, requires_card: false, max_uses: "", is_active: true, expires_at: "" });
 
   const fetchUsers = async () => {
     const { data, error } = await supabase.rpc("admin_get_all_users");
@@ -10286,10 +10291,16 @@ function AdminView({ session, isMobile }) {
     if (error) { console.error("Admin orgs error:", error); setMsg("Error: " + error.message); }
     else setOrgs(data || []);
   };
+  const fetchPromoCodes = async () => {
+    const { data } = await supabase.from("promo_codes").select("*").order("created_at", { ascending: false });
+    if (data) setPromoCodes(data);
+    const { data: redemptions } = await supabase.from("promo_redemptions").select("*").order("redeemed_at", { ascending: false });
+    if (redemptions) setPromoRedemptions(redemptions);
+  };
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchUsers(), fetchOrgs()]).finally(() => setLoading(false));
+    Promise.all([fetchUsers(), fetchOrgs(), fetchPromoCodes()]).finally(() => setLoading(false));
   }, []);
 
   const handleSaveUser = async () => {
@@ -10399,6 +10410,7 @@ function AdminView({ session, isMobile }) {
         <div style={{ display: "flex", gap: 0 }}>
           <button onClick={() => setTab("users")} style={tStyle("users")}>Users ({users.length})</button>
           <button onClick={() => setTab("orgs")} style={tStyle("orgs")}>Organizations ({orgs.length})</button>
+          <button onClick={() => setTab("promos")} style={tStyle("promos")}>Promo Codes ({promoCodes.length})</button>
         </div>
       </div>
 
@@ -10564,6 +10576,132 @@ function AdminView({ session, isMobile }) {
                   <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                     <button onClick={() => setNewOrgModal(false)} style={btnS}>Cancel</button>
                     <button onClick={handleCreateOrg} disabled={saving || !newOrgName || !newOrgOwner} style={{ ...btnP, opacity: !newOrgName || !newOrgOwner ? 0.5 : 1 }}>{saving ? "Creating..." : "Create"}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === "promos" && (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>Manage promo and trial codes. {promoRedemptions.length} total redemptions.</div>
+              <button onClick={() => { setNewPromo({ code: "", description: "", trial_days: 14, requires_card: false, max_uses: "", is_active: true, expires_at: "" }); setNewPromoModal(true); }} style={{ padding: "8px 16px", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ New Code</button>
+            </div>
+
+            {/* Codes Table */}
+            {promoCodes.map(pc => {
+              const redemptionsForCode = promoRedemptions.filter(r => r.promo_code_id === pc.id);
+              const isEditing = editingPromo?.id === pc.id;
+              return (
+                <div key={pc.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", letterSpacing: "0.04em" }}>{pc.code}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: pc.is_active ? "#f0fdf4" : "#fef2f2", color: pc.is_active ? "#16a34a" : "#dc2626", border: "1px solid " + (pc.is_active ? "#bbf7d0" : "#fecaca") }}>{pc.is_active ? "ACTIVE" : "DISABLED"}</span>
+                        {pc.requires_card && <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a" }}>CARD REQ</span>}
+                      </div>
+                      <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 4px" }}>{pc.description || "No description"}</p>
+                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: "#94a3b8" }}>
+                        <span>{pc.trial_days}d trial</span>
+                        <span>{pc.times_used}{pc.max_uses ? "/" + pc.max_uses : ""} used</span>
+                        <span>{redemptionsForCode.length} redeemed</span>
+                        {pc.expires_at && <span>Expires {new Date(pc.expires_at).toLocaleDateString()}</span>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => setEditingPromo(isEditing ? null : { ...pc })} style={{ padding: "6px 12px", fontSize: 11, fontWeight: 600, border: "1px solid #e2e8f0", borderRadius: 6, background: isEditing ? "#f0fdf4" : "#fff", color: isEditing ? "#16a34a" : "#64748b", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{isEditing ? "Cancel" : "Edit"}</button>
+                      <button onClick={async () => { await supabase.from("promo_codes").update({ is_active: !pc.is_active }).eq("id", pc.id); fetchPromoCodes(); setMsg(pc.is_active ? "Code disabled" : "Code enabled"); setTimeout(() => setMsg(""), 2000); }} style={{ padding: "6px 12px", fontSize: 11, fontWeight: 600, border: "1px solid " + (pc.is_active ? "#fecaca" : "#bbf7d0"), borderRadius: 6, background: pc.is_active ? "#fef2f2" : "#f0fdf4", color: pc.is_active ? "#dc2626" : "#16a34a", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{pc.is_active ? "Disable" : "Enable"}</button>
+                    </div>
+                  </div>
+
+                  {/* Edit Form */}
+                  {isEditing && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #f1f5f9", display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Description</label>
+                        <input value={editingPromo.description || ""} onChange={e => setEditingPromo({ ...editingPromo, description: e.target.value })} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Trial Days</label>
+                        <input type="number" value={editingPromo.trial_days} onChange={e => setEditingPromo({ ...editingPromo, trial_days: parseInt(e.target.value) || 14 })} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, fontFamily: "'DM Mono', monospace", boxSizing: "border-box" }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Max Uses (blank = unlimited)</label>
+                        <input type="number" value={editingPromo.max_uses || ""} onChange={e => setEditingPromo({ ...editingPromo, max_uses: e.target.value ? parseInt(e.target.value) : null })} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, fontFamily: "'DM Mono', monospace", boxSizing: "border-box" }} placeholder="Unlimited" />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Expires At</label>
+                        <input type="date" value={editingPromo.expires_at ? editingPromo.expires_at.split("T")[0] : ""} onChange={e => setEditingPromo({ ...editingPromo, expires_at: e.target.value ? new Date(e.target.value).toISOString() : null })} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+                      </div>
+                      <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#334155", cursor: "pointer" }}>
+                          <input type="checkbox" checked={editingPromo.requires_card} onChange={e => setEditingPromo({ ...editingPromo, requires_card: e.target.checked })} /> Requires Card
+                        </label>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "flex-end" }}>
+                        <button onClick={async () => { setSaving(true); const { error } = await supabase.from("promo_codes").update({ description: editingPromo.description, trial_days: editingPromo.trial_days, max_uses: editingPromo.max_uses, requires_card: editingPromo.requires_card, expires_at: editingPromo.expires_at }).eq("id", editingPromo.id); setSaving(false); if (error) { setMsg("Error: " + error.message); } else { setMsg("Code updated"); setEditingPromo(null); fetchPromoCodes(); } setTimeout(() => setMsg(""), 2000); }} disabled={saving} style={{ padding: "8px 20px", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{saving ? "Saving..." : "Save"}</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Redemptions */}
+                  {redemptionsForCode.length > 0 && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f1f5f9" }}>
+                      <p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 6px" }}>Redemptions</p>
+                      {redemptionsForCode.map(r => (
+                        <div key={r.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", padding: "3px 0" }}>
+                          <span>{r.user_email}</span>
+                          <span>{new Date(r.redeemed_at).toLocaleDateString()} — expires {r.trial_ends_at ? new Date(r.trial_ends_at).toLocaleDateString() : "—"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* New Code Modal */}
+            {newPromoModal && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setNewPromoModal(false)}>
+                <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, padding: 24, maxWidth: 420, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 16px", fontFamily: "'DM Sans', sans-serif" }}>Create Promo Code</h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div>
+                      <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Code</label>
+                      <input value={newPromo.code} onChange={e => setNewPromo({ ...newPromo, code: e.target.value.toUpperCase() })} placeholder="e.g. REAP2026" style={{ width: "100%", padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Description</label>
+                      <input value={newPromo.description} onChange={e => setNewPromo({ ...newPromo, description: e.target.value })} placeholder="Internal note" style={{ width: "100%", padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Trial Days</label>
+                        <input type="number" value={newPromo.trial_days} onChange={e => setNewPromo({ ...newPromo, trial_days: parseInt(e.target.value) || 14 })} style={{ width: "100%", padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, fontFamily: "'DM Mono', monospace", boxSizing: "border-box" }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Max Uses</label>
+                        <input type="number" value={newPromo.max_uses} onChange={e => setNewPromo({ ...newPromo, max_uses: e.target.value })} placeholder="Unlimited" style={{ width: "100%", padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, fontFamily: "'DM Mono', monospace", boxSizing: "border-box" }} />
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Expires At</label>
+                        <input type="date" value={newPromo.expires_at} onChange={e => setNewPromo({ ...newPromo, expires_at: e.target.value })} style={{ width: "100%", padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+                      </div>
+                      <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 10 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#334155", cursor: "pointer" }}>
+                          <input type="checkbox" checked={newPromo.requires_card} onChange={e => setNewPromo({ ...newPromo, requires_card: e.target.checked })} /> Requires Card
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+                    <button onClick={() => setNewPromoModal(false)} style={{ padding: "10px 20px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                    <button onClick={async () => { if (!newPromo.code.trim()) { setMsg("Code is required"); return; } setSaving(true); const payload = { code: newPromo.code.trim(), description: newPromo.description, trial_days: newPromo.trial_days, requires_card: newPromo.requires_card, max_uses: newPromo.max_uses ? parseInt(newPromo.max_uses) : null, is_active: true, expires_at: newPromo.expires_at ? new Date(newPromo.expires_at).toISOString() : null, created_by: session?.user?.email }; const { error } = await supabase.from("promo_codes").insert(payload); setSaving(false); if (error) { setMsg("Error: " + error.message); } else { setMsg("Code created!"); setNewPromoModal(false); fetchPromoCodes(); } setTimeout(() => setMsg(""), 3000); }} disabled={saving} style={{ padding: "10px 24px", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{saving ? "Creating..." : "Create Code"}</button>
                   </div>
                 </div>
               </div>
