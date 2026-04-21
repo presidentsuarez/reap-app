@@ -6685,28 +6685,35 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
       </div>
 
       {/* Tier Toggle */}
-      <div style={{
-        display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: 30, padding: 4,
-        marginBottom: 28, border: "1px solid rgba(255,255,255,0.1)",
-      }}>
-        {Object.entries(tiers).map(([key, t]) => (
-          <button key={key} onClick={() => setActiveTier(key)} style={{
-            padding: isMobile ? "10px 24px" : "10px 36px", borderRadius: 26, border: "none",
-            background: activeTier === key ? t.btnGradient : "transparent",
-            color: activeTier === key ? "#fff" : "rgba(255,255,255,0.5)",
-            fontSize: 14, fontWeight: 700, cursor: "pointer",
-            fontFamily: "'DM Sans', sans-serif", transition: "all 0.3s",
-            boxShadow: activeTier === key ? "0 4px 16px rgba(0,0,0,0.3)" : "none",
-            textTransform: "uppercase", letterSpacing: "0.04em",
-          }}>{t.label}</button>
-        ))}
+      {/* Tier Toggle */}
+      <div style={{ position: "relative", marginBottom: 28 }}>
+        <div style={{
+          display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: 30, padding: 4,
+          border: "1px solid rgba(255,255,255,0.1)",
+        }}>
+          {Object.entries(tiers).map(([key, t]) => (
+            <button key={key} onClick={() => setActiveTier(key)} style={{
+              padding: isMobile ? "10px 22px" : "10px 36px", borderRadius: 26, border: "none",
+              background: activeTier === key ? t.btnGradient : "transparent",
+              color: activeTier === key ? "#fff" : "rgba(255,255,255,0.5)",
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              fontFamily: "'DM Sans', sans-serif", transition: "all 0.3s",
+              boxShadow: activeTier === key ? "0 4px 16px rgba(0,0,0,0.3)" : "none",
+              textTransform: "uppercase", letterSpacing: "0.04em",
+              position: "relative",
+            }}>
+              {t.label}
+              {key === "pro" && <span style={{ position: "absolute", top: -18, left: "50%", transform: "translateX(-50%)", fontSize: 8, fontWeight: 700, color: "#d97706", letterSpacing: "0.06em", whiteSpace: "nowrap", textTransform: "uppercase" }}>Most Popular</span>}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Plan Card */}
       <div style={{
         width: "100%", maxWidth: 420, borderRadius: 20,
         background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-        padding: isMobile ? "28px 20px" : "32px 28px", marginBottom: 20,
+        padding: isMobile ? "24px 20px" : "28px 24px", marginBottom: 16,
         backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
@@ -6717,7 +6724,7 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
         <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: "0 0 20px" }}>Everything you need to underwrite deals faster.</p>
 
         {/* Features */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {tier.features.map((feat, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: i === 0 && activeTier !== "starter" ? tier.color : "rgba(255,255,255,0.6)", fontWeight: i === 0 && activeTier !== "starter" ? 700 : 400 }}>
               {(i === 0 && activeTier !== "starter") ? null : <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={tier.color} strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>}
