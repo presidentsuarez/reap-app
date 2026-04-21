@@ -6675,35 +6675,35 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
     <div style={{
       minHeight: "100vh", background: tier.gradient, transition: "background 0.5s ease",
       display: "flex", flexDirection: "column", alignItems: "center",
-      padding: isMobile ? "40px 16px 40px" : "50px 24px 50px",
-      fontFamily: "'DM Sans', sans-serif", overflowY: "auto",
+      padding: isMobile ? "40px 14px 40px" : "50px 24px 50px",
+      fontFamily: "'DM Sans', sans-serif", overflowY: "auto", overflowX: "hidden",
+      boxSizing: "border-box", width: "100%",
     }}>
       {/* Close / Already subscribed */}
       <div style={{ position: "absolute", top: 16, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        {onDismiss ? <button onClick={onDismiss} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 22, cursor: "pointer", padding: 8 }}>&times;</button> : <div />}
-        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Already subscribed?</span>
+        <button onClick={() => { if (onDismiss) onDismiss(); else window.location.reload(); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 22, cursor: "pointer", padding: 8 }}>&times;</button>
+        <button onClick={() => { if (onDismiss) onDismiss(); else window.location.reload(); }} style={{ background: "none", border: "none", fontSize: 12, color: "rgba(255,255,255,0.4)", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Already subscribed?</button>
       </div>
 
       {/* Tier Toggle */}
-      {/* Tier Toggle */}
-      <div style={{ position: "relative", marginBottom: 28 }}>
+      <div style={{ marginBottom: 24 }}>
         <div style={{
           display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: 30, padding: 4,
           border: "1px solid rgba(255,255,255,0.1)",
         }}>
           {Object.entries(tiers).map(([key, t]) => (
             <button key={key} onClick={() => setActiveTier(key)} style={{
-              padding: isMobile ? "10px 22px" : "10px 36px", borderRadius: 26, border: "none",
+              padding: isMobile ? "8px 20px" : "10px 36px", borderRadius: 26, border: "none",
               background: activeTier === key ? t.btnGradient : "transparent",
               color: activeTier === key ? "#fff" : "rgba(255,255,255,0.5)",
               fontSize: 13, fontWeight: 700, cursor: "pointer",
               fontFamily: "'DM Sans', sans-serif", transition: "all 0.3s",
               boxShadow: activeTier === key ? "0 4px 16px rgba(0,0,0,0.3)" : "none",
               textTransform: "uppercase", letterSpacing: "0.04em",
-              position: "relative",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
             }}>
-              {t.label}
-              {key === "pro" && <span style={{ position: "absolute", top: -18, left: "50%", transform: "translateX(-50%)", fontSize: 8, fontWeight: 700, color: "#d97706", letterSpacing: "0.06em", whiteSpace: "nowrap", textTransform: "uppercase" }}>Most Popular</span>}
+              <span>{t.label}</span>
+              {key === "pro" && <span style={{ fontSize: 7, fontWeight: 700, color: activeTier === "pro" ? "rgba(255,255,255,0.7)" : "#d97706", letterSpacing: "0.06em", textTransform: "uppercase", lineHeight: 1 }}>Most Popular</span>}
             </button>
           ))}
         </div>
@@ -6711,7 +6711,7 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
 
       {/* Plan Card */}
       <div style={{
-        width: "100%", maxWidth: 420, borderRadius: 20,
+        width: "100%", maxWidth: 420, borderRadius: 20, boxSizing: "border-box",
         background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
         padding: isMobile ? "24px 20px" : "28px 24px", marginBottom: 16,
         backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
@@ -6735,7 +6735,7 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
       </div>
 
       {/* Price Card */}
-      <div style={{ width: "100%", maxWidth: 420, marginBottom: 16 }}>
+      <div style={{ width: "100%", maxWidth: 420, marginBottom: 12, boxSizing: "border-box" }}>
         <div style={{
           border: "2px solid " + tier.color + "60", borderRadius: 14,
           padding: "16px 20px", marginBottom: 10,
@@ -6752,7 +6752,7 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
 
       {/* CTA */}
       <button onClick={() => { if (tier.stripeUrl) window.open(tier.stripeUrl, "_blank"); else onCheckout(); }} disabled={checkoutLoading} style={{
-        width: "100%", maxWidth: 420, padding: "16px 24px", border: "none", borderRadius: 14,
+        width: "100%", maxWidth: 420, padding: "16px 24px", boxSizing: "border-box", border: "none", borderRadius: 14,
         background: tier.btnGradient, color: "#fff", fontSize: 17, fontWeight: 700,
         cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
         boxShadow: "0 6px 24px " + tier.color + "40",
@@ -6760,7 +6760,7 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
       }}>{checkoutLoading ? "Loading..." : "Get Started"}</button>
 
       {/* Promo Code */}
-      <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
+      <div style={{ width: "100%", maxWidth: 420, textAlign: "center", boxSizing: "border-box" }}>
         <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", margin: "0 0 8px" }}>Have a promo or trial code?</p>
         <div style={{ display: "flex", gap: 8 }}>
           <input value={promoCode} onChange={e => setPromoCode(e.target.value.toUpperCase())} placeholder="Enter code" onKeyDown={e => { if (e.key === "Enter") redeemCode(); }} style={{ flex: 1, padding: "10px 14px", fontSize: 14, fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#fff", outline: "none" }} />
