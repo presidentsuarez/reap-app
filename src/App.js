@@ -6690,21 +6690,25 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
           display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: 30, padding: 4,
           border: "1px solid rgba(255,255,255,0.1)",
         }}>
-          {Object.entries(tiers).map(([key, t]) => (
-            <button key={key} onClick={() => setActiveTier(key)} style={{
+          {Object.entries(tiers).map(([key, t]) => {
+            const isLocked = key === "pro" || key === "team";
+            return (
+            <button key={key} onClick={() => { if (!isLocked) setActiveTier(key); }} style={{
               padding: isMobile ? "8px 20px" : "10px 36px", borderRadius: 26, border: "none",
-              background: activeTier === key ? t.btnGradient : "transparent",
-              color: activeTier === key ? "#fff" : "rgba(255,255,255,0.5)",
-              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              background: activeTier === key && !isLocked ? t.btnGradient : "transparent",
+              color: isLocked ? "rgba(255,255,255,0.2)" : (activeTier === key ? "#fff" : "rgba(255,255,255,0.5)"),
+              fontSize: 13, fontWeight: 700, cursor: isLocked ? "default" : "pointer",
               fontFamily: "'DM Sans', sans-serif", transition: "all 0.3s",
-              boxShadow: activeTier === key ? "0 4px 16px rgba(0,0,0,0.3)" : "none",
+              boxShadow: activeTier === key && !isLocked ? "0 4px 16px rgba(0,0,0,0.3)" : "none",
               textTransform: "uppercase", letterSpacing: "0.04em",
               display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
+              opacity: isLocked ? 0.5 : 1, textDecoration: isLocked ? "line-through" : "none",
             }}>
               <span>{t.label}</span>
-              {key === "pro" && <span style={{ fontSize: 7, fontWeight: 700, color: activeTier === "pro" ? "rgba(255,255,255,0.7)" : "#d97706", letterSpacing: "0.06em", textTransform: "uppercase", lineHeight: 1 }}>Most Popular</span>}
+              {isLocked && <span style={{ fontSize: 7, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.06em", textTransform: "uppercase", lineHeight: 1, textDecoration: "none" }}>Coming Soon</span>}
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -17678,12 +17682,15 @@ export default function ReapApp() {
 
   // Guard: if starter user has a restricted tab selected, reset to default
   useEffect(() => {
+    if (isPreviewMode && activeNav !== "commandcenter") {
+      setActiveNav("commandcenter");
+    }
     if (isStarterTier) {
       if (!STARTER_RE_TABS.includes(realEstateTab)) setRealEstateTab("dashboard");
       if (!STARTER_CONTACTS_TABS.includes(contactsTab)) setContactsTab("dashboard");
       if (!STARTER_NAV_IDS.includes(activeNav)) setActiveNav("command");
     }
-  }, [isStarterTier, realEstateTab, contactsTab, activeNav]);
+  }, [isStarterTier, isPreviewMode, realEstateTab, contactsTab, activeNav]);
 
   if (authLoading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
@@ -17801,7 +17808,7 @@ export default function ReapApp() {
             <div style={{ width: 36, height: 36, borderRadius: 10, overflow: "hidden", marginBottom: 16, boxShadow: "0 2px 10px rgba(22,163,74,0.3)" }}>
               <img src="/favicon.png" alt="REAP" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             </div>
-            {navItems.map(item => (
+            {(isPreviewMode ? navItems.filter(item => item.id === "commandcenter") : navItems).map(item => (
               <button key={item.id} onClick={() => { setActiveNav(item.id); setShowProfile(false); }} title={item.label} style={{ width: 40, height: 40, borderRadius: 10, border: "none", background: activeNav === item.id && !showProfile ? (item.featured ? "linear-gradient(135deg, #16a34a, #15803d)" : "#f0fdf4") : "transparent", color: activeNav === item.id && !showProfile ? (item.featured ? "#fff" : "#16a34a") : "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s", boxShadow: activeNav === item.id && item.featured && !showProfile ? "0 2px 8px rgba(22,163,74,0.3)" : "none" }}>{item.icon}</button>
             ))}
             <div style={{ flex: 1 }} />
@@ -17981,7 +17988,7 @@ export default function ReapApp() {
             boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)",
             border: "1px solid rgba(0,0,0,0.06)",
           }}>
-            {(() => { const bottomItems = [...navItems.filter(item => item.mobileBottom !== false)].sort((a, b) => (a.mobileOrder ?? 99) - (b.mobileOrder ?? 99)); return bottomItems; })().map(item => {
+            {(() => { let bottomItems = [...navItems.filter(item => item.mobileBottom !== false)].sort((a, b) => (a.mobileOrder ?? 99) - (b.mobileOrder ?? 99)); if (isPreviewMode) bottomItems = bottomItems.filter(item => item.id === "commandcenter"); return bottomItems; })().map(item => {
               const isActive = activeNav === item.id && !showProfile;
               if (item.featured) {
                 return (
@@ -18091,7 +18098,7 @@ export default function ReapApp() {
 
             {/* Drawer Nav Items */}
             <div style={{ flex: 1, padding: "12px 12px", overflow: "auto" }}>
-              {navItems.map(item => {
+              {(isPreviewMode ? navItems.filter(item => item.id === "commandcenter") : navItems).map(item => {
                 const isActive = activeNav === item.id && !showProfile;
                 return (
                   <button key={item.id} onClick={() => {
