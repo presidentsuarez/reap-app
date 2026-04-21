@@ -17717,7 +17717,7 @@ export default function ReapApp() {
     );
   }
 
-  if (showPaywall) return <PricingScreen userEmail={session?.user?.email} daysLeft={trialDaysLeft} onCheckout={handleCheckout} checkoutLoading={checkoutLoading} session={session} onDismiss={trialDaysLeft > 0 ? () => { setShowPaywall(false); const onboarded = localStorage.getItem("reap_onboarded"); if (!onboarded) setShowOnboarding(true); } : null} />;
+  if (showPaywall) return <PricingScreen userEmail={session?.user?.email} daysLeft={trialDaysLeft} onCheckout={handleCheckout} checkoutLoading={checkoutLoading} session={session} onDismiss={() => { setShowPaywall(false); }} />;
 
   return (
     <>
