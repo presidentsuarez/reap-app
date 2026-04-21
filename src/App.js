@@ -7409,10 +7409,10 @@ function CommandCenterView({ deals, loading, onSelectDeal, isMobile, session, te
         @keyframes ccGlow { 0%,100% { box-shadow: 0 0 20px rgba(22,163,74,0.1); } 50% { box-shadow: 0 0 40px rgba(22,163,74,0.2); } }
       `}</style>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: isMobile ? "0 0 160px" : "0 24px 60px", overflowX: "hidden" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: isMobile ? "0 0 160px" : "0 24px 60px" }}>
 
         {/* ═══ HERO HEADER ═══ */}
-        <div style={{ padding: isMobile ? "20px 14px 0" : "40px 12px 0", position: "relative" }}>
+        <div style={{ padding: isMobile ? "20px 16px 0" : "40px 12px 0", position: "relative" }}>
           <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 12 : 0, marginBottom: 24 }}>
             <div>
               <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: "0 0 4px", fontWeight: 500 }}>{greeting}, {firstName}</p>
