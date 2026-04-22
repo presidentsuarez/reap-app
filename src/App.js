@@ -2770,7 +2770,8 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
   const fetchRequests = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await supabase.from("financing_requests").select("*").eq("deal_address", dealAddress).eq("financing_type", financingType).order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("financing_requests").select("*").eq("deal_address", dealAddress).eq("financing_type", financingType).order("created_at", { ascending: false });
+      if (error) console.error("Financing fetch error:", error);
       setRequests(data || []);
     } catch (e) { console.error("Fetch financing requests:", e); }
     finally { setLoading(false); }
@@ -2819,8 +2820,8 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
     try {
       const calcs = calcLoan(form);
       const payload = { deal_address: dealAddress, financing_type: financingType, status: form.status, contact_id: form.contact_id || null, lender_name: form.lender_name, company_name: form.company_name, term_months: parseInt(form.term_months) || 0, acq_financed_pct: parseFloat(form.acq_financed_pct) || 0, reno_financed_pct: parseFloat(form.reno_financed_pct) || 0, interest_rate: parseFloat(form.interest_rate) || 0, points_pct: parseFloat(form.points_pct) || 0, interest_reserve_months: parseInt(form.interest_reserve_months) || 0, inspection_fee: parseFloat(form.inspection_fee) || 0, loan_doc_fee: parseFloat(form.loan_doc_fee) || 0, draw_fee: parseFloat(form.draw_fee) || 0, broker_fee: calcs.broker_fee_amount || 0, estimated_title_fees: parseFloat(form.estimated_title_fees) || 0, required_liquidity: parseFloat(form.required_liquidity) || 0, notes: form.notes, ...calcs, org_id: orgId || null, created_by: userEmail };
-      if (editingReq) { await supabase.from("financing_requests").update(payload).eq("id", editingReq.id); }
-      else { await supabase.from("financing_requests").insert(payload); }
+      if (editingReq) { const { error } = await supabase.from("financing_requests").update(payload).eq("id", editingReq.id); if (error) throw error; }
+      else { const { error } = await supabase.from("financing_requests").insert(payload); if (error) throw error; }
       await fetchRequests(); resetForm();
     } catch (e) { alert("Error: " + e.message); }
     finally { setSaving(false); }
