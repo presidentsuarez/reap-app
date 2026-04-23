@@ -845,6 +845,8 @@ function UWTag({ children, color, bg }) {
 
 function AIUnderwritingTab({ deal, isMobile, isStarter }) {
   var hoveredCta = null;
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({});
 
   var reapScore = num(deal.reapScore) || 0;
   var proRevenue = num(deal.proformaRevenueAnnual) || 0;
@@ -887,8 +889,6 @@ function AIUnderwritingTab({ deal, isMobile, isStarter }) {
             <h3 style={sectionLabel}>Property Profile <span style={dividerStyle} /></h3>
           </div>
           {(() => {
-            const [editingProfile, setEditingProfile] = useState(false);
-            const [profileForm, setProfileForm] = useState({});
             const startEdit = () => { setProfileForm({ type: deal.type || "", units: deal.units || "", sqft: deal.sqft || "", sqftGross: deal.sqftGross || "", bedrooms: deal.bedrooms || "", bathroomsFull: deal.bathroomsFull || "", bathroomsHalf: deal.bathroomsHalf || "", yearBuilt: deal.yearBuilt || "", class: deal.class || "", zip: deal.zip || "", lotAcres: deal.lotAcres || "", county: deal.county || "" }); setEditingProfile(true); };
             const saveProfile = async () => {
               try {
