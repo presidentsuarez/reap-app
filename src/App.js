@@ -3111,12 +3111,16 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [activeTab, setActiveTab] = useState("overview");
   const [heroMapMode, setHeroMapMode] = useState("street");
   const [scrolled, setScrolled] = useState(false);
+  const [researchSub, setResearchSub] = useState("rental");
+  const [aiEstimates, setAiEstimates] = useState(null);
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [applyMsg, setApplyMsg] = useState("");
   const scrollRef = useRef(null);
   const hasMlsSource = deal?.source === "MLS Feed" || deal?.metadata?.mls_number;
   const dealTier = orgData?.plan_tier || "starter";
   const isDealStarter = getTierRank(dealTier) <= 1;
   const starterExcludedDealTabs = ["offerings", "ai summary", "tasks", "documents", "shared deal", "investor updates"];
-  const allDealTabs = ["overview", "cash flow", "financing", "equity", "improvements", "units", ...(hasMlsSource ? ["mls"] : []), "offerings", "ai summary", "tasks", "documents", "shared deal", "activity log", "investor updates"];
+  const allDealTabs = ["overview", "research", "cash flow", "financing", "equity", "improvements", "ai estimate", "units", ...(hasMlsSource ? ["mls"] : []), "offerings", "ai summary", "tasks", "documents", "shared deal", "activity log", "investor updates"];
   const tabs = isDealStarter ? allDealTabs.filter(t => !starterExcludedDealTabs.includes(t)) : allDealTabs;
 
   // Resolve pending deal tab from URL
@@ -4067,6 +4071,156 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
           <AIUnderwritingTab deal={deal} isMobile={isMobile} isStarter={isDealStarter} />
         )}
 
+        {/* ── RESEARCH TAB ── */}
+        {activeTab === "research" && (() => {
+          const subTabs = [
+            { id: "rental", label: "Rental Pricing" },
+            { id: "comps", label: "Comparable Sales" },
+            { id: "improvements", label: "Improvements" },
+            { id: "reapscore", label: "REAP Score" },
+          ];
+
+          const purchase = num(deal.offer) || num(deal.askingPrice) || 0;
+          const improv = num(deal.improvementBudget) || 0;
+          const arv = num(deal.arv) || 0;
+          const sqft = num(deal.sqft) || 0;
+          const closingPct = num(deal.closingCostPct) || num(deal.acqCostToClose) || 0;
+          const projProfit = arv > 0 ? arv - purchase - improv - (purchase * closingPct / 100) : 0;
+
+          return (
+            <div style={{ padding: isMobile ? "0" : "0" }}>
+              {/* Sub-tab bar */}
+              <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: "1px solid #e2e8f0", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                {subTabs.map(t => (
+                  <button key={t.id} onClick={() => setResearchSub(t.id)} style={{ background: "transparent", border: "none", borderBottom: researchSub === t.id ? "2px solid #16a34a" : "2px solid transparent", padding: isMobile ? "10px 14px" : "10px 20px", color: researchSub === t.id ? "#16a34a" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: -1, whiteSpace: "nowrap", flexShrink: 0, transition: "all 0.15s" }}>{t.label}</button>
+                ))}
+              </div>
+
+              {/* RENTAL PRICING */}
+              {researchSub === "rental" && (
+                <div>
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Rental Market Analysis <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+                    <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <p style={{ fontSize: 9, color: "#16a34a", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Proforma Rent/SF</p>
+                      <p style={{ fontSize: 22, fontWeight: 700, color: "#15803d", fontFamily: "'DM Mono', monospace", margin: 0 }}>${num(deal.proformaRentPerSF) ? parseFloat(deal.proformaRentPerSF).toFixed(2) : "—"}</p>
+                    </div>
+                    <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <p style={{ fontSize: 9, color: "#2563eb", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Monthly Revenue</p>
+                      <p style={{ fontSize: 22, fontWeight: 700, color: "#1d4ed8", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmt(deal.proformaRevenueMonthly)}</p>
+                    </div>
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <p style={{ fontSize: 9, color: "#64748b", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Annual Revenue</p>
+                      <p style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmt(deal.proformaRevenueAnnual)}</p>
+                    </div>
+                  </div>
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+                    <p style={{ fontSize: 12, color: "#64748b", margin: 0, lineHeight: 1.6 }}>Rental pricing research will analyze comparable properties in the area, current market rents, vacancy rates, and rental trends to validate your proforma assumptions. <strong style={{ color: "#0f172a" }}>AI-powered research coming soon.</strong></p>
+                  </div>
+                </div>
+              )}
+
+              {/* COMPARABLE SALES */}
+              {researchSub === "comps" && (
+                <div>
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Comparable Sales <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <p style={{ fontSize: 9, color: "#64748b", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Our Offer/SF</p>
+                      <p style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{sqft > 0 && purchase > 0 ? "$" + (purchase / sqft).toFixed(0) : "—"}</p>
+                    </div>
+                    <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <p style={{ fontSize: 9, color: "#2563eb", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>ARV/SF</p>
+                      <p style={{ fontSize: 20, fontWeight: 700, color: "#1d4ed8", fontFamily: "'DM Mono', monospace", margin: 0 }}>{sqft > 0 && arv > 0 ? "$" + (arv / sqft).toFixed(0) : "—"}</p>
+                    </div>
+                    <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <p style={{ fontSize: 9, color: "#16a34a", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Spread</p>
+                      <p style={{ fontSize: 20, fontWeight: 700, color: "#15803d", fontFamily: "'DM Mono', monospace", margin: 0 }}>{sqft > 0 && arv > 0 && purchase > 0 ? "$" + ((arv - purchase) / sqft).toFixed(0) + "/sf" : "—"}</p>
+                    </div>
+                  </div>
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+                    <p style={{ fontSize: 12, color: "#64748b", margin: 0, lineHeight: 1.6 }}>Comparable sales research will analyze recent transactions in the area, price per square foot trends, and market conditions to validate your ARV. <strong style={{ color: "#0f172a" }}>AI-powered comp analysis coming soon.</strong></p>
+                  </div>
+                </div>
+              )}
+
+              {/* IMPROVEMENTS RESEARCH */}
+              {researchSub === "improvements" && (
+                <div>
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>Improvements Research <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <p style={{ fontSize: 9, color: "#64748b", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Budget</p>
+                      <p style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmt(deal.improvementBudget)}</p>
+                    </div>
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <p style={{ fontSize: 9, color: "#64748b", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Budget/SF</p>
+                      <p style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{sqft > 0 && num(deal.improvementBudget) > 0 ? "$" + (num(deal.improvementBudget) / sqft).toFixed(0) : "—"}</p>
+                    </div>
+                    <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <p style={{ fontSize: 9, color: "#d97706", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Value Add</p>
+                      <p style={{ fontSize: 20, fontWeight: 700, color: "#b45309", fontFamily: "'DM Mono', monospace", margin: 0 }}>{arv > 0 && purchase > 0 ? fmt(arv - purchase) : "—"}</p>
+                    </div>
+                  </div>
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+                    <p style={{ fontSize: 12, color: "#64748b", margin: 0, lineHeight: 1.6 }}>Improvements research will estimate rehab costs based on property condition, local contractor rates, and scope of work. <strong style={{ color: "#0f172a" }}>AI-powered cost estimates coming soon.</strong></p>
+                  </div>
+                </div>
+              )}
+
+              {/* REAP SCORE BREAKDOWN */}
+              {researchSub === "reapscore" && (() => {
+                const rs = num(deal.reapScore) || 0;
+                const roiScore = Math.min(25, Math.max(0, (num(deal.roi) || 0) * 0.5));
+                const capScore = Math.min(20, Math.max(0, (num(deal.capRate) || 0) * 2.5));
+                const dscr = num(deal.dscr) || 0;
+                const dscrScore = dscr >= 1.5 ? 20 : dscr >= 1.25 ? 15 : dscr >= 1.0 ? 10 : 0;
+                const cf = num(deal.cashFlowMonthly) || 0;
+                const cfScore = cf > 5000 ? 15 : cf > 2000 ? 10 : cf > 0 ? 5 : 0;
+                const ctv = num(deal.ctv) || 100;
+                const ctvScore = ctv < 65 ? 10 : ctv < 75 ? 7 : ctv < 85 ? 4 : 0;
+                const em = num(deal.equityMultiple) || 1;
+                const emScore = Math.min(10, Math.max(0, (em - 1) * 5));
+                const components = [
+                  { label: "Return on Investment", max: 25, score: roiScore, value: fmtPct(deal.roi), tip: "ROI × 0.5, capped at 25pts" },
+                  { label: "Cap Rate", max: 20, score: capScore, value: fmtPct(deal.capRate), tip: "Cap Rate × 2.5, capped at 20pts" },
+                  { label: "Debt Service Coverage", max: 20, score: dscrScore, value: deal.dscr ? deal.dscr + "x" : "—", tip: "≥1.5x = 20pts, ≥1.25x = 15pts, ≥1.0x = 10pts" },
+                  { label: "Monthly Cash Flow", max: 15, score: cfScore, value: fmt(deal.cashFlowMonthly), tip: ">$5K = 15pts, >$2K = 10pts, >$0 = 5pts" },
+                  { label: "Cost to Value", max: 10, score: ctvScore, value: fmtPct(deal.ctv), tip: "<65% = 10pts, <75% = 7pts, <85% = 4pts" },
+                  { label: "Equity Multiple", max: 10, score: Math.round(emScore * 10) / 10, value: em ? em.toFixed(2) + "x" : "—", tip: "(EM - 1) × 5, capped at 10pts" },
+                ];
+                return (
+                  <div>
+                    <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>REAP Score Breakdown <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+                      <div style={{ width: 72, height: 72 }}><ConfidenceRing score={rs} size={72} /></div>
+                      <div>
+                        <p style={{ fontSize: 28, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{rs}<span style={{ fontSize: 14, color: "#94a3b8" }}> / 100</span></p>
+                        <p style={{ fontSize: 12, color: rs >= 70 ? "#16a34a" : rs >= 40 ? "#d97706" : "#dc2626", fontWeight: 600, margin: "2px 0 0" }}>{rs >= 70 ? "Strong Deal" : rs >= 40 ? "Moderate — Review Assumptions" : "Below Target"}</p>
+                      </div>
+                    </div>
+                    {components.map((c, i) => (
+                      <div key={i} style={{ marginBottom: 12, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{c.label}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{c.value}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: c.score >= c.max * 0.7 ? "#16a34a" : c.score >= c.max * 0.3 ? "#d97706" : "#dc2626", fontFamily: "'DM Mono', monospace" }}>{Math.round(c.score)}/{c.max}</span>
+                          </div>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 3, background: "#f1f5f9", overflow: "hidden" }}>
+                          <div style={{ width: (c.score / c.max * 100) + "%", height: "100%", borderRadius: 3, background: c.score >= c.max * 0.7 ? "#22c55e" : c.score >= c.max * 0.3 ? "#f59e0b" : "#ef4444", transition: "width 0.5s" }} />
+                        </div>
+                        <p style={{ fontSize: 10, color: "#94a3b8", margin: "4px 0 0" }}>{c.tip}</p>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })()}
+
         {/* ── CASH FLOW TAB ── */}
         {activeTab === "cash flow" && (() => {
           const gridCols = isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)";
@@ -4587,6 +4741,100 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                     );
                   })}
                 </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── AI ESTIMATE TAB ── */}
+        {activeTab === "ai estimate" && (() => {
+          if (!aiEstimates) setAiEstimates([
+            { id: 1, category: "Kitchen", item: "Full kitchen remodel — cabinets, countertops, appliances", cost: 15000, selected: false },
+            { id: 2, category: "Kitchen", item: "Update fixtures and hardware", cost: 1500, selected: false },
+            { id: 3, category: "Bathroom", item: "Full bathroom renovation — tile, vanity, fixtures", cost: 8000, selected: false },
+            { id: 4, category: "Bathroom", item: "Half bath refresh — paint, mirror, fixtures", cost: 2500, selected: false },
+            { id: 5, category: "Flooring", item: "LVP flooring throughout — " + (num(deal.sqft) || 1500) + " sqft", cost: Math.round((num(deal.sqft) || 1500) * 4.5), selected: false },
+            { id: 6, category: "Paint", item: "Interior paint — walls and trim throughout", cost: Math.round((num(deal.sqft) || 1500) * 2.5), selected: false },
+            { id: 7, category: "Exterior", item: "Exterior paint and pressure wash", cost: 4500, selected: false },
+            { id: 8, category: "Exterior", item: "Landscaping — clean up, mulch, basic planting", cost: 2500, selected: false },
+            { id: 9, category: "Roof", item: "Roof replacement — shingle", cost: 8500, selected: false },
+            { id: 10, category: "HVAC", item: "HVAC system replacement", cost: 6500, selected: false },
+            { id: 11, category: "Electrical", item: "Electrical panel upgrade + rewire", cost: 5000, selected: false },
+            { id: 12, category: "Plumbing", item: "Plumbing — repipe or major repair", cost: 4500, selected: false },
+            { id: 13, category: "Windows", item: "Window replacement — impact or standard", cost: Math.round((num(deal.units) || 1) * 3500), selected: false },
+            { id: 14, category: "General", item: "Dumpster, permits, and contingency (10%)", cost: 3000, selected: false },
+          ]);
+
+          const toggleItem = (id) => setAiEstimates(prev => prev.map(e => e.id === id ? { ...e, selected: !e.selected } : e));
+          const selectAll = () => setAiEstimates(prev => prev.map(e => ({ ...e, selected: true })));
+          const selectedItems = aiEstimates.filter(e => e.selected);
+          const totalSelected = selectedItems.reduce((s, e) => s + e.cost, 0);
+          const totalAll = aiEstimates.reduce((s, e) => s + e.cost, 0);
+
+          const applyToImprovements = async () => {
+            if (selectedItems.length === 0) return;
+            setApplyLoading(true); setApplyMsg("");
+            try {
+              for (const item of selectedItems) {
+                await supabase.from("improvements").insert({
+                  deal_id: deal.id, category: item.category, description: item.item,
+                  budgeted_cost: item.cost, actual_cost: 0, status: "planned",
+                  created_at: new Date().toISOString(),
+                });
+              }
+              await supabase.from("deals").update({ improvement_budget: totalSelected }).eq("id", deal.id);
+              setApplyMsg(selectedItems.length + " items applied to improvements!");
+              setTimeout(() => window.location.reload(), 1500);
+            } catch (e) { setApplyMsg("Error: " + e.message); }
+            setApplyLoading(false);
+          };
+
+          const categories = [...new Set(aiEstimates.map(e => e.category))];
+
+          return (
+            <div style={{ padding: isMobile ? "0" : "0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>AI Improvement Estimate</h2>
+                  <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>Select items to add to your improvements scope</p>
+                </div>
+                <button onClick={selectAll} style={{ fontSize: 11, color: "#16a34a", background: "none", border: "1px solid #bbf7d0", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Select All</button>
+              </div>
+
+              {/* Summary */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                  <p style={{ fontSize: 9, color: "#64748b", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Full Estimate</p>
+                  <p style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmt(totalAll)}</p>
+                </div>
+                <div style={{ background: selectedItems.length > 0 ? "linear-gradient(135deg, #f0fdf4, #dcfce7)" : "#f8fafc", border: "1px solid " + (selectedItems.length > 0 ? "#bbf7d0" : "#e2e8f0"), borderRadius: 10, padding: 14, textAlign: "center" }}>
+                  <p style={{ fontSize: 9, color: selectedItems.length > 0 ? "#16a34a" : "#64748b", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Selected ({selectedItems.length})</p>
+                  <p style={{ fontSize: 20, fontWeight: 700, color: selectedItems.length > 0 ? "#15803d" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmt(totalSelected)}</p>
+                </div>
+              </div>
+
+              {/* Items by category */}
+              {categories.map(cat => (
+                <div key={cat} style={{ marginBottom: 12 }}>
+                  <p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 8px" }}>{cat}</p>
+                  {aiEstimates.filter(e => e.category === cat).map(item => (
+                    <div key={item.id} onClick={() => toggleItem(item.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: item.selected ? "#f0fdf4" : "#fff", border: "1px solid " + (item.selected ? "#bbf7d0" : "#e2e8f0"), borderRadius: 10, marginBottom: 6, cursor: "pointer", transition: "all 0.15s" }}>
+                      <div style={{ width: 20, height: 20, borderRadius: 6, border: "2px solid " + (item.selected ? "#16a34a" : "#cbd5e1"), background: item.selected ? "#16a34a" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>
+                        {item.selected && <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}><polyline points="20 6 9 17 4 12"/></svg>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 500, color: "#0f172a", margin: 0 }}>{item.item}</p>
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: item.selected ? "#15803d" : "#0f172a", fontFamily: "'DM Mono', monospace", flexShrink: 0 }}>{fmt(item.cost)}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+              {/* Apply button */}
+              {applyMsg && <div style={{ padding: "8px 14px", borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 600, background: applyMsg.includes("Error") ? "#fef2f2" : "#f0fdf4", color: applyMsg.includes("Error") ? "#dc2626" : "#16a34a", border: "1px solid " + (applyMsg.includes("Error") ? "#fecaca" : "#bbf7d0") }}>{applyMsg}</div>}
+              {selectedItems.length > 0 && (
+                <button onClick={applyToImprovements} disabled={applyLoading} style={{ width: "100%", padding: "14px 24px", border: "none", borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 4px 16px rgba(22,163,74,0.35)" }}>{applyLoading ? "Applying..." : "Apply " + selectedItems.length + " Items to Improvements — " + fmt(totalSelected)}</button>
               )}
             </div>
           );
