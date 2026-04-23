@@ -3892,28 +3892,71 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
               </div>
             </div>
 
-            {/* Key Metrics Grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+            {/* Asking + Offer with $/sqft */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
               <div style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 12px", border: "1px solid #f1f5f9" }}>
                 <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Asking</span>
                 <p style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0", letterSpacing: "-0.02em" }}>{fmt(deal.askingPrice)}</p>
+                {num(deal.sqft) > 0 && num(deal.askingPrice) > 0 && <p style={{ fontSize: 10, color: "#94a3b8", margin: "2px 0 0", fontFamily: "'DM Mono', monospace" }}>${(num(deal.askingPrice) / num(deal.sqft)).toFixed(0)}/sqft</p>}
               </div>
               <div style={{ background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", borderRadius: 10, padding: "10px 12px", border: "1px solid #bbf7d0" }}>
                 <span style={{ fontSize: 9, color: "#16a34a", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Our Offer</span>
                 <p style={{ fontSize: 17, fontWeight: 700, color: "#15803d", fontFamily: "'DM Mono', monospace", margin: "2px 0 0", letterSpacing: "-0.02em" }}>{fmt(deal.offer)}</p>
-                {num(deal.askingPrice) > 0 && num(deal.offer) > 0 && <span style={{ fontSize: 9, color: "#16a34a", fontFamily: "'DM Sans', sans-serif" }}>{Math.round(((num(deal.askingPrice) - num(deal.offer)) / num(deal.askingPrice)) * 100)}% below ask</span>}
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {num(deal.sqft) > 0 && num(deal.offer) > 0 && <span style={{ fontSize: 10, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>${(num(deal.offer) / num(deal.sqft)).toFixed(0)}/sqft</span>}
+                  {num(deal.askingPrice) > 0 && num(deal.offer) > 0 && <span style={{ fontSize: 9, color: "#16a34a", fontFamily: "'DM Sans', sans-serif" }}>{Math.round(((num(deal.askingPrice) - num(deal.offer)) / num(deal.askingPrice)) * 100)}% below</span>}
+                </div>
               </div>
             </div>
+
+            {/* Improvement Budget + Completed Value (ARV) */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 12px", border: "1px solid #f1f5f9" }}>
+                <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Improvement Budget</span>
+                <p style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0", letterSpacing: "-0.02em" }}>{num(deal.improvementBudget) > 0 ? fmt(deal.improvementBudget) : "\u2014"}</p>
+                {num(deal.sqft) > 0 && num(deal.improvementBudget) > 0 && <p style={{ fontSize: 10, color: "#94a3b8", margin: "2px 0 0", fontFamily: "'DM Mono', monospace" }}>${(num(deal.improvementBudget) / num(deal.sqft)).toFixed(0)}/sqft</p>}
+              </div>
+              <div style={{ background: "linear-gradient(135deg, #eff6ff, #dbeafe)", borderRadius: 10, padding: "10px 12px", border: "1px solid #bfdbfe" }}>
+                <span style={{ fontSize: 9, color: "#2563eb", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Completed Value (ARV)</span>
+                <p style={{ fontSize: 17, fontWeight: 700, color: "#1d4ed8", fontFamily: "'DM Mono', monospace", margin: "2px 0 0", letterSpacing: "-0.02em" }}>{num(deal.arv) > 0 ? fmt(deal.arv) : "\u2014"}</p>
+                {num(deal.sqft) > 0 && num(deal.arv) > 0 && <p style={{ fontSize: 10, color: "#2563eb", margin: "2px 0 0", fontFamily: "'DM Mono', monospace" }}>${(num(deal.arv) / num(deal.sqft)).toFixed(0)}/sqft</p>}
+              </div>
+            </div>
+
+            {/* Projected Profit */}
+            {(() => {
+              const purchase = num(deal.offer) || num(deal.askingPrice) || 0;
+              const improv = num(deal.improvementBudget) || 0;
+              const closingPct = num(deal.closingCostPct) || num(deal.acqCostToClose) || 0;
+              const closingCosts = purchase * (closingPct / 100);
+              const arv = num(deal.arv) || 0;
+              const projProfit = arv > 0 ? arv - purchase - improv - closingCosts : null;
+              const profitPct = purchase + improv > 0 && projProfit !== null ? ((projProfit / (purchase + improv)) * 100) : null;
+              return projProfit !== null ? (
+                <div style={{ background: projProfit >= 0 ? "linear-gradient(135deg, #f0fdf4, #dcfce7)" : "linear-gradient(135deg, #fef2f2, #fecaca)", borderRadius: 10, padding: "10px 14px", border: "1px solid " + (projProfit >= 0 ? "#bbf7d0" : "#fecaca"), marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <span style={{ fontSize: 9, color: projProfit >= 0 ? "#16a34a" : "#dc2626", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Projected Profit</span>
+                    <p style={{ fontSize: 20, fontWeight: 700, color: projProfit >= 0 ? "#15803d" : "#991b1b", fontFamily: "'DM Mono', monospace", margin: "2px 0 0", letterSpacing: "-0.02em" }}>{fmt(projProfit)}</p>
+                  </div>
+                  {profitPct !== null && <div style={{ textAlign: "right" }}>
+                    <span style={{ fontSize: 9, color: projProfit >= 0 ? "#16a34a" : "#dc2626", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Return</span>
+                    <p style={{ fontSize: 18, fontWeight: 700, color: projProfit >= 0 ? "#15803d" : "#991b1b", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{profitPct.toFixed(1)}%</p>
+                  </div>}
+                </div>
+              ) : null;
+            })()}
+
+            {/* Core Metrics: ROI, CTV, AAR, Profitability */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
               {[
-                { label: "Cap Rate", value: fmtPct(deal.capRate), good: num(deal.capRate) >= 6, warn: num(deal.capRate) !== null && num(deal.capRate) < 4 && num(deal.capRate) > 0 },
                 { label: "ROI", value: fmtPct(deal.roi), good: num(deal.roi) >= 15, warn: num(deal.roi) < 0 },
-                { label: "DSCR", value: deal.dscr ? deal.dscr + "x" : "\u2014", good: num(deal.dscr) >= 1.25, warn: num(deal.dscr) > 0 && num(deal.dscr) < 1.25 },
-                { label: "CoC", value: fmtPct(deal.aar), good: num(deal.aar) >= 10, warn: num(deal.aar) < 0 },
+                { label: "CTV", value: fmtPct(deal.ctv), good: num(deal.ctv) > 0 && num(deal.ctv) < 75, warn: num(deal.ctv) >= 85 },
+                { label: "AAR", value: fmtPct(deal.aar), good: num(deal.aar) >= 10, warn: num(deal.aar) < 0 },
+                { label: "Profitability", value: deal.profitability || "\u2014", good: deal.profitability === "Strong", warn: deal.profitability === "Negative" || deal.profitability === "Low" },
               ].map((m, i) => (
                 <div key={i} style={{ textAlign: "center", padding: "8px 4px", borderRadius: 8, background: m.warn ? "#fef2f2" : m.good ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (m.warn ? "#fecaca" : m.good ? "#bbf7d0" : "#f1f5f9") }}>
                   <span style={{ fontSize: 8, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{m.label}</span>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: m.warn ? "#dc2626" : m.good ? "#16a34a" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{m.value}</p>
+                  <p style={{ fontSize: i === 3 ? 10 : 14, fontWeight: 700, color: m.warn ? "#dc2626" : m.good ? "#16a34a" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: "1px 0 0" }}>{m.value}</p>
                 </div>
               ))}
             </div>
