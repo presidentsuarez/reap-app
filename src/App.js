@@ -9736,6 +9736,12 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
   const [presetsLoading, setPresetsLoading] = useState(true);
   const [presetsSaving, setPresetsSaving] = useState(false);
   const [presetsMsg, setPresetsMsg] = useState("");
+  const [financials, setFinancials] = useState(null);
+  const [financialsLoading, setFinancialsLoading] = useState(false);
+  const [financialsSaving, setFinancialsSaving] = useState(false);
+  const [financialsMsg, setFinancialsMsg] = useState("");
+  const [platformStats, setPlatformStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   // Load presets when presets tab is active
   useEffect(() => {
@@ -9763,6 +9769,38 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
     loadPresets();
   }, [activeTab]);
 
+  // Load financials when tab is active
+  useEffect(() => {
+    if (activeTab !== "financials") return;
+    async function loadFinancials() {
+      setFinancialsLoading(true);
+      try {
+        const uid = session?.user?.id;
+        const { data } = await supabase.from("user_financials").select("*").eq("user_id", uid).maybeSingle();
+        if (data) { setFinancials(data); } else {
+          const { data: created } = await supabase.from("user_financials").insert({ user_id: uid, user_email: session?.user?.email }).select().single();
+          setFinancials(created);
+        }
+      } catch (err) { console.error("Financials load:", err); }
+      setFinancialsLoading(false);
+    }
+    loadFinancials();
+  }, [activeTab]);
+
+  // Load platform stats when performance tab is active
+  useEffect(() => {
+    if (activeTab !== "performance") return;
+    async function loadStats() {
+      setStatsLoading(true);
+      try {
+        const { data } = await supabase.rpc("admin_get_platform_stats");
+        if (data) setPlatformStats(data);
+      } catch (err) { console.error("Stats load:", err); }
+      setStatsLoading(false);
+    }
+    loadStats();
+  }, [activeTab]);
+
   const user = session?.user || {};
   const email = user.email || "—";
   const fullName = user.user_metadata?.full_name || "";
@@ -9778,7 +9816,8 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
     { id: "permissions", label: "Permissions" },
     { id: "pricing", label: "Pricing" },
     { id: "presets", label: "Presets" },
-    ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
+    ...(isSubscribed ? [{ id: "financials", label: "Financials" }] : []),
+    ...(isAdmin ? [{ id: "performance", label: "Performance" }, { id: "admin", label: "Admin" }] : []),
   ];
 
   const TIER_LABELS = { free: "Free", starter: "Starter", team: "Team", pro: "Pro", enterprise: "Enterprise" };
@@ -10136,6 +10175,165 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
         })()}
 
         {/* ═══ ADMIN TAB ═══ */}
+
+        {/* ── PERFORMANCE TAB (Admin Only) ── */}
+        {activeTab === "performance" && isAdmin && (() => {
+          if (statsLoading) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Loading platform stats...</div>;
+          if (!platformStats) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>No stats available</div>;
+          const s = platformStats;
+          const StatCard = ({ label, value, sub, color }) => (
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, width: 3, height: "100%", background: color || "#16a34a" }} />
+              <p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 4px" }}>{label}</p>
+              <p style={{ fontSize: 24, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "0 0 2px" }}>{value}</p>
+              {sub && <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>{sub}</p>}
+            </div>
+          );
+          return (
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Platform Performance</h2>
+              <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 20px" }}>REAP platform metrics — real-time</p>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+                <StatCard label="Total Users" value={s.total_users} sub={s.users_last_7d + " last 7d"} color="#3b82f6" />
+                <StatCard label="Confirmed" value={s.confirmed_users} sub={s.unconfirmed_users + " unconfirmed"} color="#22c55e" />
+                <StatCard label="Subscribed" value={s.subscribed_users} sub={s.active_subscriptions + " active subs"} color="#d97706" />
+                <StatCard label="Active Trials" value={s.active_promo_trials} sub={s.total_promo_redemptions + " total redeemed"} color="#7c3aed" />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+                <StatCard label="Starter Tier" value={s.starter_users} color="#16a34a" />
+                <StatCard label="Pro Tier" value={s.pro_users} color="#d97706" />
+                <StatCard label="Team Tier" value={s.team_users} color="#7c3aed" />
+                <StatCard label="Enterprise" value={s.enterprise_users} color="#0891b2" />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10 }}>
+                <StatCard label="Total Deals" value={s.total_deals} sub={s.deals_last_30d + " last 30d"} color="#3b82f6" />
+                <StatCard label="Total Contacts" value={s.total_contacts} color="#f59e0b" />
+                <StatCard label="Organizations" value={s.total_orgs} sub={s.total_org_members + " members"} color="#8b5cf6" />
+                <StatCard label="New Users (30d)" value={s.users_last_30d} sub={s.users_last_7d + " last 7d"} color="#06b6d4" />
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── FINANCIALS TAB ── */}
+        {activeTab === "financials" && (() => {
+          if (financialsLoading) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Loading financials...</div>;
+          if (!financials) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Unable to load financials</div>;
+
+          const up = (key, val) => setFinancials(f => ({ ...f, [key]: val }));
+          const saveFinancials = async () => {
+            setFinancialsSaving(true); setFinancialsMsg("");
+            try {
+              const { id, created_at, ...payload } = financials;
+              payload.updated_at = new Date().toISOString();
+              // Auto-calc totals
+              payload.total_assets = (parseFloat(payload.liquid_assets) || 0) + (parseFloat(payload.retirement_assets) || 0) + (parseFloat(payload.real_estate_owned) || 0) + (parseFloat(payload.other_assets) || 0);
+              payload.total_liabilities = (parseFloat(payload.mortgage_balance) || 0) + (parseFloat(payload.auto_loans) || 0) + (parseFloat(payload.student_loans) || 0) + (parseFloat(payload.credit_card_debt) || 0) + (parseFloat(payload.other_liabilities) || 0);
+              payload.net_worth = payload.total_assets - payload.total_liabilities;
+              const { error } = await supabase.from("user_financials").update(payload).eq("id", financials.id);
+              if (error) throw error;
+              setFinancials(f => ({ ...f, total_assets: payload.total_assets, total_liabilities: payload.total_liabilities, net_worth: payload.net_worth }));
+              setFinancialsMsg("Saved!");
+              setTimeout(() => setFinancialsMsg(""), 3000);
+            } catch (e) { setFinancialsMsg("Error: " + e.message); }
+            setFinancialsSaving(false);
+          };
+
+          const F = ({ label, field, prefix, suffix, type }) => (
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 3, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                {prefix && <span style={{ fontSize: 13, color: "#94a3b8" }}>{prefix}</span>}
+                <input type={type || "text"} value={financials[field] ?? ""} onChange={e => up(field, e.target.value === "" ? null : type === "number" ? parseFloat(e.target.value) : e.target.value)} style={{ flex: 1, padding: "9px 12px", fontSize: 13, fontFamily: type === "number" ? "'DM Mono', monospace" : "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", color: "#0f172a", boxSizing: "border-box" }} />
+                {suffix && <span style={{ fontSize: 12, color: "#94a3b8" }}>{suffix}</span>}
+              </div>
+            </div>
+          );
+
+          const SectionHead = ({ title }) => (
+            <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "20px 0 10px", display: "flex", alignItems: "center", gap: 8 }}>{title} <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+          );
+
+          const fmtD = (v) => { const n = parseFloat(v); return isNaN(n) ? "$0" : "$" + n.toLocaleString(undefined, { maximumFractionDigits: 0 }); };
+
+          return (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Personal Financials</h2>
+              </div>
+              <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 16px" }}>Your financial profile — used for lender pre-qualifications</p>
+
+              {financialsMsg && <div style={{ padding: "8px 14px", borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 600, background: financialsMsg.includes("Error") ? "#fef2f2" : "#f0fdf4", color: financialsMsg.includes("Error") ? "#dc2626" : "#16a34a", border: "1px solid " + (financialsMsg.includes("Error") ? "#fecaca" : "#bbf7d0") }}>{financialsMsg}</div>}
+
+              {/* Net Worth Summary */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                  <p style={{ fontSize: 9, color: "#16a34a", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Total Assets</p>
+                  <p style={{ fontSize: 18, fontWeight: 700, color: "#15803d", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmtD(financials.total_assets)}</p>
+                </div>
+                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                  <p style={{ fontSize: 9, color: "#dc2626", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Total Liabilities</p>
+                  <p style={{ fontSize: 18, fontWeight: 700, color: "#991b1b", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmtD(financials.total_liabilities)}</p>
+                </div>
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                  <p style={{ fontSize: 9, color: "#2563eb", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Net Worth</p>
+                  <p style={{ fontSize: 18, fontWeight: 700, color: "#1d4ed8", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmtD(financials.net_worth)}</p>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 0 : 24 }}>
+                <div>
+                  <SectionHead title="Personal Information" />
+                  <F label="Legal Name" field="legal_name" />
+                  <F label="Date of Birth" field="dob" type="date" />
+                  <F label="SSN (Last 4)" field="ssn_last4" />
+                  <F label="Marital Status" field="marital_status" />
+                  <F label="Dependents" field="dependents" type="number" />
+
+                  <SectionHead title="Income" />
+                  <F label="Gross Annual Income" field="gross_annual_income" prefix="$" type="number" />
+                  <F label="Net Annual Income" field="net_annual_income" prefix="$" type="number" />
+                  <F label="Monthly Income" field="monthly_income" prefix="$" type="number" />
+                  <F label="Income Source" field="income_source" />
+                  <F label="Employer / Company" field="employer_name" />
+                  <F label="Years Employed" field="years_employed" type="number" />
+
+                  <SectionHead title="Credit" />
+                  <F label="Credit Score" field="credit_score" type="number" />
+                  <F label="Score Date" field="credit_score_date" type="date" />
+                </div>
+                <div>
+                  <SectionHead title="Assets" />
+                  <F label="Liquid Assets (Cash/Savings)" field="liquid_assets" prefix="$" type="number" />
+                  <F label="Retirement Accounts" field="retirement_assets" prefix="$" type="number" />
+                  <F label="Real Estate Owned" field="real_estate_owned" prefix="$" type="number" />
+                  <F label="Other Assets" field="other_assets" prefix="$" type="number" />
+
+                  <SectionHead title="Liabilities" />
+                  <F label="Mortgage Balance" field="mortgage_balance" prefix="$" type="number" />
+                  <F label="Auto Loans" field="auto_loans" prefix="$" type="number" />
+                  <F label="Student Loans" field="student_loans" prefix="$" type="number" />
+                  <F label="Credit Card Debt" field="credit_card_debt" prefix="$" type="number" />
+                  <F label="Other Liabilities" field="other_liabilities" prefix="$" type="number" />
+
+                  <SectionHead title="Banking" />
+                  <F label="Primary Bank" field="primary_bank" />
+                  <F label="Checking Balance" field="checking_balance" prefix="$" type="number" />
+                  <F label="Savings Balance" field="savings_balance" prefix="$" type="number" />
+
+                  <SectionHead title="Real Estate Experience" />
+                  <F label="Years of RE Experience" field="years_re_experience" type="number" />
+                  <F label="Properties Currently Owned" field="properties_owned" type="number" />
+                  <F label="Deals Completed" field="deals_completed" type="number" />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={saveFinancials} disabled={financialsSaving} style={{ padding: "12px 32px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 12px rgba(22,163,74,0.35)" }}>{financialsSaving ? "Saving..." : "Save Financials"}</button>
+              </div>
+            </div>
+          );
+        })()}
 
         {activeTab === "presets" && (() => {
           const userEmail = session?.user?.email?.toLowerCase() || "";
