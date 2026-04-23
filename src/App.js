@@ -883,15 +883,69 @@ function AIUnderwritingTab({ deal, isMobile, isStarter }) {
       <div style={{ borderRight: isMobile ? "none" : "1px solid #e2e8f0", background: "#fff", padding: isMobile ? "20px 16px" : "24px 24px 24px 0", borderRadius: isMobile ? 14 : 0, marginBottom: isMobile ? 16 : 0, border: isMobile ? "1px solid #e2e8f0" : "none" }}>
 
         <div style={{ marginBottom: 24 }}>
-          <h3 style={sectionLabel}>Property Profile <span style={dividerStyle} /></h3>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
-            <UWTag color="#475569" bg="#f1f5f9">{deal.type || "Property"}</UWTag>
-            {deal.units && <UWTag color="#475569" bg="#f1f5f9">{deal.units} Units</UWTag>}
-            {deal.sqft && <UWTag color="#475569" bg="#f1f5f9">{typeof deal.sqft === "string" ? deal.sqft : parseInt(deal.sqft).toLocaleString()} sqft</UWTag>}
-            {deal.yearBuilt && <UWTag color="#475569" bg="#f1f5f9">Built {deal.yearBuilt}</UWTag>}
-            {deal.class && <UWTag color="#475569" bg="#f1f5f9">Class {deal.class}</UWTag>}
-            {deal.zip && <UWTag color="#475569" bg="#f1f5f9">{deal.zip}</UWTag>}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h3 style={sectionLabel}>Property Profile <span style={dividerStyle} /></h3>
           </div>
+          {(() => {
+            const [editingProfile, setEditingProfile] = useState(false);
+            const [profileForm, setProfileForm] = useState({});
+            const startEdit = () => { setProfileForm({ type: deal.type || "", units: deal.units || "", sqft: deal.sqft || "", sqftGross: deal.sqftGross || "", bedrooms: deal.bedrooms || "", bathroomsFull: deal.bathroomsFull || "", bathroomsHalf: deal.bathroomsHalf || "", yearBuilt: deal.yearBuilt || "", class: deal.class || "", zip: deal.zip || "", lotAcres: deal.lotAcres || "", county: deal.county || "" }); setEditingProfile(true); };
+            const saveProfile = async () => {
+              try {
+                await supabase.from("deals").update({ type: profileForm.type || null, units: parseInt(profileForm.units) || null, sqft_net: parseInt(profileForm.sqft) || null, sqft_gross: parseInt(profileForm.sqftGross) || null, bedrooms: parseInt(profileForm.bedrooms) || null, bathrooms_full: parseInt(profileForm.bathroomsFull) || null, bathrooms_half: parseInt(profileForm.bathroomsHalf) || null, year_built: profileForm.yearBuilt || null, class: profileForm.class || null, zip_code: profileForm.zip || null, lot_acres: parseFloat(profileForm.lotAcres) || null, county: profileForm.county || null }).eq("id", deal.id);
+                setEditingProfile(false);
+                window.location.reload();
+              } catch (e) { console.error("Save profile:", e); }
+            };
+            const isOnMarket = (deal.source || "").toLowerCase().includes("mls");
+            const pf = editingProfile ? profileForm : deal;
+            const upPf = (k, v) => setProfileForm(f => ({ ...f, [k]: v }));
+            const RowInput = ({ value, field, type }) => editingProfile ? <input type={type || "text"} value={profileForm[field] ?? ""} onChange={e => upPf(field, e.target.value)} style={{ width: "100%", padding: "6px 8px", fontSize: 13, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: type === "number" ? "'DM Mono', monospace" : "'DM Sans', sans-serif", boxSizing: "border-box", color: "#0f172a" }} /> : <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{value || "\u2014"}</span>;
+
+            return (
+              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "#f8fafc", borderBottom: "1px solid #f1f5f9" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>Property Details</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: isOnMarket ? "#dbeafe" : "#f5f3ff", color: isOnMarket ? "#2563eb" : "#7c3aed", border: "1px solid " + (isOnMarket ? "#bfdbfe" : "#ddd6fe") }}>{isOnMarket ? "ON MARKET" : "OFF MARKET"}</span>
+                  </div>
+                  {editingProfile ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => setEditingProfile(false)} style={{ fontSize: 11, color: "#64748b", background: "none", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+                      <button onClick={saveProfile} style={{ fontSize: 11, color: "#fff", background: "#16a34a", border: "none", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>Save</button>
+                    </div>
+                  ) : (
+                    <button onClick={startEdit} style={{ fontSize: 11, color: "#16a34a", background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Edit</button>
+                  )}
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <tbody>
+                    {[
+                      { label: "Property Type", value: pf.type || "\u2014", field: "type" },
+                      { label: "Units", value: pf.units || "\u2014", field: "units", type: "number" },
+                      { label: "Net Sq Ft", value: pf.sqft ? parseInt(pf.sqft).toLocaleString() : "\u2014", field: "sqft", type: "number" },
+                      { label: "Gross Sq Ft", value: pf.sqftGross ? parseInt(pf.sqftGross).toLocaleString() : "\u2014", field: "sqftGross", type: "number" },
+                      { label: "Bedrooms", value: pf.bedrooms || "\u2014", field: "bedrooms", type: "number" },
+                      { label: "Full Baths", value: pf.bathroomsFull || "\u2014", field: "bathroomsFull", type: "number" },
+                      { label: "Half Baths", value: pf.bathroomsHalf || "\u2014", field: "bathroomsHalf", type: "number" },
+                      { label: "Year Built", value: pf.yearBuilt || "\u2014", field: "yearBuilt" },
+                      { label: "Class", value: pf.class ? "Class " + pf.class : "\u2014", field: "class" },
+                      { label: "Lot Size", value: pf.lotAcres ? pf.lotAcres + " acres" : "\u2014", field: "lotAcres", type: "number" },
+                      { label: "Zip Code", value: pf.zip || "\u2014", field: "zip" },
+                      { label: "County", value: pf.county || "\u2014", field: "county" },
+                    ].map((row, i) => (
+                      <tr key={row.field} style={{ borderBottom: i < 11 ? "1px solid #f1f5f9" : "none" }}>
+                        <td style={{ padding: "9px 14px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, width: "40%" }}>{row.label}</td>
+                        <td style={{ padding: editingProfile ? "5px 14px 5px 0" : "9px 14px", textAlign: "right" }}>
+                          <RowInput value={row.value} field={row.field} type={row.type} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
 
         <div style={{ marginBottom: 24 }}>
@@ -11067,6 +11121,11 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
         beds: v(r.beds),
         baths: v(r.baths),
         yearBuilt: v(r.year_built),
+        bedrooms: v(r.bedrooms),
+        bathroomsFull: v(r.bathrooms_full),
+        bathroomsHalf: v(r.bathrooms_half),
+        sqftGross: v(r.sqft_gross),
+        county: r.county || null,
         ppsf: v(r.ppsf),
         agent: r.agent || "",
         publicRemarks: r.public_remarks || "",
@@ -17640,6 +17699,11 @@ export default function ReapApp() {
         refiTerm: v(r.refi_term_years),
         lotAcres: v(r.lot_acres),
         yearBuilt: v(r.year_built),
+        bedrooms: v(r.bedrooms),
+        bathroomsFull: v(r.bathrooms_full),
+        bathroomsHalf: v(r.bathrooms_half),
+        sqftGross: v(r.sqft_gross),
+        county: r.county || null,
         dealName: r.deal_name || "",
         zip: r.zip_code || "",
         dealClass: r.class || "",
