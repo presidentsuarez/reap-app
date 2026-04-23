@@ -3930,35 +3930,63 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
               const closingPct = num(deal.closingCostPct) || num(deal.acqCostToClose) || 0;
               const closingCosts = purchase * (closingPct / 100);
               const arv = num(deal.arv) || 0;
+              const sqft = num(deal.sqft) || 0;
               const projProfit = arv > 0 ? arv - purchase - improv - closingCosts : null;
               const roiPct = purchase + improv > 0 && projProfit !== null ? ((projProfit / (purchase + improv)) * 100) : null;
+              const profitabilityPct = arv > 0 && projProfit !== null ? ((projProfit / arv) * 100) : null;
+              const profitPerSqft = sqft > 0 && projProfit !== null ? projProfit / sqft : null;
+              const roiWord = roiPct >= 30 ? "Excellent" : roiPct >= 15 ? "Strong" : roiPct >= 5 ? "Moderate" : roiPct !== null ? "Low" : null;
+              const projMonths = num(deal.projectMonths) || 12;
               return projProfit !== null ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
                   <div style={{ background: projProfit >= 0 ? "linear-gradient(135deg, #f0fdf4, #dcfce7)" : "linear-gradient(135deg, #fef2f2, #fecaca)", borderRadius: 10, padding: "10px 14px", border: "1px solid " + (projProfit >= 0 ? "#bbf7d0" : "#fecaca") }}>
                     <span style={{ fontSize: 9, color: projProfit >= 0 ? "#16a34a" : "#dc2626", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Projected Profit</span>
                     <p style={{ fontSize: 20, fontWeight: 700, color: projProfit >= 0 ? "#15803d" : "#991b1b", fontFamily: "'DM Mono', monospace", margin: "2px 0 0", letterSpacing: "-0.02em" }}>{fmt(projProfit)}</p>
+                    {profitPerSqft !== null && <p style={{ fontSize: 10, color: projProfit >= 0 ? "#16a34a" : "#dc2626", margin: "2px 0 0", fontFamily: "'DM Mono', monospace" }}>${profitPerSqft.toFixed(0)}/sqft</p>}
                   </div>
                   <div style={{ background: roiPct >= 0 ? "linear-gradient(135deg, #f0fdf4, #dcfce7)" : "linear-gradient(135deg, #fef2f2, #fecaca)", borderRadius: 10, padding: "10px 14px", border: "1px solid " + (roiPct >= 0 ? "#bbf7d0" : "#fecaca") }}>
                     <span style={{ fontSize: 9, color: roiPct >= 0 ? "#16a34a" : "#dc2626", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Return on Investment (ROI)</span>
                     <p style={{ fontSize: 20, fontWeight: 700, color: roiPct >= 0 ? "#15803d" : "#991b1b", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{roiPct !== null ? roiPct.toFixed(1) + "%" : "\u2014"}</p>
+                    {roiWord && <p style={{ fontSize: 10, color: roiPct >= 0 ? "#16a34a" : "#dc2626", margin: "2px 0 0", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{roiWord}</p>}
                   </div>
                 </div>
               ) : null;
             })()}
 
             {/* Core Metrics: CTV, AAR, Profitability */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
-              {[
-                { label: "Cost to Value (CTV)", value: fmtPct(deal.ctv), good: num(deal.ctv) > 0 && num(deal.ctv) < 75, warn: num(deal.ctv) >= 85 },
-                { label: "Avg Annual Return (AAR)", value: fmtPct(deal.aar), good: num(deal.aar) >= 10, warn: num(deal.aar) < 0 },
-                { label: "Profitability", value: deal.profitability || "\u2014", good: deal.profitability === "Strong", warn: deal.profitability === "Negative" || deal.profitability === "Low" },
-              ].map((m, i) => (
-                <div key={i} style={{ textAlign: "center", padding: "10px 6px", borderRadius: 8, background: m.warn ? "#fef2f2" : m.good ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (m.warn ? "#fecaca" : m.good ? "#bbf7d0" : "#f1f5f9") }}>
-                  <span style={{ fontSize: 8, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{m.label}</span>
-                  <p style={{ fontSize: i === 2 ? 11 : 16, fontWeight: 700, color: m.warn ? "#dc2626" : m.good ? "#16a34a" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{m.value}</p>
+            {(() => {
+              const ctvVal = num(deal.ctv);
+              const ctvWord = ctvVal > 0 && ctvVal < 65 ? "Excellent" : ctvVal < 75 ? "Strong" : ctvVal < 85 ? "Moderate" : ctvVal >= 85 ? "High Risk" : null;
+              const aarVal = num(deal.aar);
+              const aarWord = aarVal >= 25 ? "Excellent" : aarVal >= 12 ? "Strong" : aarVal >= 5 ? "Moderate" : aarVal > 0 ? "Low" : aarVal < 0 ? "Negative" : null;
+              const projMonths = num(deal.projectMonths) || 12;
+              const purchase = num(deal.offer) || num(deal.askingPrice) || 0;
+              const improv = num(deal.improvementBudget) || 0;
+              const closingPct = num(deal.closingCostPct) || num(deal.acqCostToClose) || 0;
+              const arv = num(deal.arv) || 0;
+              const projProfit = arv > 0 ? arv - purchase - improv - (purchase * closingPct / 100) : null;
+              const profitabilityPct = arv > 0 && projProfit !== null ? ((projProfit / arv) * 100) : null;
+              const profWord = deal.profitability || (profitabilityPct >= 20 ? "Strong" : profitabilityPct >= 10 ? "Moderate" : profitabilityPct >= 0 ? "Low" : "Negative");
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+                  <div style={{ textAlign: "center", padding: "10px 6px", borderRadius: 8, background: ctvVal >= 85 ? "#fef2f2" : ctvVal > 0 && ctvVal < 75 ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (ctvVal >= 85 ? "#fecaca" : ctvVal > 0 && ctvVal < 75 ? "#bbf7d0" : "#f1f5f9") }}>
+                    <span style={{ fontSize: 8, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Cost to Value (CTV)</span>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: ctvVal >= 85 ? "#dc2626" : ctvVal > 0 && ctvVal < 75 ? "#16a34a" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{fmtPct(deal.ctv)}</p>
+                    {ctvWord && <p style={{ fontSize: 9, fontWeight: 600, color: ctvVal >= 85 ? "#dc2626" : ctvVal < 75 ? "#16a34a" : "#d97706", margin: "2px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{ctvWord}</p>}
+                  </div>
+                  <div style={{ textAlign: "center", padding: "10px 6px", borderRadius: 8, background: aarVal < 0 ? "#fef2f2" : aarVal >= 10 ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (aarVal < 0 ? "#fecaca" : aarVal >= 10 ? "#bbf7d0" : "#f1f5f9") }}>
+                    <span style={{ fontSize: 8, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Avg Annual Return (AAR)</span>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: aarVal < 0 ? "#dc2626" : aarVal >= 10 ? "#16a34a" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{fmtPct(deal.aar)}</p>
+                    <p style={{ fontSize: 9, color: "#94a3b8", margin: "2px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{projMonths}mo target{aarWord ? " · " : ""}<span style={{ fontWeight: 600, color: aarVal < 0 ? "#dc2626" : aarVal >= 10 ? "#16a34a" : "#d97706" }}>{aarWord || ""}</span></p>
+                  </div>
+                  <div style={{ textAlign: "center", padding: "10px 6px", borderRadius: 8, background: profWord === "Negative" || profWord === "Low" ? "#fef2f2" : profWord === "Strong" ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (profWord === "Negative" || profWord === "Low" ? "#fecaca" : profWord === "Strong" ? "#bbf7d0" : "#f1f5f9") }}>
+                    <span style={{ fontSize: 8, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Profitability</span>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: profWord === "Negative" || profWord === "Low" ? "#dc2626" : profWord === "Strong" ? "#16a34a" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: "2px 0 0" }}>{profitabilityPct !== null ? profitabilityPct.toFixed(1) + "%" : "\u2014"}</p>
+                    <p style={{ fontSize: 9, fontWeight: 600, color: profWord === "Negative" || profWord === "Low" ? "#dc2626" : profWord === "Strong" ? "#16a34a" : "#d97706", margin: "2px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{profWord}</p>
+                  </div>
                 </div>
-              ))}
-            </div>
+              );
+            })()}
 
             {/* Top AI Insight */}
             {(() => {
