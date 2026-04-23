@@ -3906,195 +3906,260 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
             </a>}
             {!isDealStarter && <button id="reap-report-btn" onClick={async (e) => {
               try {
-                const reportBtn = e.currentTarget; if (reportBtn) reportBtn.textContent = "Generating...";
+                const reportBtn = e.currentTarget; reportBtn.textContent = "Generating...";
                 const jsPDF = (await import("jspdf")).default;
                 const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-                const w = 210, h = 297, m = 18;
-                const green = [22, 163, 74], darkGreen = [15, 128, 61], dark = [15, 23, 42], grey = [100, 116, 139], lightGrey = [241, 245, 249];
+                const w = 210, h = 297, m = 16;
+                const G = [22,163,74], DG = [15,128,61], D = [15,23,42], GR = [100,116,139], LG = [241,245,249], W = [255,255,255];
                 const n = (v) => parseFloat(v) || 0;
-                const fmtM = (v) => { const x = n(v); return x === 0 ? "$0" : "$" + x.toLocaleString(undefined, { maximumFractionDigits: 0 }); };
-                const fmtP = (v) => { const x = n(v); return x === 0 ? "0%" : x.toFixed(1) + "%"; };
+                const fM = (v) => { const x = n(v); return x === 0 ? "$0" : (x < 0 ? "-$" : "$") + Math.abs(x).toLocaleString(undefined, {maximumFractionDigits:0}); };
+                const fP = (v) => { const x = n(v); return x === 0 ? "0%" : x.toFixed(1) + "%"; };
                 const purchase = n(deal.offer) || n(deal.askingPrice) || 0;
                 const improv = n(deal.improvementBudget) || 0;
                 const arv = n(deal.arv) || 0;
                 const sqft = n(deal.sqft) || 0;
-                const closingPct = n(deal.closingCostPct) || n(deal.acqCostToClose) || 0;
-                const closingCosts = purchase * closingPct / 100;
-                const projProfit = arv > 0 ? arv - purchase - improv - closingCosts : 0;
-                const reapScore = n(deal.reapScore);
-                const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-                const userFullName = userEmail ? userEmail.split("@")[0] : "Investor";
+                const clPct = n(deal.closingCostPct) || n(deal.acqCostToClose) || 0;
+                const clCosts = purchase * clPct / 100;
+                const totalCost = purchase + improv + clCosts;
+                const projProfit = arv > 0 ? arv - totalCost : 0;
+                const rs = n(deal.reapScore);
+                const today = new Date().toLocaleDateString("en-US", {year:"numeric",month:"long",day:"numeric"});
+                const userName = userEmail ? userEmail.split("@")[0].replace(/\./g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "Investor";
 
-                // PAGE 1: Cover
-                pdf.setFillColor(10, 15, 26); pdf.rect(0, 0, w, h, "F");
-                // Green accent bar
-                pdf.setFillColor(...green); pdf.rect(0, 0, w, 4, "F");
+                // Helper: draw gauge
+                const drawGauge = (x, y, r, score, max) => {
+                  const pct = Math.min(score / max, 1);
+                  // Background arc
+                  for (let a = 0; a <= 180; a += 2) { const rad = (Math.PI + a * Math.PI / 180); pdf.setFillColor(40,45,60); pdf.circle(x + Math.cos(rad) * r, y + Math.sin(rad) * r, 1.2, "F"); }
+                  // Score arc
+                  const endAngle = 180 * pct;
+                  for (let a = 0; a <= endAngle; a += 2) { const rad = (Math.PI + a * Math.PI / 180); const c = pct >= 0.7 ? G : pct >= 0.4 ? [217,119,6] : [220,38,38]; pdf.setFillColor(...c); pdf.circle(x + Math.cos(rad) * r, y + Math.sin(rad) * r, 1.8, "F"); }
+                  pdf.setFontSize(18); pdf.setFont("helvetica","bold"); pdf.setTextColor(255,255,255);
+                  pdf.text(String(Math.round(score)), x, y - 2, {align:"center"});
+                  pdf.setFontSize(7); pdf.setTextColor(148,163,184); pdf.text("/ " + max, x, y + 4, {align:"center"});
+                };
+
+                // Helper: draw bar chart
+                const drawBarChart = (x, y, cw, ch, data, colors) => {
+                  const maxVal = Math.max(...data.map(d => d.value), 1);
+                  const barW = (cw - (data.length - 1) * 3) / data.length;
+                  data.forEach((d, i) => {
+                    const barH = (d.value / maxVal) * ch;
+                    const bx = x + i * (barW + 3);
+                    pdf.setFillColor(40,45,60); pdf.roundedRect(bx, y, barW, ch, 1, 1, "F");
+                    pdf.setFillColor(...(colors[i % colors.length])); pdf.roundedRect(bx, y + ch - barH, barW, barH, 1, 1, "F");
+                    pdf.setFontSize(7); pdf.setTextColor(255,255,255); pdf.text(d.label, bx + barW/2, y + ch + 5, {align:"center"});
+                    pdf.setFontSize(8); pdf.setTextColor(...(colors[i % colors.length])); pdf.text(d.display, bx + barW/2, y + ch - barH - 2, {align:"center"});
+                  });
+                };
+
+                // Helper: section header
+                const sectionHead = (label, yPos, page) => {
+                  pdf.setFillColor(...G); pdf.rect(m, yPos, 3, 8, "F");
+                  pdf.setFontSize(13); pdf.setFont("helvetica","bold"); pdf.setTextColor(...D);
+                  pdf.text(label, m + 7, yPos + 6);
+                  pdf.setFillColor(...LG); pdf.rect(m + 7, yPos + 9, w - 2*m - 7, 0.3, "F");
+                  return yPos + 14;
+                };
+
+                // Helper: metric card
+                const metricCard = (x, y, cw, ch, label, value, good, color) => {
+                  pdf.setFillColor(good ? 240 : 254, good ? 253 : 242, good ? 244 : 242);
+                  pdf.roundedRect(x, y, cw, ch, 2, 2, "F");
+                  pdf.setDrawColor(good ? 187 : 254, good ? 247 : 202, good ? 208 : 202);
+                  pdf.roundedRect(x, y, cw, ch, 2, 2, "S");
+                  pdf.setFontSize(7); pdf.setTextColor(...GR); pdf.text(label, x + cw/2, y + 7, {align:"center"});
+                  pdf.setFontSize(12); pdf.setFont("helvetica","bold"); pdf.setTextColor(...(color || (good ? G : [220,38,38])));
+                  pdf.text(value, x + cw/2, y + 16, {align:"center"});
+                  pdf.setFont("helvetica","normal");
+                };
+
+                // ═══ PAGE 1: COVER ═══
+                pdf.setFillColor(10,15,26); pdf.rect(0, 0, w, h, "F");
+                pdf.setFillColor(...G); pdf.rect(0, 0, w, 4, "F");
+                // Subtle gradient accent
+                pdf.setFillColor(22,163,74); pdf.setGState(new pdf.GState({opacity:0.05})); pdf.circle(w-30, 60, 80, "F"); pdf.setGState(new pdf.GState({opacity:1}));
                 // REAP branding
-                pdf.setFont("helvetica", "bold"); pdf.setFontSize(32); pdf.setTextColor(255, 255, 255);
-                pdf.text("REAP", m, 40);
-                pdf.setFontSize(10); pdf.setTextColor(148, 163, 184);
-                pdf.text("Real Estate Analytics Platform", m, 48);
-                pdf.setFontSize(9); pdf.text("app.getreap.ai", m, 55);
-                // Title
-                pdf.setFontSize(14); pdf.setTextColor(...green);
-                pdf.text("INVESTMENT ANALYSIS REPORT", m, 80);
-                pdf.setFillColor(...green); pdf.rect(m, 83, 60, 0.5, "F");
+                pdf.setFont("helvetica","bold"); pdf.setFontSize(28); pdf.setTextColor(255,255,255); pdf.text("REAP", m, 30);
+                pdf.setFont("helvetica","normal"); pdf.setFontSize(9); pdf.setTextColor(148,163,184); pdf.text("Real Estate Analytics Platform  |  app.getreap.ai", m, 37);
+                // Divider
+                pdf.setFillColor(...G); pdf.rect(m, 42, 40, 0.5, "F");
+                // Report type badge
+                pdf.setFillColor(22,163,74); pdf.roundedRect(m, 50, 52, 7, 2, 2, "F");
+                pdf.setFontSize(7); pdf.setTextColor(255,255,255); pdf.text("INVESTMENT ANALYSIS", m + 3, 55);
                 // Property address
-                pdf.setFontSize(22); pdf.setTextColor(255, 255, 255);
-                pdf.text(deal.address || "Property Address", m, 100, { maxWidth: w - 2 * m });
-                pdf.setFontSize(11); pdf.setTextColor(148, 163, 184);
+                pdf.setFontSize(24); pdf.setFont("helvetica","bold"); pdf.setTextColor(255,255,255);
+                const addrLines = pdf.splitTextToSize(deal.address || "Property Address", w - 2*m);
+                pdf.text(addrLines, m, 72);
+                const addrH = addrLines.length * 9;
+                pdf.setFontSize(11); pdf.setFont("helvetica","normal"); pdf.setTextColor(148,163,184);
                 const cityLine = [deal.city, deal.state, deal.zip].filter(Boolean).join(", ");
-                if (cityLine) pdf.text(cityLine, m, 110);
-                pdf.text(deal.type || "Real Estate", m, 118);
-                // Key metrics on cover
-                let cy = 140;
-                pdf.setFillColor(20, 28, 48); pdf.roundedRect(m, cy, w - 2 * m, 90, 3, 3, "F");
-                pdf.setFontSize(9); pdf.setTextColor(148, 163, 184); pdf.text("REAP SCORE", m + 8, cy + 12);
-                pdf.setFontSize(36); pdf.setTextColor(...green); pdf.text(String(Math.round(reapScore)), m + 8, cy + 32);
-                pdf.setFontSize(10); pdf.setTextColor(148, 163, 184); pdf.text("/ 100", m + 40, cy + 32);
-                pdf.setFontSize(12); pdf.setTextColor(255, 255, 255);
-                pdf.text(reapScore >= 70 ? "Strong Deal" : reapScore >= 40 ? "Moderate" : "Below Target", m + 8, cy + 42);
-                // Right side metrics
-                const mx = m + 90;
-                [[" Asking Price", fmtM(deal.askingPrice)], ["Our Offer", fmtM(deal.offer)], ["Improvement Budget", fmtM(deal.improvementBudget)], ["Completed Value (ARV)", fmtM(deal.arv)], ["Projected Profit", fmtM(projProfit)]].forEach(([label, val], i) => {
-                  pdf.setFontSize(8); pdf.setTextColor(148, 163, 184); pdf.text(label, mx, cy + 12 + i * 15);
-                  pdf.setFontSize(13); pdf.setTextColor(255, 255, 255); pdf.text(val, mx, cy + 20 + i * 15);
-                });
-                // Footer
-                pdf.setFontSize(9); pdf.setTextColor(100, 116, 139);
-                pdf.text("Prepared for: " + userFullName, m, h - 30);
-                pdf.text("Generated: " + today, m, h - 22);
-                pdf.text("Confidential — For Authorized Use Only", m, h - 14);
+                if (cityLine) pdf.text(cityLine, m, 72 + addrH);
+                pdf.text((deal.type || "Real Estate") + (sqft > 0 ? "  |  " + sqft.toLocaleString() + " sqft" : "") + (deal.units ? "  |  " + deal.units + " units" : ""), m, 72 + addrH + 7);
 
-                // PAGE 2: Property Details + Financial Summary
+                // REAP Score Gauge
+                const gaugeY = 110;
+                drawGauge(w - 45, gaugeY, 20, rs, 100);
+                pdf.setFontSize(8); pdf.setTextColor(148,163,184); pdf.text("REAP SCORE", w - 45, gaugeY + 14, {align:"center"});
+                pdf.setFontSize(9); pdf.setTextColor(...(rs >= 70 ? G : rs >= 40 ? [217,119,6] : [220,38,38]));
+                pdf.text(rs >= 70 ? "Strong" : rs >= 40 ? "Moderate" : "Caution", w - 45, gaugeY + 20, {align:"center"});
+
+                // Financial highlights bar chart
+                const chartY = 140;
+                pdf.setFillColor(18,24,40); pdf.roundedRect(m, chartY, w - 2*m, 75, 3, 3, "F");
+                pdf.setFontSize(8); pdf.setTextColor(148,163,184); pdf.text("DEAL FINANCIAL OVERVIEW", m + 8, chartY + 10);
+                drawBarChart(m + 8, chartY + 16, w - 2*m - 16, 40, [
+                  { label: "ASKING", value: n(deal.askingPrice), display: fM(deal.askingPrice) },
+                  { label: "OFFER", value: purchase, display: fM(purchase) },
+                  { label: "BUDGET", value: improv, display: fM(improv) },
+                  { label: "ARV", value: arv, display: fM(arv) },
+                  { label: "PROFIT", value: Math.max(projProfit, 0), display: fM(projProfit) },
+                ], [G, DG, [217,119,6], [37,99,235], projProfit >= 0 ? G : [220,38,38]]);
+
+                // Key metrics row
+                const kmY = chartY + 80;
+                const cardW = (w - 2*m - 15) / 4;
+                [
+                  ["ROI", fP(deal.roi), n(deal.roi) >= 15],
+                  ["CTV", fP(deal.ctv), n(deal.ctv) > 0 && n(deal.ctv) < 75],
+                  ["Cap Rate", fP(deal.capRate), n(deal.capRate) >= 6],
+                  ["DSCR", deal.dscr ? deal.dscr + "x" : "\u2014", n(deal.dscr) >= 1.25],
+                ].forEach(([label, val, good], i) => {
+                  const cx = m + i * (cardW + 5);
+                  pdf.setFillColor(good ? 22 : 60, good ? 40 : 30, good ? 30 : 30); pdf.roundedRect(cx, kmY, cardW, 20, 2, 2, "F");
+                  pdf.setFontSize(7); pdf.setTextColor(148,163,184); pdf.text(label, cx + cardW/2, kmY + 7, {align:"center"});
+                  pdf.setFontSize(13); pdf.setFont("helvetica","bold"); pdf.setTextColor(...(good ? G : [200,200,200]));
+                  pdf.text(val, cx + cardW/2, kmY + 16, {align:"center"}); pdf.setFont("helvetica","normal");
+                });
+
+                // Footer
+                pdf.setFontSize(9); pdf.setTextColor(100,116,139);
+                pdf.text("Prepared for: " + userName, m, h - 28);
+                pdf.text("Report Date: " + today, m, h - 21);
+                pdf.setFontSize(7); pdf.setTextColor(60,70,90);
+                pdf.text("CONFIDENTIAL  |  For Authorized Use Only  |  Not an Appraisal", m, h - 12);
+                pdf.setFillColor(...G); pdf.rect(0, h - 4, w, 4, "F");
+
+                // ═══ PAGE 2: PROPERTY + FINANCIALS ═══
                 pdf.addPage();
-                pdf.setFillColor(255, 255, 255); pdf.rect(0, 0, w, h, "F");
-                pdf.setFillColor(...green); pdf.rect(0, 0, w, 3, "F");
-                // Header
-                pdf.setFontSize(8); pdf.setTextColor(...grey); pdf.text("REAP Investment Report — " + (deal.address || ""), m, 14);
-                pdf.setFontSize(8); pdf.text(today, w - m - 30, 14);
-                let y = 28;
-                pdf.setFontSize(14); pdf.setTextColor(...dark); pdf.text("Property Profile", m, y); y += 8;
-                pdf.setFillColor(...lightGrey); pdf.rect(m, y, w - 2 * m, 0.3, "F"); y += 6;
-                const propRows = [
-                  ["Property Type", deal.type || "—"], ["Units", deal.units || "—"], ["Net Sq Ft", sqft ? sqft.toLocaleString() : "—"],
-                  ["Year Built", deal.yearBuilt || "—"], ["Class", deal.class ? "Class " + deal.class : "—"], ["Zip Code", deal.zip || "—"],
-                  ["Bedrooms", deal.bedrooms || "—"], ["Bathrooms", (deal.bathroomsFull || "—") + " full / " + (deal.bathroomsHalf || "0") + " half"],
-                  ["County", deal.county || "—"], ["Lot Size", deal.lotAcres ? deal.lotAcres + " acres" : "—"],
-                ];
-                propRows.forEach(([label, val]) => {
-                  pdf.setFontSize(9); pdf.setTextColor(...grey); pdf.text(label, m, y);
-                  pdf.setTextColor(...dark); pdf.text(String(val), m + 55, y);
+                pdf.setFillColor(255,255,255); pdf.rect(0, 0, w, h, "F");
+                pdf.setFillColor(...G); pdf.rect(0, 0, w, 3, "F");
+                pdf.setFontSize(7); pdf.setTextColor(...GR); pdf.text("REAP Investment Report  |  " + (deal.address || ""), m, 10);
+                pdf.text("Page 2", w - m, 10, {align:"right"});
+                let y = 20;
+                y = sectionHead("Property Profile", y);
+                const propData = [["Type", deal.type], ["Units", deal.units], ["Net Sq Ft", sqft ? sqft.toLocaleString() : "\u2014"], ["Bedrooms", deal.bedrooms], ["Bathrooms", (deal.bathroomsFull || "\u2014") + " full / " + (deal.bathroomsHalf || "0") + " half"], ["Year Built", deal.yearBuilt], ["Class", deal.class ? "Class " + deal.class : "\u2014"], ["Lot", deal.lotAcres ? deal.lotAcres + " ac" : "\u2014"], ["County", deal.county], ["Zip", deal.zip]];
+                propData.forEach(([label, val], i) => {
+                  if (i % 2 === 0) { pdf.setFillColor(248,250,252); pdf.rect(m, y - 3, w - 2*m, 6, "F"); }
+                  pdf.setFontSize(8); pdf.setTextColor(...GR); pdf.text(label, m + 2, y);
+                  pdf.setFont("helvetica","bold"); pdf.setTextColor(...D); pdf.text(String(val || "\u2014"), m + 50, y); pdf.setFont("helvetica","normal");
                   y += 6;
                 });
-                y += 8;
-                pdf.setFontSize(14); pdf.setTextColor(...dark); pdf.text("Financial Summary", m, y); y += 8;
-                pdf.setFillColor(...lightGrey); pdf.rect(m, y, w - 2 * m, 0.3, "F"); y += 6;
-                const finRows = [
-                  ["Asking Price", fmtM(deal.askingPrice), "$/sqft", sqft > 0 && n(deal.askingPrice) > 0 ? "$" + Math.round(n(deal.askingPrice) / sqft) : "—"],
-                  ["Our Offer", fmtM(deal.offer), "$/sqft", sqft > 0 && n(deal.offer) > 0 ? "$" + Math.round(n(deal.offer) / sqft) : "—"],
-                  ["Improvement Budget", fmtM(deal.improvementBudget), "$/sqft", sqft > 0 && improv > 0 ? "$" + Math.round(improv / sqft) : "—"],
-                  ["Completed Value (ARV)", fmtM(deal.arv), "$/sqft", sqft > 0 && arv > 0 ? "$" + Math.round(arv / sqft) : "—"],
-                  ["Closing Costs (" + closingPct + "%)", fmtM(closingCosts), "", ""],
-                  ["Projected Profit", fmtM(projProfit), "$/sqft", sqft > 0 ? "$" + Math.round(projProfit / sqft) : "—"],
-                ];
-                finRows.forEach(([label, val, subLabel, subVal]) => {
-                  pdf.setFontSize(9); pdf.setTextColor(...grey); pdf.text(label, m, y);
-                  pdf.setTextColor(...dark); pdf.text(val, m + 65, y);
-                  if (subLabel && subVal) { pdf.setTextColor(...grey); pdf.setFontSize(7); pdf.text(subLabel + ": " + subVal, m + 110, y); }
-                  y += 7;
+                y += 4;
+                y = sectionHead("Financial Summary", y);
+                // Price comparison cards
+                const priceW = (w - 2*m - 10) / 3;
+                [["Asking", fM(deal.askingPrice), sqft > 0 && n(deal.askingPrice) > 0 ? "$" + Math.round(n(deal.askingPrice)/sqft) + "/sf" : "", [100,116,139]],
+                 ["Our Offer", fM(deal.offer), sqft > 0 && purchase > 0 ? "$" + Math.round(purchase/sqft) + "/sf" : "", G],
+                 ["ARV", fM(deal.arv), sqft > 0 && arv > 0 ? "$" + Math.round(arv/sqft) + "/sf" : "", [37,99,235]]
+                ].forEach(([label, val, sub, color], i) => {
+                  const cx = m + i * (priceW + 5);
+                  pdf.setFillColor(248,250,252); pdf.roundedRect(cx, y, priceW, 22, 2, 2, "F");
+                  pdf.setDrawColor(226,232,240); pdf.roundedRect(cx, y, priceW, 22, 2, 2, "S");
+                  pdf.setFillColor(...color); pdf.rect(cx, y, 2, 22, "F");
+                  pdf.setFontSize(7); pdf.setTextColor(...GR); pdf.text(label, cx + 6, y + 7);
+                  pdf.setFontSize(12); pdf.setFont("helvetica","bold"); pdf.setTextColor(...D); pdf.text(val, cx + 6, y + 15); pdf.setFont("helvetica","normal");
+                  if (sub) { pdf.setFontSize(7); pdf.setTextColor(...GR); pdf.text(sub, cx + priceW - 4, y + 15, {align:"right"}); }
                 });
-                y += 8;
-                pdf.setFontSize(14); pdf.setTextColor(...dark); pdf.text("Key Metrics", m, y); y += 8;
-                pdf.setFillColor(...lightGrey); pdf.rect(m, y, w - 2 * m, 0.3, "F"); y += 6;
-                [
-                  ["Return on Investment (ROI)", fmtP(deal.roi)], ["Cost to Value (CTV)", fmtP(deal.ctv)],
-                  ["Avg Annual Return (AAR)", fmtP(deal.aar)], ["Profitability", deal.profitability || "—"],
-                  ["Cap Rate", fmtP(deal.capRate)], ["DSCR", deal.dscr ? deal.dscr + "x" : "—"],
-                  ["Cash Flow (Monthly)", fmtM(deal.cashFlowMonthly)], ["NOI (Annual)", fmtM(deal.noiAnnual)],
-                  ["Equity Required", fmtM(deal.equityRequired)], ["Equity Multiple", deal.equityMultiple ? n(deal.equityMultiple).toFixed(2) + "x" : "—"],
-                ].forEach(([label, val]) => {
-                  pdf.setFontSize(9); pdf.setTextColor(...grey); pdf.text(label, m, y);
-                  pdf.setTextColor(...dark); pdf.text(val, m + 65, y); y += 6;
+                y += 28;
+                // Profit + ROI + Budget row
+                [["Improvement Budget", fM(improv)], ["Closing Costs (" + clPct + "%)", fM(clCosts)], ["Total Cost", fM(totalCost)], ["Projected Profit", fM(projProfit)], ["ROI", fP(deal.roi)], ["AAR", fP(deal.aar)], ["Profitability", deal.profitability || "\u2014"]].forEach(([label, val]) => {
+                  pdf.setFontSize(8); pdf.setTextColor(...GR); pdf.text(label, m + 2, y);
+                  pdf.setFont("helvetica","bold"); pdf.setTextColor(...D); pdf.text(val, m + 65, y); pdf.setFont("helvetica","normal"); y += 6;
                 });
+                y += 4;
 
-                // PAGE 3: REAP Score Breakdown + Proforma
+                // Capital Stack Chart
+                y = sectionHead("Capital Stack", y);
+                const debt = n(deal.bridgeLoanTotal) || 0;
+                const equity = Math.max(0, totalCost - debt);
+                const stackW = w - 2*m;
+                const debtPct = totalCost > 0 ? debt / totalCost : 0;
+                const eqPct = totalCost > 0 ? equity / totalCost : 0;
+                pdf.setFillColor(37,99,235); pdf.roundedRect(m, y, stackW * debtPct, 12, debtPct > 0.05 ? 2 : 0, 0, "F");
+                pdf.setFillColor(...G); pdf.roundedRect(m + stackW * debtPct, y, stackW * eqPct, 12, 0, eqPct > 0.05 ? 2 : 0, "F");
+                pdf.setFontSize(7); pdf.setTextColor(255,255,255);
+                if (debtPct > 0.15) pdf.text("Debt: " + fM(debt) + " (" + (debtPct*100).toFixed(0) + "%)", m + stackW * debtPct / 2, y + 8, {align:"center"});
+                if (eqPct > 0.15) pdf.text("Equity: " + fM(equity) + " (" + (eqPct*100).toFixed(0) + "%)", m + stackW * debtPct + stackW * eqPct / 2, y + 8, {align:"center"});
+                y += 18;
+
+                // ═══ PAGE 3: PROFORMA + SCORE BREAKDOWN ═══
                 pdf.addPage();
-                pdf.setFillColor(255, 255, 255); pdf.rect(0, 0, w, h, "F");
-                pdf.setFillColor(...green); pdf.rect(0, 0, w, 3, "F");
-                pdf.setFontSize(8); pdf.setTextColor(...grey); pdf.text("REAP Investment Report — " + (deal.address || ""), m, 14);
-                y = 28;
-                pdf.setFontSize(14); pdf.setTextColor(...dark); pdf.text("REAP Score Breakdown", m, y); y += 8;
-                pdf.setFillColor(...lightGrey); pdf.rect(m, y, w - 2 * m, 0.3, "F"); y += 6;
-                pdf.setFontSize(11); pdf.setTextColor(...dark); pdf.text("Overall Score: " + Math.round(reapScore) + " / 100", m, y); y += 8;
-                const roiScore = Math.min(25, Math.max(0, n(deal.roi) * 0.5));
-                const capScore = Math.min(20, Math.max(0, n(deal.capRate) * 2.5));
-                const dscrVal = n(deal.dscr) || 0;
-                const dscrScore = dscrVal >= 1.5 ? 20 : dscrVal >= 1.25 ? 15 : dscrVal >= 1.0 ? 10 : 0;
-                const cfVal = n(deal.cashFlowMonthly) || 0;
-                const cfScore = cfVal > 5000 ? 15 : cfVal > 2000 ? 10 : cfVal > 0 ? 5 : 0;
-                const ctvVal = n(deal.ctv) || 100;
-                const ctvScore = ctvVal < 65 ? 10 : ctvVal < 75 ? 7 : ctvVal < 85 ? 4 : 0;
-                const emVal = n(deal.equityMultiple) || 1;
-                const emScore = Math.min(10, Math.max(0, (emVal - 1) * 5));
-                [
-                  ["Return on Investment", 25, roiScore], ["Cap Rate", 20, capScore], ["Debt Service Coverage", 20, dscrScore],
-                  ["Monthly Cash Flow", 15, cfScore], ["Cost to Value", 10, ctvScore], ["Equity Multiple", 10, emScore],
-                ].forEach(([label, max, score]) => {
-                  pdf.setFontSize(9); pdf.setTextColor(...dark); pdf.text(label, m, y);
-                  pdf.text(Math.round(score) + " / " + max, m + 100, y);
-                  // Progress bar
-                  pdf.setFillColor(230, 230, 230); pdf.rect(m + 120, y - 3, 50, 4, "F");
+                pdf.setFillColor(255,255,255); pdf.rect(0, 0, w, h, "F");
+                pdf.setFillColor(...G); pdf.rect(0, 0, w, 3, "F");
+                pdf.setFontSize(7); pdf.setTextColor(...GR); pdf.text("REAP Investment Report  |  " + (deal.address || ""), m, 10);
+                pdf.text("Page 3", w - m, 10, {align:"right"});
+                y = 20;
+                y = sectionHead("Proforma Analysis", y);
+                // Revenue waterfall
+                const proRev = n(deal.proformaRevenueAnnual);
+                const proVac = proRev * (n(deal.proformaVacancy) || 0) / 100;
+                const proExp = n(deal.proformaExpensesAnnual);
+                const proNOI = n(deal.noiAnnual);
+                const wfW = (w - 2*m - 15) / 4;
+                [["Revenue", fM(proRev), [37,99,235], proRev],
+                 ["Vacancy", "-" + fM(proVac), [220,38,38], proVac],
+                 ["Expenses", "-" + fM(proExp), [217,119,6], proExp],
+                 ["NOI", fM(proNOI), G, proNOI]
+                ].forEach(([label, val, color, amount], i) => {
+                  const cx = m + i * (wfW + 5);
+                  const maxA = Math.max(proRev, 1);
+                  const barH = Math.min((Math.abs(amount) / maxA) * 30, 30);
+                  pdf.setFillColor(248,250,252); pdf.roundedRect(cx, y, wfW, 42, 2, 2, "F");
+                  pdf.setFillColor(...color); pdf.rect(cx, y + 42 - barH, wfW, barH, "F");
+                  pdf.setFontSize(7); pdf.setTextColor(...GR); pdf.text(label, cx + wfW/2, y + 47, {align:"center"});
+                  pdf.setFontSize(9); pdf.setFont("helvetica","bold"); pdf.setTextColor(...color); pdf.text(val, cx + wfW/2, y + 54, {align:"center"}); pdf.setFont("helvetica","normal");
+                });
+                y += 60;
+                [["Rent/SF", "$" + (n(deal.proformaRentPerSF) || 0).toFixed(2)], ["Monthly Revenue", fM(deal.proformaRevenueMonthly)], ["Vacancy", fP(deal.proformaVacancy)], ["Expense Ratio", fP(deal.proformaExpensesPct)], ["Cap Rate", fP(deal.capRate)], ["Monthly Cash Flow", fM(deal.cashFlowMonthly)]].forEach(([label, val]) => {
+                  pdf.setFontSize(8); pdf.setTextColor(...GR); pdf.text(label, m + 2, y);
+                  pdf.setFont("helvetica","bold"); pdf.setTextColor(...D); pdf.text(val, m + 55, y); pdf.setFont("helvetica","normal"); y += 6;
+                });
+                y += 4;
+                y = sectionHead("REAP Score Breakdown", y);
+                const scoreComponents = [
+                  ["ROI", 25, Math.min(25, Math.max(0, n(deal.roi) * 0.5))],
+                  ["Cap Rate", 20, Math.min(20, Math.max(0, n(deal.capRate) * 2.5))],
+                  ["DSCR", 20, (n(deal.dscr) >= 1.5 ? 20 : n(deal.dscr) >= 1.25 ? 15 : n(deal.dscr) >= 1.0 ? 10 : 0)],
+                  ["Cash Flow", 15, (n(deal.cashFlowMonthly) > 5000 ? 15 : n(deal.cashFlowMonthly) > 2000 ? 10 : n(deal.cashFlowMonthly) > 0 ? 5 : 0)],
+                  ["CTV", 10, ((n(deal.ctv)||100) < 65 ? 10 : (n(deal.ctv)||100) < 75 ? 7 : (n(deal.ctv)||100) < 85 ? 4 : 0)],
+                  ["Equity Multiple", 10, Math.min(10, Math.max(0, ((n(deal.equityMultiple)||1) - 1) * 5))],
+                ];
+                scoreComponents.forEach(([label, max, score]) => {
                   const pct = score / max;
+                  pdf.setFontSize(8); pdf.setTextColor(...D); pdf.text(label, m + 2, y);
+                  pdf.text(Math.round(score) + "/" + max, m + 50, y);
+                  pdf.setFillColor(230,230,230); pdf.roundedRect(m + 65, y - 3, 80, 4, 1, 1, "F");
                   pdf.setFillColor(pct >= 0.7 ? 34 : pct >= 0.3 ? 245 : 239, pct >= 0.7 ? 197 : pct >= 0.3 ? 158 : 68, pct >= 0.7 ? 94 : pct >= 0.3 ? 11 : 68);
-                  pdf.rect(m + 120, y - 3, 50 * pct, 4, "F");
+                  pdf.roundedRect(m + 65, y - 3, 80 * pct, 4, 1, 1, "F");
                   y += 8;
                 });
-                y += 8;
-                pdf.setFontSize(14); pdf.setTextColor(...dark); pdf.text("Proforma Analysis", m, y); y += 8;
-                pdf.setFillColor(...lightGrey); pdf.rect(m, y, w - 2 * m, 0.3, "F"); y += 6;
-                [
-                  ["Proforma Rent/SF", "$" + (n(deal.proformaRentPerSF) || 0).toFixed(2)],
-                  ["Annual Revenue", fmtM(deal.proformaRevenueAnnual)], ["Monthly Revenue", fmtM(deal.proformaRevenueMonthly)],
-                  ["Vacancy (%)", fmtP(deal.proformaVacancy)],
-                  ["Annual Expenses", fmtM(deal.proformaExpensesAnnual)], ["Expense Ratio", fmtP(deal.proformaExpensesPct)],
-                  ["NOI (Annual)", fmtM(deal.noiAnnual)], ["NOI (Monthly)", fmtM(deal.noiMonthly)],
-                  ["Cap Rate", fmtP(deal.capRate)],
-                ].forEach(([label, val]) => {
-                  pdf.setFontSize(9); pdf.setTextColor(...grey); pdf.text(label, m, y);
-                  pdf.setTextColor(...dark); pdf.text(val, m + 65, y); y += 6;
+                y += 4;
+                y = sectionHead("Financing Details", y);
+                [["Bridge Loan", fM(deal.bridgeLoanTotal)], ["Bridge Rate", fP(deal.bridgeInterestRate)], ["Bridge Monthly", fM(deal.bridgeInterestMonthly)], ["Refi Amount", fM(deal.refiLoanAmount)], ["Refi Rate", fP(deal.refiInterestRate)], ["Cash Out Refi", fM(deal.cashOutRefi)], ["Equity After Refi", fM(deal.equityAfterRefi)], ["DSCR", deal.dscr ? deal.dscr + "x" : "\u2014"]].forEach(([label, val]) => {
+                  pdf.setFontSize(8); pdf.setTextColor(...GR); pdf.text(label, m + 2, y);
+                  pdf.setFont("helvetica","bold"); pdf.setTextColor(...D); pdf.text(val, m + 55, y); pdf.setFont("helvetica","normal"); y += 6;
                 });
-                y += 8;
-                pdf.setFontSize(14); pdf.setTextColor(...dark); pdf.text("Financing Summary", m, y); y += 8;
-                pdf.setFillColor(...lightGrey); pdf.rect(m, y, w - 2 * m, 0.3, "F"); y += 6;
-                [
-                  ["Bridge Loan Total", fmtM(deal.bridgeLoanTotal)], ["Bridge Interest Rate", fmtP(deal.bridgeInterestRate)],
-                  ["Bridge Monthly Payment", fmtM(deal.bridgeInterestMonthly)], ["Bridge LTC", fmtP(deal.bridgeLTC)],
-                  ["Refi Loan Amount", fmtM(deal.refiLoanAmount)], ["Refi Interest Rate", fmtP(deal.refiInterestRate)],
-                  ["Cash Out at Refi", fmtM(deal.cashOutRefi)], ["Equity After Refi", fmtM(deal.equityAfterRefi)],
-                ].forEach(([label, val]) => {
-                  pdf.setFontSize(9); pdf.setTextColor(...grey); pdf.text(label, m, y);
-                  pdf.setTextColor(...dark); pdf.text(val, m + 65, y); y += 6;
-                });
-                // Footer
-                pdf.setFontSize(7); pdf.setTextColor(180, 180, 180);
-                pdf.text("This report is generated by REAP (app.getreap.ai) for informational purposes only. It is not an appraisal or financial advice.", m, h - 10);
+                // Final footer
+                pdf.setFontSize(6); pdf.setTextColor(180,180,180);
+                pdf.text("This report is generated by REAP (app.getreap.ai). It is not an appraisal, financial advice, or legal opinion. Data accuracy depends on user inputs.", m, h - 8);
+                pdf.setFillColor(...G); pdf.rect(0, h - 3, w, 3, "F");
 
-                // Save
-                const fileName = "REAP_Report_" + (deal.address || "Property").replace(/[^a-zA-Z0-9]/g, "_") + "_" + new Date().toISOString().split("T")[0] + ".pdf";
+                const fileName = "REAP_Report_" + (deal.address || "Property").replace(/[^a-zA-Z0-9]/g, "_") + ".pdf";
                 pdf.save(fileName);
-
-                // Log to activity
-                try {
-                  await supabase.from("deal_activities").insert({
-                    deal_id: deal.id, activity_type: "Document Added",
-                    description: "REAP Investment Report generated: " + fileName,
-                    user_email: userEmail, created_at: new Date().toISOString(),
-                  });
-                } catch (e) { console.log("Activity log skipped:", e); }
-
-                if (reportBtn) reportBtn.textContent = "Generate Report";
-              } catch (err) { console.error("Report generation error:", err); alert("Error generating report: " + err.message); }
+                try { await supabase.from("deal_activities").insert({ deal_id: deal.id, activity_type: "Document Added", description: "REAP Investment Report generated: " + fileName, user_email: userEmail, created_at: new Date().toISOString() }); } catch (e) {}
+                reportBtn.textContent = "Generate Report";
+              } catch (err) { console.error("Report error:", err); alert("Error: " + err.message); }
             }} style={{ background: "linear-gradient(135deg, #16a34a, #15803d)", border: "none", borderRadius: 8, padding: isMobile ? "10px 18px" : "10px 22px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 10px rgba(22,163,74,0.35)", whiteSpace: "nowrap", flex: isMobile ? 1 : "none", textAlign: "center", display: "flex", alignItems: "center", gap: 6 }}>
               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
               Generate Report
