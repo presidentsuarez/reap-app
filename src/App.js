@@ -3112,6 +3112,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const [heroMapMode, setHeroMapMode] = useState("street");
   const [scrolled, setScrolled] = useState(false);
   const [researchSub, setResearchSub] = useState("rental");
+  const [improvSub, setImprovSub] = useState("items");
   const [aiEstimates, setAiEstimates] = useState(null);
   const [applyLoading, setApplyLoading] = useState(false);
   const [applyMsg, setApplyMsg] = useState("");
@@ -3119,8 +3120,8 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
   const hasMlsSource = deal?.source === "MLS Feed" || deal?.metadata?.mls_number;
   const dealTier = orgData?.plan_tier || "starter";
   const isDealStarter = getTierRank(dealTier) <= 1;
-  const starterExcludedDealTabs = ["offerings", "ai summary", "tasks", "documents", "shared deal", "investor updates"];
-  const allDealTabs = ["overview", "research", "cash flow", "financing", "equity", "improvements", "ai estimate", "units", ...(hasMlsSource ? ["mls"] : []), "offerings", "ai summary", "tasks", "documents", "shared deal", "activity log", "investor updates"];
+  const starterExcludedDealTabs = ["research", "offerings", "ai summary", "tasks", "documents", "shared deal", "investor updates"];
+  const allDealTabs = ["overview", "research", "cash flow", "financing", "equity", "improvements", "units", ...(hasMlsSource ? ["mls"] : []), "reap score", "offerings", "ai summary", "tasks", "documents", "shared deal", "activity log", "investor updates"];
   const tabs = isDealStarter ? allDealTabs.filter(t => !starterExcludedDealTabs.includes(t)) : allDealTabs;
 
   // Resolve pending deal tab from URL
@@ -4077,7 +4078,6 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
             { id: "rental", label: "Rental Pricing" },
             { id: "comps", label: "Comparable Sales" },
             { id: "improvements", label: "Improvements" },
-            { id: "reapscore", label: "REAP Score" },
           ];
 
           const purchase = num(deal.offer) || num(deal.askingPrice) || 0;
@@ -4650,6 +4650,61 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
           if (improvements.length === 0 && !improvementsLoading) fetchImprovements();
           return (
             <div>
+              {/* Sub-tab toggle */}
+              <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "1px solid #e2e8f0" }}>
+                <button onClick={() => setImprovSub("items")} style={{ background: "transparent", border: "none", borderBottom: improvSub === "items" ? "2px solid #16a34a" : "2px solid transparent", padding: "10px 20px", color: improvSub === "items" ? "#16a34a" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: -1 }}>Improvements</button>
+                <button onClick={() => setImprovSub("aiestimate")} style={{ background: "transparent", border: "none", borderBottom: improvSub === "aiestimate" ? "2px solid #16a34a" : "2px solid transparent", padding: "10px 20px", color: improvSub === "aiestimate" ? "#16a34a" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: -1 }}>AI Estimate</button>
+              </div>
+
+              {improvSub === "aiestimate" && (() => {
+                if (!aiEstimates) setAiEstimates([
+                  { id: 1, category: "Kitchen", item: "Full kitchen remodel", cost: 15000, selected: false },
+                  { id: 2, category: "Kitchen", item: "Update fixtures and hardware", cost: 1500, selected: false },
+                  { id: 3, category: "Bathroom", item: "Full bathroom renovation", cost: 8000, selected: false },
+                  { id: 4, category: "Bathroom", item: "Half bath refresh", cost: 2500, selected: false },
+                  { id: 5, category: "Flooring", item: "LVP flooring throughout", cost: Math.round((num(deal.sqft) || 1500) * 4.5), selected: false },
+                  { id: 6, category: "Paint", item: "Interior paint — walls and trim", cost: Math.round((num(deal.sqft) || 1500) * 2.5), selected: false },
+                  { id: 7, category: "Exterior", item: "Exterior paint and pressure wash", cost: 4500, selected: false },
+                  { id: 8, category: "Exterior", item: "Landscaping", cost: 2500, selected: false },
+                  { id: 9, category: "Roof", item: "Roof replacement", cost: 8500, selected: false },
+                  { id: 10, category: "HVAC", item: "HVAC system replacement", cost: 6500, selected: false },
+                  { id: 11, category: "Electrical", item: "Electrical panel upgrade", cost: 5000, selected: false },
+                  { id: 12, category: "Plumbing", item: "Plumbing repair or repipe", cost: 4500, selected: false },
+                  { id: 13, category: "Windows", item: "Window replacement", cost: 3500, selected: false },
+                  { id: 14, category: "General", item: "Permits and contingency", cost: 3000, selected: false },
+                ]);
+                if (!aiEstimates) return null;
+                const toggleItem = (id) => setAiEstimates(prev => prev.map(e => e.id === id ? { ...e, selected: !e.selected } : e));
+                const selectedItems = aiEstimates.filter(e => e.selected);
+                const totalSelected = selectedItems.reduce((s, e) => s + e.cost, 0);
+                const totalAll = aiEstimates.reduce((s, e) => s + e.cost, 0);
+                const cats = [...new Set(aiEstimates.map(e => e.category))];
+                const doApply = async () => {
+                  setApplyLoading(true);
+                  try {
+                    for (const item of selectedItems) await supabase.from("improvements").insert({ deal_id: deal.id, category: item.category, description: item.item, budgeted_cost: item.cost, actual_cost: 0, status: "planned" });
+                    await supabase.from("deals").update({ improvement_budget: totalSelected }).eq("id", deal.id);
+                    setApplyMsg(selectedItems.length + " items applied!");
+                    setTimeout(() => window.location.reload(), 1500);
+                  } catch (e) { setApplyMsg("Error: " + e.message); }
+                  setApplyLoading(false);
+                };
+                return (
+                  <div style={{ paddingBottom: 80 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+                      <div><p style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 4px" }}>AI Improvement Estimate</p><p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>Select items to add to scope</p></div>
+                      <button onClick={() => setAiEstimates(prev => prev.map(e => ({ ...e, selected: true })))} style={{ fontSize: 11, color: "#16a34a", background: "none", border: "1px solid #bbf7d0", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontWeight: 600 }}>Select All</button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+                      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, textAlign: "center" }}><p style={{ fontSize: 9, color: "#64748b", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Full Estimate</p><p style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmt(totalAll)}</p></div>
+                      <div style={{ background: selectedItems.length > 0 ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (selectedItems.length > 0 ? "#bbf7d0" : "#e2e8f0"), borderRadius: 10, padding: 14, textAlign: "center" }}><p style={{ fontSize: 9, color: selectedItems.length > 0 ? "#16a34a" : "#64748b", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Selected ({selectedItems.length})</p><p style={{ fontSize: 20, fontWeight: 700, color: selectedItems.length > 0 ? "#15803d" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmt(totalSelected)}</p></div>
+                    </div>
+                    {cats.map(cat => (<div key={cat} style={{ marginBottom: 12 }}><p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 8px" }}>{cat}</p>{aiEstimates.filter(e => e.category === cat).map(item => (<div key={item.id} onClick={() => toggleItem(item.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: item.selected ? "#f0fdf4" : "#fff", border: "1px solid " + (item.selected ? "#bbf7d0" : "#e2e8f0"), borderRadius: 10, marginBottom: 6, cursor: "pointer" }}><div style={{ width: 20, height: 20, borderRadius: 6, border: "2px solid " + (item.selected ? "#16a34a" : "#cbd5e1"), background: item.selected ? "#16a34a" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{item.selected && <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}><polyline points="20 6 9 17 4 12"/></svg>}</div><p style={{ flex: 1, fontSize: 13, color: "#0f172a", margin: 0 }}>{item.item}</p><span style={{ fontSize: 13, fontWeight: 700, color: item.selected ? "#15803d" : "#0f172a", fontFamily: "'DM Mono', monospace" }}>{fmt(item.cost)}</span></div>))}</div>))}
+                    {applyMsg && <div style={{ padding: "8px 14px", borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 600, background: "#f0fdf4", color: "#16a34a" }}>{applyMsg}</div>}
+                    {selectedItems.length > 0 && <button onClick={doApply} disabled={applyLoading} style={{ width: "100%", padding: "14px", border: "none", borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>{applyLoading ? "Applying..." : "Apply " + selectedItems.length + " Items"}</button>}
+                  </div>
+                );
+              })()}
               {/* Summary cards */}
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
                 <div style={{ padding: 16, borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
@@ -4741,100 +4796,6 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                     );
                   })}
                 </div>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* ── AI ESTIMATE TAB ── */}
-        {activeTab === "ai estimate" && (() => {
-          if (!aiEstimates) setAiEstimates([
-            { id: 1, category: "Kitchen", item: "Full kitchen remodel — cabinets, countertops, appliances", cost: 15000, selected: false },
-            { id: 2, category: "Kitchen", item: "Update fixtures and hardware", cost: 1500, selected: false },
-            { id: 3, category: "Bathroom", item: "Full bathroom renovation — tile, vanity, fixtures", cost: 8000, selected: false },
-            { id: 4, category: "Bathroom", item: "Half bath refresh — paint, mirror, fixtures", cost: 2500, selected: false },
-            { id: 5, category: "Flooring", item: "LVP flooring throughout — " + (num(deal.sqft) || 1500) + " sqft", cost: Math.round((num(deal.sqft) || 1500) * 4.5), selected: false },
-            { id: 6, category: "Paint", item: "Interior paint — walls and trim throughout", cost: Math.round((num(deal.sqft) || 1500) * 2.5), selected: false },
-            { id: 7, category: "Exterior", item: "Exterior paint and pressure wash", cost: 4500, selected: false },
-            { id: 8, category: "Exterior", item: "Landscaping — clean up, mulch, basic planting", cost: 2500, selected: false },
-            { id: 9, category: "Roof", item: "Roof replacement — shingle", cost: 8500, selected: false },
-            { id: 10, category: "HVAC", item: "HVAC system replacement", cost: 6500, selected: false },
-            { id: 11, category: "Electrical", item: "Electrical panel upgrade + rewire", cost: 5000, selected: false },
-            { id: 12, category: "Plumbing", item: "Plumbing — repipe or major repair", cost: 4500, selected: false },
-            { id: 13, category: "Windows", item: "Window replacement — impact or standard", cost: Math.round((num(deal.units) || 1) * 3500), selected: false },
-            { id: 14, category: "General", item: "Dumpster, permits, and contingency (10%)", cost: 3000, selected: false },
-          ]);
-
-          const toggleItem = (id) => setAiEstimates(prev => prev.map(e => e.id === id ? { ...e, selected: !e.selected } : e));
-          const selectAll = () => setAiEstimates(prev => prev.map(e => ({ ...e, selected: true })));
-          const selectedItems = aiEstimates.filter(e => e.selected);
-          const totalSelected = selectedItems.reduce((s, e) => s + e.cost, 0);
-          const totalAll = aiEstimates.reduce((s, e) => s + e.cost, 0);
-
-          const applyToImprovements = async () => {
-            if (selectedItems.length === 0) return;
-            setApplyLoading(true); setApplyMsg("");
-            try {
-              for (const item of selectedItems) {
-                await supabase.from("improvements").insert({
-                  deal_id: deal.id, category: item.category, description: item.item,
-                  budgeted_cost: item.cost, actual_cost: 0, status: "planned",
-                  created_at: new Date().toISOString(),
-                });
-              }
-              await supabase.from("deals").update({ improvement_budget: totalSelected }).eq("id", deal.id);
-              setApplyMsg(selectedItems.length + " items applied to improvements!");
-              setTimeout(() => window.location.reload(), 1500);
-            } catch (e) { setApplyMsg("Error: " + e.message); }
-            setApplyLoading(false);
-          };
-
-          const categories = [...new Set(aiEstimates.map(e => e.category))];
-
-          return (
-            <div style={{ padding: isMobile ? "0" : "0" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div>
-                  <h2 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>AI Improvement Estimate</h2>
-                  <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>Select items to add to your improvements scope</p>
-                </div>
-                <button onClick={selectAll} style={{ fontSize: 11, color: "#16a34a", background: "none", border: "1px solid #bbf7d0", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Select All</button>
-              </div>
-
-              {/* Summary */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, textAlign: "center" }}>
-                  <p style={{ fontSize: 9, color: "#64748b", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Full Estimate</p>
-                  <p style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmt(totalAll)}</p>
-                </div>
-                <div style={{ background: selectedItems.length > 0 ? "linear-gradient(135deg, #f0fdf4, #dcfce7)" : "#f8fafc", border: "1px solid " + (selectedItems.length > 0 ? "#bbf7d0" : "#e2e8f0"), borderRadius: 10, padding: 14, textAlign: "center" }}>
-                  <p style={{ fontSize: 9, color: selectedItems.length > 0 ? "#16a34a" : "#64748b", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>Selected ({selectedItems.length})</p>
-                  <p style={{ fontSize: 20, fontWeight: 700, color: selectedItems.length > 0 ? "#15803d" : "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmt(totalSelected)}</p>
-                </div>
-              </div>
-
-              {/* Items by category */}
-              {categories.map(cat => (
-                <div key={cat} style={{ marginBottom: 12 }}>
-                  <p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 8px" }}>{cat}</p>
-                  {aiEstimates.filter(e => e.category === cat).map(item => (
-                    <div key={item.id} onClick={() => toggleItem(item.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: item.selected ? "#f0fdf4" : "#fff", border: "1px solid " + (item.selected ? "#bbf7d0" : "#e2e8f0"), borderRadius: 10, marginBottom: 6, cursor: "pointer", transition: "all 0.15s" }}>
-                      <div style={{ width: 20, height: 20, borderRadius: 6, border: "2px solid " + (item.selected ? "#16a34a" : "#cbd5e1"), background: item.selected ? "#16a34a" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>
-                        {item.selected && <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}><polyline points="20 6 9 17 4 12"/></svg>}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 13, fontWeight: 500, color: "#0f172a", margin: 0 }}>{item.item}</p>
-                      </div>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: item.selected ? "#15803d" : "#0f172a", fontFamily: "'DM Mono', monospace", flexShrink: 0 }}>{fmt(item.cost)}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-
-              {/* Apply button */}
-              {applyMsg && <div style={{ padding: "8px 14px", borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 600, background: applyMsg.includes("Error") ? "#fef2f2" : "#f0fdf4", color: applyMsg.includes("Error") ? "#dc2626" : "#16a34a", border: "1px solid " + (applyMsg.includes("Error") ? "#fecaca" : "#bbf7d0") }}>{applyMsg}</div>}
-              {selectedItems.length > 0 && (
-                <button onClick={applyToImprovements} disabled={applyLoading} style={{ width: "100%", padding: "14px 24px", border: "none", borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 4px 16px rgba(22,163,74,0.35)" }}>{applyLoading ? "Applying..." : "Apply " + selectedItems.length + " Items to Improvements — " + fmt(totalSelected)}</button>
               )}
             </div>
           );
@@ -5060,6 +5021,57 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                   <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>This deal was imported from the MLS Feed but no MLS number was recorded.</p>
                 </div>
               )}
+            </div>
+          );
+        })()}
+
+
+        {/* ── REAP SCORE TAB ── */}
+        {activeTab === "reap score" && (() => {
+          const rs = num(deal.reapScore) || 0;
+          const roiScore = Math.min(25, Math.max(0, (num(deal.roi) || 0) * 0.5));
+          const capScore = Math.min(20, Math.max(0, (num(deal.capRate) || 0) * 2.5));
+          const dscrVal = num(deal.dscr) || 0;
+          const dscrScore = dscrVal >= 1.5 ? 20 : dscrVal >= 1.25 ? 15 : dscrVal >= 1.0 ? 10 : 0;
+          const cf = num(deal.cashFlowMonthly) || 0;
+          const cfScore = cf > 5000 ? 15 : cf > 2000 ? 10 : cf > 0 ? 5 : 0;
+          const ctvVal = num(deal.ctv) || 100;
+          const ctvScore = ctvVal < 65 ? 10 : ctvVal < 75 ? 7 : ctvVal < 85 ? 4 : 0;
+          const em = num(deal.equityMultiple) || 1;
+          const emScore = Math.min(10, Math.max(0, (em - 1) * 5));
+          const comps = [
+            { label: "Return on Investment", max: 25, score: roiScore, value: fmtPct(deal.roi), tip: "ROI x 0.5, capped at 25pts" },
+            { label: "Cap Rate", max: 20, score: capScore, value: fmtPct(deal.capRate), tip: "Cap Rate x 2.5, capped at 20pts" },
+            { label: "Debt Service Coverage", max: 20, score: dscrScore, value: deal.dscr ? deal.dscr + "x" : "\u2014", tip: ">=1.5x = 20pts, >=1.25x = 15pts, >=1.0x = 10pts" },
+            { label: "Monthly Cash Flow", max: 15, score: cfScore, value: fmt(deal.cashFlowMonthly), tip: ">$5K = 15pts, >$2K = 10pts, >$0 = 5pts" },
+            { label: "Cost to Value", max: 10, score: ctvScore, value: fmtPct(deal.ctv), tip: "<65% = 10pts, <75% = 7pts, <85% = 4pts" },
+            { label: "Equity Multiple", max: 10, score: Math.round(emScore * 10) / 10, value: em ? em.toFixed(2) + "x" : "\u2014", tip: "(EM-1) x 5, capped at 10pts" },
+          ];
+          return (
+            <div style={{ paddingBottom: 80 }}>
+              <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>REAP Score Breakdown <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+                <div style={{ width: 72, height: 72 }}><ConfidenceRing score={rs} size={72} /></div>
+                <div>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{rs}<span style={{ fontSize: 14, color: "#94a3b8" }}> / 100</span></p>
+                  <p style={{ fontSize: 12, color: rs >= 70 ? "#16a34a" : rs >= 40 ? "#d97706" : "#dc2626", fontWeight: 600, margin: "2px 0 0" }}>{rs >= 70 ? "Strong Deal" : rs >= 40 ? "Moderate" : "Below Target"}</p>
+                </div>
+              </div>
+              {comps.map((c, i) => (
+                <div key={i} style={{ marginBottom: 12, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{c.label}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{c.value}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: c.score >= c.max * 0.7 ? "#16a34a" : c.score >= c.max * 0.3 ? "#d97706" : "#dc2626", fontFamily: "'DM Mono', monospace" }}>{Math.round(c.score)}/{c.max}</span>
+                    </div>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 3, background: "#f1f5f9", overflow: "hidden" }}>
+                    <div style={{ width: (c.score / c.max * 100) + "%", height: "100%", borderRadius: 3, background: c.score >= c.max * 0.7 ? "#22c55e" : c.score >= c.max * 0.3 ? "#f59e0b" : "#ef4444", transition: "width 0.5s" }} />
+                  </div>
+                  <p style={{ fontSize: 10, color: "#94a3b8", margin: "4px 0 0" }}>{c.tip}</p>
+                </div>
+              ))}
             </div>
           );
         })()}
