@@ -3997,15 +3997,35 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
                 if (cityLine) pdf.text(cityLine, m, 72 + addrH);
                 pdf.text((deal.type || "Real Estate") + (sqft > 0 ? "  |  " + sqft.toLocaleString() + " sqft" : "") + (deal.units ? "  |  " + deal.units + " units" : ""), m, 72 + addrH + 7);
 
+                // Load Street View image
+                let svImg = null;
+                try {
+                  const svUrl = "https://maps.googleapis.com/maps/api/streetview?size=800x400&location=" + encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", ")) + "&fov=90&pitch=0&key=AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU";
+                  const imgResp = await fetch(svUrl);
+                  const blob = await imgResp.blob();
+                  svImg = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.readAsDataURL(blob);
+                  });
+                } catch (e) { console.log("Street View fetch skipped:", e); }
+
+                // Add Street View to cover if available
+                if (svImg) {
+                  try {
+                    pdf.addImage(svImg, "JPEG", m, 88, w - 2*m, (w - 2*m) * 0.45, undefined, "FAST");
+                  } catch (e) { console.log("Image add skipped:", e); }
+                }
+
                 // REAP Score Gauge
-                const gaugeY = 110;
+                const gaugeY = svImg ? 178 : 110;
                 drawGauge(w - 45, gaugeY, 20, rs, 100);
                 pdf.setFontSize(8); pdf.setTextColor(148,163,184); pdf.text("REAP SCORE", w - 45, gaugeY + 14, {align:"center"});
                 pdf.setFontSize(9); pdf.setTextColor(...(rs >= 70 ? G : rs >= 40 ? [217,119,6] : [220,38,38]));
                 pdf.text(rs >= 70 ? "Strong" : rs >= 40 ? "Moderate" : "Caution", w - 45, gaugeY + 20, {align:"center"});
 
                 // Financial highlights bar chart
-                const chartY = 140;
+                const chartY = svImg ? 200 : 140;
                 pdf.setFillColor(18,24,40); pdf.roundedRect(m, chartY, w - 2*m, 75, 3, 3, "F");
                 pdf.setFontSize(8); pdf.setTextColor(148,163,184); pdf.text("DEAL FINANCIAL OVERVIEW", m + 8, chartY + 10);
                 drawBarChart(m + 8, chartY + 16, w - 2*m - 16, 40, [
