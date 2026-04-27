@@ -17922,6 +17922,10 @@ export default function ReapApp() {
             id: uid, email: email,
             full_name: session.user.user_metadata?.full_name || "",
           });
+          // Auto-create default deal presets for new user
+          try {
+            await supabase.from("deal_presets").insert({ user_id: uid }).single();
+          } catch (e) { console.log("Presets auto-create skipped:", e); }
         }
 
         // 2. Check for pending invites (simple query, no join)
