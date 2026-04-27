@@ -10885,7 +10885,6 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
           if (financialsLoading) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Loading financials...</div>;
           if (!financials) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Unable to load financials</div>;
 
-          const up = (key, val) => setFinancials(f => ({ ...f, [key]: val }));
           const saveFinancials = async () => {
             setFinancialsSaving(true); setFinancialsMsg("");
             try {
@@ -10904,12 +10903,13 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
             setFinancialsSaving(false);
           };
 
+          const fUp = (key, val) => setFinancials(f => ({ ...f, [key]: val }));
           const F = ({ label, field, prefix, suffix, type }) => (
             <div style={{ marginBottom: 10 }}>
               <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 3, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</label>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 {prefix && <span style={{ fontSize: 13, color: "#94a3b8" }}>{prefix}</span>}
-                <input type={type || "text"} value={financials[field] ?? ""} onChange={e => up(field, e.target.value === "" ? null : type === "number" ? parseFloat(e.target.value) : e.target.value)} style={{ flex: 1, padding: "9px 12px", fontSize: 13, fontFamily: type === "number" ? "'DM Mono', monospace" : "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", color: "#0f172a", boxSizing: "border-box" }} />
+                <input type={type || "text"} value={financials[field] != null ? String(financials[field]) : ""} onChange={e => fUp(field, e.target.value)} style={{ flex: 1, padding: "9px 12px", fontSize: 13, fontFamily: type === "number" ? "'DM Mono', monospace" : "'DM Sans', sans-serif", border: "1.5px solid #e2e8f0", borderRadius: 8, outline: "none", color: "#0f172a", boxSizing: "border-box" }} />
                 {suffix && <span style={{ fontSize: 12, color: "#94a3b8" }}>{suffix}</span>}
               </div>
             </div>
