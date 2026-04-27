@@ -10412,22 +10412,23 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
     if (activeTab !== "presets") return;
     async function loadPresets() {
       setPresetsLoading(true);
+      const DEFAULTS = { closing_cost_pct: 3, project_months: 12, cost_to_sell_pct: 7, proforma_opex_pct: 30, proforma_rent_per_sqft: 2, bridge_acquisition_pct: 75, bridge_rehab_pct: 100, bridge_interest_rate: 12, bridge_points_pct: 2, refi_ltv_pct: 70, refi_interest_rate: 8, refi_points_pct: 2, refi_term_years: 30, equity_financed_pct: 100, equity_rate: 12, equity_profit_split_pct: 0, proforma_vacancy_pct: 10, exit_cap_rate: 6.5, existing_opex_pct: 30 };
       try {
         if (orgData?.id) {
           const { data } = await supabase.from("deal_presets").select("*").eq("org_id", orgData.id).maybeSingle();
           if (data) { setPresets(data); } else {
             const { data: created } = await supabase.from("deal_presets").insert({ org_id: orgData.id }).select().single();
-            setPresets(created);
+            setPresets(created || { ...DEFAULTS, org_id: orgData.id });
           }
         } else {
           const uid = session?.user?.id;
           const { data } = await supabase.from("deal_presets").select("*").eq("user_id", uid).maybeSingle();
           if (data) { setPresets(data); } else {
             const { data: created } = await supabase.from("deal_presets").insert({ user_id: uid }).select().single();
-            setPresets(created);
+            setPresets(created || { ...DEFAULTS, user_id: uid });
           }
         }
-      } catch (err) { console.error("Presets load error:", err); }
+      } catch (err) { console.error("Presets load error:", err); setPresets({ ...DEFAULTS }); }
       setPresetsLoading(false);
     }
     loadPresets();
