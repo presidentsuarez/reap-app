@@ -11148,6 +11148,9 @@ function AdminView({ session, isMobile }) {
   const [editingPromo, setEditingPromo] = useState(null);
   const [newPromoModal, setNewPromoModal] = useState(false);
   const [newPromo, setNewPromo] = useState({ code: "", description: "", trial_days: 14, requires_card: false, max_uses: "", is_active: true, expires_at: "" });
+  const [sampleDealTemplate, setSampleDealTemplate] = useState({});
+  const [sampleDealLoading, setSampleDealLoading] = useState(false);
+  const [sampleDealMsg, setSampleDealMsg] = useState("");
 
   const fetchUsers = async () => {
     const { data, error } = await supabase.rpc("admin_get_all_users");
@@ -11165,10 +11168,18 @@ function AdminView({ session, isMobile }) {
     const { data: redemptions } = await supabase.from("promo_redemptions").select("*").order("redeemed_at", { ascending: false });
     if (redemptions) setPromoRedemptions(redemptions);
   };
+  const fetchSampleDeal = async () => {
+    const { data } = await supabase.from("sample_deal_template").select("field_name, field_value").order("field_name");
+    if (data) {
+      const t = {};
+      data.forEach(r => { t[r.field_name] = r.field_value || ""; });
+      setSampleDealTemplate(t);
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchUsers(), fetchOrgs(), fetchPromoCodes()]).finally(() => setLoading(false));
+    Promise.all([fetchUsers(), fetchOrgs(), fetchPromoCodes(), fetchSampleDeal()]).finally(() => setLoading(false));
   }, []);
 
   const handleSaveUser = async () => {
@@ -11279,6 +11290,7 @@ function AdminView({ session, isMobile }) {
           <button onClick={() => setTab("users")} style={tStyle("users")}>Users ({users.length})</button>
           <button onClick={() => setTab("orgs")} style={tStyle("orgs")}>Organizations ({orgs.length})</button>
           <button onClick={() => setTab("promos")} style={tStyle("promos")}>Promo Codes ({promoCodes.length})</button>
+          <button onClick={() => setTab("sampledeal")} style={tStyle("sampledeal")}>Sample Deal</button>
         </div>
       </div>
 
@@ -11575,6 +11587,52 @@ function AdminView({ session, isMobile }) {
               </div>
             )}
           </>
+        )}
+
+        {tab === "sampledeal" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 4px" }}>Sample Deal Template</h3>
+                <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>This deal is auto-created for every new account. Edit fields and save.</p>
+              </div>
+            </div>
+            {sampleDealMsg && <div style={{ padding: "8px 14px", borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 600, background: sampleDealMsg.includes("Error") ? "#fef2f2" : "#f0fdf4", color: sampleDealMsg.includes("Error") ? "#dc2626" : "#16a34a", border: "1px solid " + (sampleDealMsg.includes("Error") ? "#fecaca" : "#bbf7d0") }}>{sampleDealMsg}</div>}
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 0 : 20 }}>
+              <div>
+                <h4 style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 8px" }}>Property Info</h4>
+                {[["Property Address", "property_address"], ["City", "city"], ["State", "state"], ["Zip Code", "zip_code"], ["County", "county"], ["Property Type", "type"], ["Deal Name", "deal_name"], ["Sq Ft", "sqft_net"], ["Units", "units"], ["Bedrooms", "bedrooms"], ["Full Baths", "bathrooms_full"], ["Half Baths", "bathrooms_half"], ["Year Built", "year_built"], ["Lot Acres", "lot_acres"]].map(([label, field]) => (
+                  <div key={field} style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</label>
+                    <input value={sampleDealTemplate[field] || ""} onChange={e => setSampleDealTemplate(p => ({ ...p, [field]: e.target.value }))} style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <h4 style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 8px" }}>Financials & Presets</h4>
+                {[["Asking Price", "asking_price"], ["Our Offer", "our_offer"], ["ARV", "arv_value"], ["Improvement Budget", "improvement_budget"], ["Closing Cost %", "closing_cost_pct"], ["Cost to Sell %", "disp_cost_of_sale_pct"], ["Project Months", "project_months"], ["Exit Cap Rate %", "exit_cap_rate"], ["Rent/SF", "proforma_rent_per_sf"], ["OpEx %", "proforma_expenses_pct"], ["Vacancy %", "proforma_vacancy_pct"], ["Existing OpEx %", "existing_expense_pct"], ["Bridge Acq %", "bridge_acq_financed_pct"], ["Bridge Rehab %", "bridge_improv_financed_pct"], ["Bridge Rate %", "bridge_interest_rate"], ["Bridge Points %", "bridge_points_pct"], ["Refi LTV %", "refi_pct_arv"], ["Refi Rate %", "refi_interest_rate"], ["Refi Points %", "refi_points_pct"], ["Refi Term (yrs)", "refi_term_years"], ["Equity Financed %", "equity_financed_pct"], ["Equity Rate %", "equity_rate"], ["Profit Split %", "equity_profit_split_pct"]].map(([label, field]) => (
+                  <div key={field} style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</label>
+                    <input value={sampleDealTemplate[field] || ""} onChange={e => setSampleDealTemplate(p => ({ ...p, [field]: e.target.value }))} style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Mono', monospace", boxSizing: "border-box" }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={async () => {
+                setSampleDealLoading(true); setSampleDealMsg("");
+                try {
+                  const entries = Object.entries(sampleDealTemplate);
+                  for (const [field, value] of entries) {
+                    await supabase.from("sample_deal_template").upsert({ field_name: field, field_value: value || "", updated_at: new Date().toISOString() }, { onConflict: "field_name" });
+                  }
+                  setSampleDealMsg("Template saved! New accounts will get this deal.");
+                  setTimeout(() => setSampleDealMsg(""), 3000);
+                } catch (e) { setSampleDealMsg("Error: " + e.message); }
+                setSampleDealLoading(false);
+              }} disabled={sampleDealLoading} style={{ padding: "12px 28px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 12px rgba(22,163,74,0.35)" }}>{sampleDealLoading ? "Saving..." : "Save Template"}</button>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -17937,46 +17995,41 @@ export default function ReapApp() {
             await supabase.from("deal_presets").insert({ user_id: uid }).single();
           } catch (e) { console.log("Presets auto-create skipped:", e); }
 
-          // Auto-create sample deal for new user
+          // Auto-create sample deal from template for new user
           try {
-            await supabase.from("deals").insert({
-              user_email: email,
-              deal_name: "Sample Deal — 123 Main St",
-              property_address: "123 Main St",
-              city: "Tampa",
-              state: "FL",
-              zip_code: "33602",
-              type: "Single Family",
-              deal_status: "New",
-              source: "REAP App",
-              asking_price: 250000,
-              our_offer: 220000,
-              arv_value: 350000,
-              improvement_budget: 45000,
-              sqft_net: 1800,
-              units: 1,
-              year_built: "1985",
-              proforma_rent_per_sf: 2,
-              proforma_expenses_pct: 30,
-              proforma_vacancy_pct: 10,
-              bridge_acq_financed_pct: 75,
-              bridge_improv_financed_pct: 100,
-              bridge_interest_rate: 12,
-              bridge_points_pct: 2,
-              refi_pct_arv: 70,
-              refi_interest_rate: 8,
-              refi_points_pct: 2,
-              refi_term_years: 30,
-              closing_cost_pct: 3,
-              acq_cost_to_close_pct: 3,
-              disp_cost_of_sale_pct: 7,
-              exit_cap_rate: 6.5,
-              existing_expense_pct: 30,
-              equity_financed_pct: 100,
-              equity_rate: 12,
-              equity_profit_split_pct: 0,
-              project_months: 12,
-            });
+            const { data: tplRows } = await supabase.from("sample_deal_template").select("field_name, field_value");
+            if (tplRows) {
+              const t = {};
+              tplRows.forEach(r => { if (r.field_value) t[r.field_name] = r.field_value; });
+              await supabase.from("deals").insert({
+                user_email: email,
+                deal_name: t.deal_name || "Sample Deal",
+                property_address: t.property_address || "123 Main St",
+                city: t.city || "Tampa", state: t.state || "FL", zip_code: t.zip_code || "",
+                type: t.type || "Single Family", deal_status: t.deal_status || "New", source: t.source || "REAP App",
+                asking_price: parseFloat(t.asking_price) || null, our_offer: parseFloat(t.our_offer) || null,
+                arv_value: parseFloat(t.arv_value) || null, improvement_budget: parseFloat(t.improvement_budget) || null,
+                sqft_net: parseInt(t.sqft_net) || null, units: parseInt(t.units) || null,
+                year_built: t.year_built || null, bedrooms: parseInt(t.bedrooms) || null,
+                bathrooms_full: parseInt(t.bathrooms_full) || null, bathrooms_half: parseInt(t.bathrooms_half) || null,
+                county: t.county || null, lot_acres: parseFloat(t.lot_acres) || null,
+                proforma_rent_per_sf: parseFloat(t.proforma_rent_per_sf) || null,
+                proforma_expenses_pct: parseFloat(t.proforma_expenses_pct) || null,
+                proforma_vacancy_pct: parseFloat(t.proforma_vacancy_pct) || null,
+                bridge_acq_financed_pct: parseFloat(t.bridge_acq_financed_pct) || null,
+                bridge_improv_financed_pct: parseFloat(t.bridge_improv_financed_pct) || null,
+                bridge_interest_rate: parseFloat(t.bridge_interest_rate) || null,
+                bridge_points_pct: parseFloat(t.bridge_points_pct) || null,
+                refi_pct_arv: parseFloat(t.refi_pct_arv) || null, refi_interest_rate: parseFloat(t.refi_interest_rate) || null,
+                refi_points_pct: parseFloat(t.refi_points_pct) || null, refi_term_years: parseInt(t.refi_term_years) || null,
+                closing_cost_pct: parseFloat(t.closing_cost_pct) || null, acq_cost_to_close_pct: parseFloat(t.acq_cost_to_close_pct) || null,
+                disp_cost_of_sale_pct: parseFloat(t.disp_cost_of_sale_pct) || null,
+                exit_cap_rate: parseFloat(t.exit_cap_rate) || null, existing_expense_pct: parseFloat(t.existing_expense_pct) || null,
+                equity_financed_pct: parseFloat(t.equity_financed_pct) || null, equity_rate: parseFloat(t.equity_rate) || null,
+                equity_profit_split_pct: parseFloat(t.equity_profit_split_pct) || null,
+                project_months: parseInt(t.project_months) || null,
+              });
+            }
           } catch (e) { console.log("Sample deal skipped:", e); }
         }
 
