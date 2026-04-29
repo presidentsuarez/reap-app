@@ -6979,9 +6979,13 @@ function AuthScreen({ onAuth }) {
 
   const handleSignup = async () => {
     setLoading(true); setError("");
-    const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name } } });
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name } } });
     if (error) setError(error.message);
-    else setSuccess("Check your email to confirm your account, then log in.");
+    else if (data?.session) {
+      // Auto-confirmed — session is active, app will redirect automatically
+    } else {
+      setSuccess("Account created! Logging you in...");
+    }
     setLoading(false);
   };
 
@@ -17796,6 +17800,12 @@ export default function ReapApp() {
           setShowPaywall(false);
           setIsPreviewMode(true);
         }
+
+        // Show onboarding for first-time users (any tier)
+        const onboarded = localStorage.getItem("reap_onboarded");
+        if (!onboarded) {
+          setShowOnboarding(true);
+        }
       });
       // Preview mode handles first-time users — no auto-paywall
     }
@@ -17926,6 +17936,48 @@ export default function ReapApp() {
           try {
             await supabase.from("deal_presets").insert({ user_id: uid }).single();
           } catch (e) { console.log("Presets auto-create skipped:", e); }
+
+          // Auto-create sample deal for new user
+          try {
+            await supabase.from("deals").insert({
+              user_email: email,
+              deal_name: "Sample Deal — 123 Main St",
+              property_address: "123 Main St",
+              city: "Tampa",
+              state: "FL",
+              zip_code: "33602",
+              type: "Single Family",
+              deal_status: "New",
+              source: "REAP App",
+              asking_price: 250000,
+              our_offer: 220000,
+              arv_value: 350000,
+              improvement_budget: 45000,
+              sqft_net: 1800,
+              units: 1,
+              year_built: "1985",
+              proforma_rent_per_sf: 2,
+              proforma_expenses_pct: 30,
+              proforma_vacancy_pct: 10,
+              bridge_acq_financed_pct: 75,
+              bridge_improv_financed_pct: 100,
+              bridge_interest_rate: 12,
+              bridge_points_pct: 2,
+              refi_pct_arv: 70,
+              refi_interest_rate: 8,
+              refi_points_pct: 2,
+              refi_term_years: 30,
+              closing_cost_pct: 3,
+              acq_cost_to_close_pct: 3,
+              disp_cost_of_sale_pct: 7,
+              exit_cap_rate: 6.5,
+              existing_expense_pct: 30,
+              equity_financed_pct: 100,
+              equity_rate: 12,
+              equity_profit_split_pct: 0,
+              project_months: 12,
+            });
+          } catch (e) { console.log("Sample deal skipped:", e); }
         }
 
         // 2. Check for pending invites (simple query, no join)
