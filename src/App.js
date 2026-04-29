@@ -18795,7 +18795,7 @@ export default function ReapApp() {
   // Nav items starter can access
   const STARTER_NAV_IDS = ["command", "realestate", "contacts"];
   // Sub-tabs starter can access
-  const STARTER_RE_TABS = ["dashboard", "pipeline", "portfolios"];
+  const STARTER_RE_TABS = ["dashboard", "pipeline"];
   const STARTER_CONTACTS_TABS = ["dashboard", "contacts", "lenders", "buyers", "wholesalers", "investorContacts"];
 
   const FEATURE_NAV_MAP = {
