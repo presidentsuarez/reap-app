@@ -7678,17 +7678,17 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
 
   const activeDeals = deals.filter(d => !["Dead", "Closed"].includes(d.status));
 
-  // Top-line stats computed from all deals
-  const totalPipelineValue = deals.reduce((s, d) => {
+  // Top-line stats computed from active deals only (excludes Dead & Closed)
+  const totalPipelineValue = activeDeals.reduce((s, d) => {
     const n = num(d.offer); return s + (isNaN(n) ? 0 : n);
   }, 0);
-  const dealsWithCapRate = deals.filter(d => !isNaN(num(d.capRate)));
+  const dealsWithCapRate = activeDeals.filter(d => !isNaN(num(d.capRate)));
   const avgCapRate = dealsWithCapRate.length
     ? dealsWithCapRate.reduce((s, d) => s + num(d.capRate), 0) / dealsWithCapRate.length : NaN;
-  const dealsWithScore = deals.filter(d => !isNaN(num(d.reapScore)));
+  const dealsWithScore = activeDeals.filter(d => !isNaN(num(d.reapScore)));
   const avgReapScore = dealsWithScore.length
     ? dealsWithScore.reduce((s, d) => s + num(d.reapScore), 0) / dealsWithScore.length : NaN;
-  const totalNOI = deals.reduce((s, d) => {
+  const totalNOI = activeDeals.reduce((s, d) => {
     const n = num(d.noiAnnual); return s + (isNaN(n) ? 0 : n);
   }, 0);
 
