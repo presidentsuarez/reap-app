@@ -1856,21 +1856,22 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
 
   const sortConfig = {
     "Date Added": { key: d => new Date(d.date || 0).getTime(), type: "number" },
-    "Owner":     { key: d => (d.user || "").toLowerCase(), type: "string" },
-    "Manager":   { key: d => (d.manager || "").toLowerCase(), type: "string" },
-    "Assignee":  { key: d => (d.assignee || "").toLowerCase(), type: "string" },
-    "Organization": { key: d => (d.organization || "").toLowerCase(), type: "string" },
     "Status":    { key: d => (d.status || "").toLowerCase(), type: "string" },
-    "REAP Score": { key: d => calcReapScore(d), type: "number" },
     "Address":   { key: d => (d.address || "").toLowerCase(), type: "string" },
     "City":      { key: d => (d.city || "").toLowerCase(), type: "string" },
     "Type":      { key: d => (d.type || "").toLowerCase(), type: "string" },
     "Asking Price": { key: d => parseFloat(String(d.askingPrice || "0").replace(/[$,]/g, "")) || 0, type: "number" },
+    "Offer":     { key: d => parseFloat(String(d.offer || "0").replace(/[$,]/g, "")) || 0, type: "number" },
+    "ARV":       { key: d => parseFloat(String(d.arv || "0").replace(/[$,]/g, "")) || 0, type: "number" },
     "Sq Ft":     { key: d => parseFloat(String(d.sqft || "0").replace(/[$,]/g, "")) || 0, type: "number" },
     "$/SF":      { key: d => calcPPSF(d), type: "number" },
     "Units":     { key: d => parseFloat(String(d.units || "0").replace(/[,]/g, "")) || 0, type: "number" },
-    "$/Unit":    { key: d => calcPPU(d), type: "number" },
+    "REAP Score": { key: d => calcReapScore(d), type: "number" },
     "Source":    { key: d => (d.source || "Manual").toLowerCase(), type: "string" },
+    "Organization": { key: d => (d.organization || "").toLowerCase(), type: "string" },
+    "Owner":     { key: d => (d.owner || d.user || "").toLowerCase(), type: "string" },
+    "Manager":   { key: d => (d.manager || "").toLowerCase(), type: "string" },
+    "Assignee":  { key: d => (d.assignee || "").toLowerCase(), type: "string" },
   };
 
   const handleSort = (col) => {
@@ -2107,7 +2108,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                     </th>
                   ))}
                   <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
-                  {["Status", "Address", "City", "REAP Score", "Owner", "Manager", "Assignee", "Organization", "Type", "Asking Price", "Sq Ft", "$/SF", "Units", "$/Unit", "Source"].map(h => (
+                  {["Status", "Address", "City", "Type", "Asking Price", "Offer", "ARV", "Sq Ft", "$/SF", "Units", "REAP Score", "Source", "Organization", "Owner", "Manager", "Assignee"].map(h => (
                     <th key={h} onClick={() => handleSort(h)} style={{
                       padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
                       fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
@@ -2136,72 +2137,78 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                     {/* Thumbnail */}
                     <td style={{ padding: "8px 4px 8px 8px", width: 52 }}>
                       <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
-                        {deal.address ? (
-                          <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
-                        ) : null}
-                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
-                          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                        </div>
+                        {deal.address ? (<img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />) : null}
+                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
                       </div>
                     </td>
                     {/* Status */}
                     <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
                     {/* Address */}
-                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
+                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{deal.address || "\u2014"}</td>
                     {/* City */}
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.city || "—"}</td>
-                    {/* REAP Score (always computed) */}
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.city || "\u2014"}</td>
+                    {/* Type */}
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "\u2014"}</td>
+                    {/* Asking Price */}
+                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.askingPrice)}</td>
+                    {/* Offer */}
+                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#15803d", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.offer)}</td>
+                    {/* ARV */}
+                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#1d4ed8", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.arv)}</td>
+                    {/* Sq Ft */}
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)}</td>
+                    {/* $/SF */}
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{(() => { const v = calcPPSF(deal); return v > 0 ? "$" + v.toLocaleString() : "\u2014"; })()}</td>
+                    {/* Units */}
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace", textAlign: "center" }}>{deal.units || "\u2014"}</td>
+                    {/* REAP Score */}
                     <td style={{ padding: "13px 16px", textAlign: "center" }}>{(() => { const s = calcReapScore(deal); return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: s >= 70 ? "#f0fdf4" : s >= 40 ? "#fffbeb" : "#fef2f2", color: s >= 70 ? "#16a34a" : s >= 40 ? "#d97706" : "#dc2626", fontSize: 12, fontWeight: 700, fontFamily: "'DM Mono', monospace", border: "1px solid " + (s >= 70 ? "#16a34a" : s >= 40 ? "#d97706" : "#dc2626") + "22" }}>{s}</span>; })()}</td>
-                    {/* Owner (dropdown – all app users) */}
-                    <td style={{ padding: "13px 10px", width: 140, minWidth: 140, maxWidth: 140 }} onClick={e => e.stopPropagation()}>
+                    {/* Source */}
+                    <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 11, color: deal.source === "MLS Feed" ? "#3b82f6" : "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{deal.source || "Manual"}</span></td>
+                    {/* Organization */}
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.organization || "\u2014"}</td>
+                    {/* Owner */}
+                    <td style={{ padding: "13px 10px", width: 130, minWidth: 130 }} onClick={e => e.stopPropagation()}>
                       {editingOwnerId === deal._id ? (
-                        <select autoFocus value={ownerInput} onChange={e => { setOwnerInput(e.target.value); handleOwnerSave(deal, e.target.value); }} onBlur={() => setEditingOwnerId(null)} style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #16a34a", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif", background: "#fff", cursor: "pointer", minWidth: 120 }}>
+                        <select autoFocus value={ownerInput} onChange={e => { setOwnerInput(e.target.value); handleOwnerSave(deal, e.target.value); }} onBlur={() => setEditingOwnerId(null)} style={{ padding: "4px 8px", fontSize: 11, border: "1px solid #16a34a", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif", background: "#fff", cursor: "pointer", minWidth: 100 }}>
                           <option value="">Unassigned</option>
                           {(allAppUsers || []).map(u => <option key={u.email} value={u.email}>{u.full_name || u.email.split("@")[0]}</option>)}
                         </select>
                       ) : (
-                        <span onClick={e => { e.stopPropagation(); setEditingOwnerId(deal._id); setOwnerInput(deal.owner || deal.user || ""); }} style={{ fontSize: 12, color: (deal.owner || deal.user) ? "#475569" : "#cbd5e1", fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "3px 8px", borderRadius: 6, border: "1px dashed " + (deal.user ? "#64748b44" : "#e2e8f0"), background: deal.user ? "#f1f5f9" : "transparent", fontWeight: (deal.owner || deal.user) ? 500 : 400, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <span onClick={e => { e.stopPropagation(); setEditingOwnerId(deal._id); setOwnerInput(deal.owner || deal.user || ""); }} style={{ fontSize: 11, color: (deal.owner || deal.user) ? "#475569" : "#cbd5e1", cursor: "pointer", padding: "2px 6px", borderRadius: 5, border: "1px dashed #e2e8f0", background: (deal.owner || deal.user) ? "#f8fafc" : "transparent", display: "inline-flex", alignItems: "center", gap: 3 }}>
                           {(deal.owner || deal.user) ? fmtUserName(deal.owner || deal.user) : "Assign"}
-                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                          <svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
                         </span>
                       )}
                     </td>
-                    {/* Manager (dropdown) */}
-                    <td style={{ padding: "13px 10px", width: 140, minWidth: 140, maxWidth: 140 }} onClick={e => e.stopPropagation()}>
+                    {/* Manager */}
+                    <td style={{ padding: "13px 10px", width: 130, minWidth: 130 }} onClick={e => e.stopPropagation()}>
                       {editingManagerId === deal._id ? (
-                        <select autoFocus value={managerInput} onChange={e => { setManagerInput(e.target.value); handleManagerSave(deal, e.target.value); }} onBlur={() => setEditingManagerId(null)} style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #16a34a", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif", background: "#fff", cursor: "pointer", minWidth: 120 }}>
+                        <select autoFocus value={managerInput} onChange={e => { setManagerInput(e.target.value); handleManagerSave(deal, e.target.value); }} onBlur={() => setEditingManagerId(null)} style={{ padding: "4px 8px", fontSize: 11, border: "1px solid #7c3aed", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif", background: "#fff", cursor: "pointer", minWidth: 100 }}>
                           <option value="">Unassigned</option>
                           {(orgMembers || []).filter(m => m.status === "active").map(m => <option key={m.user_email} value={m.user_email}>{m.user_email.split("@")[0]}</option>)}
                         </select>
                       ) : (
-                        <span onClick={e => { e.stopPropagation(); setEditingManagerId(deal._id); setManagerInput(deal.manager || ""); }} style={{ fontSize: 12, color: deal.manager ? "#0f172a" : "#cbd5e1", fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "3px 8px", borderRadius: 6, border: "1px dashed " + (deal.manager ? "#7c3aed55" : "#e2e8f0"), background: deal.manager ? "#f5f3ff" : "transparent", fontWeight: deal.manager ? 600 : 400, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <span onClick={e => { e.stopPropagation(); setEditingManagerId(deal._id); setManagerInput(deal.manager || ""); }} style={{ fontSize: 11, color: deal.manager ? "#7c3aed" : "#cbd5e1", cursor: "pointer", padding: "2px 6px", borderRadius: 5, border: "1px dashed #e2e8f0", background: deal.manager ? "#f5f3ff" : "transparent", display: "inline-flex", alignItems: "center", gap: 3 }}>
                           {deal.manager ? fmtUserName(deal.manager) : "Assign"}
-                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                          <svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
                         </span>
                       )}
                     </td>
-                    {/* Assignee (dropdown) */}
-                    <td style={{ padding: "13px 10px", width: 140, minWidth: 140, maxWidth: 140 }} onClick={e => e.stopPropagation()}>
+                    {/* Assignee */}
+                    <td style={{ padding: "13px 10px", width: 130, minWidth: 130 }} onClick={e => e.stopPropagation()}>
                       {editingAssigneeId === deal._id ? (
-                        <select autoFocus value={assigneeInput} onChange={e => { setAssigneeInput(e.target.value); handleAssigneeSave(deal, e.target.value); }} onBlur={() => setEditingAssigneeId(null)} style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #16a34a", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif", background: "#fff", cursor: "pointer", minWidth: 120 }}>
+                        <select autoFocus value={assigneeInput} onChange={e => { setAssigneeInput(e.target.value); handleAssigneeSave(deal, e.target.value); }} onBlur={() => setEditingAssigneeId(null)} style={{ padding: "4px 8px", fontSize: 11, border: "1px solid #16a34a", borderRadius: 6, outline: "none", fontFamily: "'DM Sans', sans-serif", background: "#fff", cursor: "pointer", minWidth: 100 }}>
                           <option value="">Unassigned</option>
                           {(orgMembers || []).filter(m => m.status === "active").map(m => <option key={m.user_email} value={m.user_email}>{m.user_email.split("@")[0]}</option>)}
                         </select>
                       ) : (
-                        <span onClick={e => { e.stopPropagation(); setEditingAssigneeId(deal._id); setAssigneeInput(deal.assignee || ""); }} style={{ fontSize: 12, color: deal.assignee ? "#0f172a" : "#cbd5e1", fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "3px 8px", borderRadius: 6, border: "1px dashed " + (deal.assignee ? "#16a34a55" : "#e2e8f0"), background: deal.assignee ? "#f0fdf4" : "transparent", fontWeight: deal.assignee ? 600 : 400, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <span onClick={e => { e.stopPropagation(); setEditingAssigneeId(deal._id); setAssigneeInput(deal.assignee || ""); }} style={{ fontSize: 11, color: deal.assignee ? "#16a34a" : "#cbd5e1", cursor: "pointer", padding: "2px 6px", borderRadius: 5, border: "1px dashed #e2e8f0", background: deal.assignee ? "#f0fdf4" : "transparent", display: "inline-flex", alignItems: "center", gap: 3 }}>
                           {deal.assignee ? fmtUserName(deal.assignee) : "Assign"}
-                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                          <svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
                         </span>
                       )}
                     </td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.organization || "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.askingPrice)}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{(() => { const v = calcPPSF(deal); return v > 0 ? "$" + v.toLocaleString() : "—"; })()}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace", textAlign: "center" }}>{deal.units || "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{(() => { const v = calcPPU(deal); return v > 0 ? "$" + v.toLocaleString() : "—"; })()}</td>
-                    <td style={{ padding: "13px 16px" }}><span style={{ fontSize: 11, color: "#16a34a", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{deal.source || "Manual"}</span></td>
                   </tr>
                 ))}
               </tbody>
