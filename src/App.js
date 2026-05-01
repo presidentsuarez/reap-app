@@ -10727,6 +10727,11 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
   const [financialsMsg, setFinancialsMsg] = useState("");
   const [platformStats, setPlatformStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [supportTickets, setSupportTickets] = useState([]);
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [newTicket, setNewTicket] = useState({ subject: "", description: "", category: "general", priority: "medium" });
+  const [ticketSubmitting, setTicketSubmitting] = useState(false);
+  const [ticketMsg, setTicketMsg] = useState("");
 
   // Load presets when presets tab is active
   useEffect(() => {
@@ -10787,6 +10792,20 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
     loadStats();
   }, [activeTab]);
 
+  // Load support tickets
+  useEffect(() => {
+    if (activeTab !== "support") return;
+    async function loadTickets() {
+      setSupportLoading(true);
+      try {
+        const { data } = await supabase.from("support_tickets").select("*").order("created_at", { ascending: false });
+        if (data) setSupportTickets(data);
+      } catch (e) { console.error("Tickets load:", e); }
+      setSupportLoading(false);
+    }
+    loadTickets();
+  }, [activeTab]);
+
   const user = session?.user || {};
   const email = user.email || "—";
   const fullName = user.user_metadata?.full_name || "";
@@ -10803,6 +10822,7 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
     { id: "pricing", label: "Pricing" },
     { id: "presets", label: "Presets" },
     ...(isSubscribed ? [{ id: "financials", label: "Financials" }] : []),
+    ...(isSubscribed ? [{ id: "support", label: "Support" }] : []),
     ...(isAdmin ? [{ id: "performance", label: "Performance" }, { id: "admin", label: "Admin" }] : []),
   ];
 
@@ -11162,6 +11182,96 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
 
         {/* ═══ ADMIN TAB ═══ */}
 
+        {/* ── SUPPORT TAB ── */}
+        {activeTab === "support" && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Support</h2>
+            <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 20px" }}>Submit a ticket and our team will get back to you</p>
+
+            {ticketMsg && <div style={{ padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 12, fontWeight: 600, background: ticketMsg.includes("Error") ? "#fef2f2" : "#f0fdf4", color: ticketMsg.includes("Error") ? "#dc2626" : "#16a34a", border: "1px solid " + (ticketMsg.includes("Error") ? "#fecaca" : "#bbf7d0") }}>{ticketMsg}</div>}
+
+            {/* New Ticket Form */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 20, marginBottom: 24 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 14px" }}>New Ticket</h3>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 3, letterSpacing: "0.06em", textTransform: "uppercase" }}>Category</label>
+                  <select value={newTicket.category} onChange={e => setNewTicket(t => ({ ...t, category: e.target.value }))} style={{ width: "100%", padding: "10px 12px", fontSize: 13, border: "1.5px solid #e2e8f0", borderRadius: 8, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box", background: "#fff" }}>
+                    <option value="general">General</option>
+                    <option value="bug">Bug Report</option>
+                    <option value="feature">Feature Request</option>
+                    <option value="billing">Billing</option>
+                    <option value="data">Data Issue</option>
+                    <option value="account">Account</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 3, letterSpacing: "0.06em", textTransform: "uppercase" }}>Priority</label>
+                  <select value={newTicket.priority} onChange={e => setNewTicket(t => ({ ...t, priority: e.target.value }))} style={{ width: "100%", padding: "10px 12px", fontSize: 13, border: "1.5px solid #e2e8f0", borderRadius: 8, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box", background: "#fff" }}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 3, letterSpacing: "0.06em", textTransform: "uppercase" }}>Subject</label>
+                <input value={newTicket.subject} onChange={e => setNewTicket(t => ({ ...t, subject: e.target.value }))} placeholder="Brief summary of the issue" style={{ width: "100%", padding: "10px 12px", fontSize: 13, border: "1.5px solid #e2e8f0", borderRadius: 8, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }} />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 3, letterSpacing: "0.06em", textTransform: "uppercase" }}>Description</label>
+                <textarea value={newTicket.description} onChange={e => setNewTicket(t => ({ ...t, description: e.target.value }))} placeholder="Describe the issue in detail. Include steps to reproduce if it's a bug." rows={5} style={{ width: "100%", padding: "10px 12px", fontSize: 13, border: "1.5px solid #e2e8f0", borderRadius: 8, fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box", resize: "vertical" }} />
+              </div>
+              <button onClick={async () => {
+                if (!newTicket.subject.trim() || !newTicket.description.trim()) { setTicketMsg("Please fill in subject and description"); setTimeout(() => setTicketMsg(""), 3000); return; }
+                setTicketSubmitting(true); setTicketMsg("");
+                try {
+                  const { error } = await supabase.from("support_tickets").insert({
+                    user_email: session?.user?.email, user_name: session?.user?.user_metadata?.full_name || "",
+                    subject: newTicket.subject.trim(), description: newTicket.description.trim(),
+                    category: newTicket.category, priority: newTicket.priority,
+                    org_id: orgData?.id || null,
+                  });
+                  if (error) throw error;
+                  setTicketMsg("Ticket submitted! We'll get back to you soon.");
+                  setNewTicket({ subject: "", description: "", category: "general", priority: "medium" });
+                  const { data } = await supabase.from("support_tickets").select("*").order("created_at", { ascending: false });
+                  if (data) setSupportTickets(data);
+                } catch (e) { setTicketMsg("Error: " + e.message); }
+                setTicketSubmitting(false);
+              }} disabled={ticketSubmitting} style={{ padding: "12px 28px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 12px rgba(22,163,74,0.35)" }}>{ticketSubmitting ? "Submitting..." : "Submit Ticket"}</button>
+            </div>
+
+            {/* My Tickets */}
+            <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>My Tickets <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></h3>
+            {supportLoading ? <p style={{ color: "#94a3b8", fontSize: 13 }}>Loading...</p> :
+              supportTickets.length === 0 ? <p style={{ color: "#94a3b8", fontSize: 13, textAlign: "center", padding: 20 }}>No tickets yet</p> :
+              supportTickets.map(t => (
+                <div key={t.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{t.subject}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: t.status === "open" ? "#dbeafe" : t.status === "in_progress" ? "#fef9c3" : "#f0fdf4", color: t.status === "open" ? "#2563eb" : t.status === "in_progress" ? "#ca8a04" : "#16a34a" }}>{(t.status || "open").replace("_", " ").toUpperCase()}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: t.priority === "urgent" ? "#fef2f2" : t.priority === "high" ? "#fffbeb" : "#f8fafc", color: t.priority === "urgent" ? "#dc2626" : t.priority === "high" ? "#d97706" : "#64748b" }}>{t.priority}</span>
+                      </div>
+                      <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 4px", lineHeight: 1.5 }}>{t.description.length > 120 ? t.description.slice(0, 120) + "..." : t.description}</p>
+                      <span style={{ fontSize: 10, color: "#cbd5e1" }}>{t.category} · {new Date(t.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  {t.admin_notes && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #f1f5f9" }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: "#16a34a", letterSpacing: "0.06em" }}>ADMIN RESPONSE</span>
+                      <p style={{ fontSize: 12, color: "#334155", margin: "4px 0 0", lineHeight: 1.5 }}>{t.admin_notes}</p>
+                    </div>
+                  )}
+                </div>
+              ))
+            }
+          </div>
+        )}
+
         {/* ── PERFORMANCE TAB (Admin Only) ── */}
         {activeTab === "performance" && isAdmin && (() => {
           if (statsLoading) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Loading platform stats...</div>;
@@ -11468,6 +11578,8 @@ function AdminView({ session, isMobile }) {
   const [sampleDealTemplate, setSampleDealTemplate] = useState({});
   const [sampleDealLoading, setSampleDealLoading] = useState(false);
   const [sampleDealMsg, setSampleDealMsg] = useState("");
+  const [adminTickets, setAdminTickets] = useState([]);
+  const [adminTicketsLoading, setAdminTicketsLoading] = useState(false);
 
   const fetchUsers = async () => {
     const { data, error } = await supabase.rpc("admin_get_all_users");
@@ -11494,9 +11606,16 @@ function AdminView({ session, isMobile }) {
     }
   };
 
+  const fetchAdminTickets = async () => {
+    setAdminTicketsLoading(true);
+    const { data } = await supabase.from("support_tickets").select("*").order("created_at", { ascending: false });
+    if (data) setAdminTickets(data);
+    setAdminTicketsLoading(false);
+  };
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchUsers(), fetchOrgs(), fetchPromoCodes(), fetchSampleDeal()]).finally(() => setLoading(false));
+    Promise.all([fetchUsers(), fetchOrgs(), fetchPromoCodes(), fetchSampleDeal(), fetchAdminTickets()]).finally(() => setLoading(false));
   }, []);
 
   const handleSaveUser = async () => {
@@ -11608,6 +11727,7 @@ function AdminView({ session, isMobile }) {
           <button onClick={() => setTab("orgs")} style={tStyle("orgs")}>Organizations ({orgs.length})</button>
           <button onClick={() => setTab("promos")} style={tStyle("promos")}>Promo Codes ({promoCodes.length})</button>
           <button onClick={() => setTab("sampledeal")} style={tStyle("sampledeal")}>Sample Deal</button>
+          <button onClick={() => setTab("tickets")} style={tStyle("tickets")}>Tickets</button>
         </div>
       </div>
 
@@ -11951,13 +12071,51 @@ function AdminView({ session, isMobile }) {
             </div>
           </div>
         )}
+        {tab === "tickets" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 4px" }}>Support Tickets</h3>
+                <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>{adminTickets.filter(t => t.status === "open").length} open · {adminTickets.length} total</p>
+              </div>
+              <button onClick={fetchAdminTickets} style={{ padding: "6px 14px", border: "1px solid #e2e8f0", borderRadius: 6, background: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#64748b" }}>Refresh</button>
+            </div>
+            {adminTicketsLoading ? <p style={{ color: "#94a3b8" }}>Loading...</p> :
+              adminTickets.map(t => (
+                <div key={t.id} style={{ background: "#fff", border: "1px solid " + (t.status === "open" ? "#bfdbfe" : "#e2e8f0"), borderRadius: 12, padding: 16, marginBottom: 10, borderLeft: "3px solid " + (t.priority === "urgent" ? "#dc2626" : t.priority === "high" ? "#d97706" : t.status === "open" ? "#3b82f6" : "#16a34a") }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{t.subject}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: t.status === "open" ? "#dbeafe" : t.status === "in_progress" ? "#fef9c3" : "#f0fdf4", color: t.status === "open" ? "#2563eb" : t.status === "in_progress" ? "#ca8a04" : "#16a34a" }}>{(t.status || "open").replace("_", " ").toUpperCase()}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: t.priority === "urgent" ? "#fef2f2" : t.priority === "high" ? "#fffbeb" : "#f8fafc", color: t.priority === "urgent" ? "#dc2626" : t.priority === "high" ? "#d97706" : "#94a3b8" }}>{t.priority}</span>
+                        <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "#f8fafc", color: "#64748b" }}>{t.category}</span>
+                      </div>
+                      <p style={{ fontSize: 12, color: "#334155", margin: "0 0 4px", lineHeight: 1.6 }}>{t.description}</p>
+                      <span style={{ fontSize: 10, color: "#94a3b8" }}>From: {t.user_name || t.user_email} · {new Date(t.created_at).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10, paddingTop: 10, borderTop: "1px solid #f1f5f9", alignItems: "flex-end", flexWrap: "wrap" }}>
+                    <select value={t.status || "open"} onChange={async (e) => { await supabase.from("support_tickets").update({ status: e.target.value, updated_at: new Date().toISOString(), resolved_at: e.target.value === "resolved" ? new Date().toISOString() : null, resolved_by: e.target.value === "resolved" ? session?.user?.email : null }).eq("id", t.id); fetchAdminTickets(); }} style={{ padding: "6px 10px", fontSize: 11, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Sans', sans-serif", background: "#fff" }}>
+                      <option value="open">Open</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                    <input placeholder="Add admin response..." defaultValue={t.admin_notes || ""} onBlur={async (e) => { if (e.target.value !== (t.admin_notes || "")) { await supabase.from("support_tickets").update({ admin_notes: e.target.value, updated_at: new Date().toISOString() }).eq("id", t.id); fetchAdminTickets(); } }} style={{ flex: 1, padding: "6px 10px", fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Sans', sans-serif", minWidth: 200 }} />
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MLS FEED VIEW — 3 tabs: Cards, Table, Dashboard
+   MLS FEED VIEW
    ═══════════════════════════════════════════════════════════ */
 
 const MLS_STATUS_COLORS = {
