@@ -7797,6 +7797,67 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
         />
       </div>
 
+      {/* Lead Generation & Source Breakdown */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 24 }}>
+        {/* Leads by Person */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+          <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 12px" }}>Leads by Person</h3>
+          {(() => {
+            const byPerson = {};
+            activeDeals.forEach(d => {
+              const email = d.assigneeEmail || d.userEmail || "Unknown";
+              byPerson[email] = (byPerson[email] || 0) + 1;
+            });
+            const sorted = Object.entries(byPerson).sort((a, b) => b[1] - a[1]);
+            const max = sorted.length > 0 ? sorted[0][1] : 1;
+            return sorted.map(([email, count]) => (
+              <div key={email} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: "#334155", fontWeight: 500, minWidth: isMobile ? 80 : 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email.split("@")[0]}</span>
+                <div style={{ flex: 1, height: 8, borderRadius: 4, background: "#f1f5f9", overflow: "hidden" }}>
+                  <div style={{ width: (count / max * 100) + "%", height: "100%", borderRadius: 4, background: "linear-gradient(90deg, #16a34a, #22c55e)" }} />
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", minWidth: 28, textAlign: "right" }}>{count}</span>
+              </div>
+            ));
+          })()}
+        </div>
+
+        {/* Source Breakdown */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+          <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 12px" }}>Lead Source</h3>
+          {(() => {
+            const bySource = {};
+            activeDeals.forEach(d => {
+              const src = d.source || "Other";
+              bySource[src] = (bySource[src] || 0) + 1;
+            });
+            const sorted = Object.entries(bySource).sort((a, b) => b[1] - a[1]);
+            const total = activeDeals.length || 1;
+            const colors = { "MLS Feed": "#3b82f6", "REAP App": "#16a34a", "Other": "#94a3b8" };
+            return sorted.map(([src, count]) => (
+              <div key={src} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: colors[src] || "#94a3b8", flexShrink: 0 }} />
+                <span style={{ fontSize: 12, color: "#334155", fontWeight: 500, flex: 1 }}>{src}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{count}</span>
+                <span style={{ fontSize: 10, color: "#94a3b8", minWidth: 32, textAlign: "right" }}>{Math.round(count / total * 100)}%</span>
+              </div>
+            ));
+          })()}
+          {/* Source bar */}
+          <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", height: 10, marginTop: 8 }}>
+            {(() => {
+              const bySource = {};
+              activeDeals.forEach(d => { const src = d.source || "Other"; bySource[src] = (bySource[src] || 0) + 1; });
+              const total = activeDeals.length || 1;
+              const colors = { "MLS Feed": "#3b82f6", "REAP App": "#16a34a" };
+              return Object.entries(bySource).sort((a, b) => b[1] - a[1]).map(([src, count]) => (
+                <div key={src} style={{ width: (count / total * 100) + "%", background: colors[src] || "#cbd5e1" }} />
+              ));
+            })()}
+          </div>
+        </div>
+      </div>
+
       {/* Status Breakdown */}
       <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "20px 24px", marginBottom: 24 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 14, fontFamily: "'DM Sans', sans-serif" }}>Deals by Status</div>
@@ -11729,6 +11790,13 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
         bathroomsHalf: v(r.bathrooms_half),
         sqftGross: v(r.sqft_gross),
         county: r.county || null,
+        ownerEmail: r.owner_email || null,
+        managerEmail: r.manager_email || null,
+        assigneeEmail: r.assignee_email || null,
+        underwritingDate: r.underwriting_date || null,
+        offerDate: r.offer_date || null,
+        underContractDate: r.under_contract_date || null,
+        closedDate: r.closed_date || null,
         ppsf: v(r.ppsf),
         agent: r.agent || "",
         publicRemarks: r.public_remarks || "",
@@ -18354,6 +18422,13 @@ export default function ReapApp() {
         bathroomsHalf: v(r.bathrooms_half),
         sqftGross: v(r.sqft_gross),
         county: r.county || null,
+        ownerEmail: r.owner_email || null,
+        managerEmail: r.manager_email || null,
+        assigneeEmail: r.assignee_email || null,
+        underwritingDate: r.underwriting_date || null,
+        offerDate: r.offer_date || null,
+        underContractDate: r.under_contract_date || null,
+        closedDate: r.closed_date || null,
         dealName: r.deal_name || "",
         zip: r.zip_code || "",
         dealClass: r.class || "",
@@ -18451,6 +18526,8 @@ export default function ReapApp() {
       const { data: insertedDeal, error: insertErr } = await supabase.from("deals").insert({
         user_email: session?.user?.email || "",
         org_id: orgData?.id || null,
+        owner_email: orgData?.owner_email || session?.user?.email || "",
+        assignee_email: session?.user?.email || "",
         deal_name: form.dealName,
         property_address: form.address,
         city: form.city,
