@@ -2162,11 +2162,6 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                       )}
                     </td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.organization || "—"}</td>
-                    <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
-                    {/* REAP Score (always computed) */}
-                    <td style={{ padding: "13px 16px", textAlign: "center" }}>{(() => { const s = calcReapScore(deal); return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: s >= 70 ? "#f0fdf4" : s >= 40 ? "#fffbeb" : "#fef2f2", color: s >= 70 ? "#16a34a" : s >= 40 ? "#d97706" : "#dc2626", fontSize: 12, fontWeight: 700, fontFamily: "'DM Mono', monospace", border: "1px solid " + (s >= 70 ? "#16a34a" : s >= 40 ? "#d97706" : "#dc2626") + "22" }}>{s}</span>; })()}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.city || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.type || "—"}</td>
                     <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(deal.askingPrice)}</td>
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace" }}>{fmtNum(deal.sqft)}</td>
@@ -11890,11 +11885,26 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
         "Source": "MLS Feed",
         "MLS Number": listing.mlsNumber,
       };
+      // Fetch user profile for org context
+      let userProfile = null;
+      try {
+        const { data: up } = await supabase.from("user_profiles").select("org_id").eq("email", session?.user?.email?.toLowerCase()).maybeSingle();
+        userProfile = up;
+      } catch (e) { console.log("Profile fetch skipped:", e); }
+
+      // Fetch org owner for hierarchy
+      let orgOwnerEmail = session?.user?.email || "";
+      if (userProfile?.org_id) {
+        try {
+          const { data: org } = await supabase.from("organizations").select("owner_email").eq("id", userProfile.org_id).maybeSingle();
+          if (org?.owner_email) orgOwnerEmail = org.owner_email;
+        } catch (e) {}
+      }
+
       // Fetch presets (auto-create with defaults if none exist)
       const MLS_DEFAULT_PRESETS = { closing_cost_pct: 3, project_months: 12, cost_to_sell_pct: 7, proforma_opex_pct: 30, proforma_rent_per_sqft: 2, bridge_acquisition_pct: 75, bridge_rehab_pct: 100, bridge_interest_rate: 12, bridge_points_pct: 2, refi_ltv_pct: 70, refi_interest_rate: 8, refi_points_pct: 2, refi_term_years: 30, equity_financed_pct: 100, equity_rate: 12, equity_profit_split_pct: 0, proforma_vacancy_pct: 10, exit_cap_rate: 6.5, existing_opex_pct: 30 };
       let mlsPresets = { ...MLS_DEFAULT_PRESETS };
       try {
-        const { data: userProfile } = await supabase.from("user_profiles").select("org_id").eq("email", session?.user?.email?.toLowerCase()).maybeSingle();
         const pq = userProfile?.org_id
           ? supabase.from("deal_presets").select("*").eq("org_id", userProfile.org_id).maybeSingle()
           : supabase.from("deal_presets").select("*").eq("user_id", session?.user?.id).maybeSingle();
@@ -11910,6 +11920,9 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
 
       const { error: insertErr } = await supabase.from("deals").insert({
         user_email: session?.user?.email || "",
+        org_id: userProfile?.org_id || null,
+        owner_email: orgOwnerEmail,
+        assignee_email: session?.user?.email || "",
         deal_name: dealData["Deal / Name"],
         property_address: dealData["Property / Address"],
         city: dealData["City"],
