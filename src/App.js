@@ -7749,8 +7749,8 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
   STATUS_LIST.slice(1).forEach(s => { statusCounts[s] = 0; });
   deals.forEach(d => { if (statusCounts[d.status] !== undefined) statusCounts[d.status]++; });
 
-  // Filtered + sorted deal table
-  const filtered = statusFilter === "All" ? deals : deals.filter(d => d.status === statusFilter);
+  // Filtered + sorted deal table — exclude Dead unless explicitly filtered to Dead
+  const filtered = statusFilter === "All" ? deals.filter(d => d.status !== "Dead") : deals.filter(d => d.status === statusFilter);
   const sorted = [...filtered].sort((a, b) => {
     let va = num(a[sortField]), vb = num(b[sortField]);
     if (isNaN(va) && isNaN(vb)) return 0;
@@ -7914,9 +7914,10 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
       <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "20px 24px", marginBottom: 24 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 14, fontFamily: "'DM Sans', sans-serif" }}>Deals by Status</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {STATUS_LIST.slice(1).filter(s => statusCounts[s] > 0).map(s => {
+          {STATUS_LIST.slice(1).filter(s => s !== "Dead" && statusCounts[s] > 0).map(s => {
             const count = statusCounts[s];
-            const pct = Math.round((count / deals.length) * 100);
+            const activeTotal = deals.filter(d => d.status !== "Dead").length || 1;
+            const pct = Math.round((count / activeTotal) * 100);
             const color = STATUS_COLORS[s] || "#94a3b8";
             return (
               <button key={s} onClick={() => setStatusFilter(statusFilter === s ? "All" : s)}
@@ -7933,10 +7934,17 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
               </button>
             );
           })}
+          {statusCounts["Dead"] > 0 && (
+            <button onClick={() => setStatusFilter(statusFilter === "Dead" ? "All" : "Dead")}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 10, border: statusFilter === "Dead" ? "1.5px solid #dc2626" : "1.5px solid #e2e8f0", background: statusFilter === "Dead" ? "#fef2f233" : "#f8fafc", cursor: "pointer", opacity: 0.6, transition: "all 0.15s" }}>
+              <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Dead</span>
+              <span style={{ fontSize: 11, color: "#dc2626", fontFamily: "'DM Mono', monospace" }}>{statusCounts["Dead"]}</span>
+            </button>
+          )}
         </div>
         {/* Mini bar chart */}
         <div style={{ display: "flex", height: 6, borderRadius: 99, overflow: "hidden", marginTop: 16, gap: 1 }}>
-          {STATUS_LIST.slice(1).filter(s => statusCounts[s] > 0).map(s => (
+          {STATUS_LIST.slice(1).filter(s => s !== "Dead" && statusCounts[s] > 0).map(s => (
             <div key={s} style={{
               flex: statusCounts[s], background: STATUS_COLORS[s] || "#94a3b8",
               transition: "flex 0.4s ease", cursor: "pointer",
