@@ -1775,7 +1775,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   // Build unique lists per role from deals
   const uniqueOwners = useMemo(() => {
     const s = new Map();
-    deals.forEach(d => { if (d.user && !s.has(d.user.toLowerCase())) s.set(d.user.toLowerCase(), d.user); });
+    deals.forEach(d => { const o = d.owner || d.user; if (o && !s.has(o.toLowerCase())) s.set(o.toLowerCase(), o); });
     return Array.from(s.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
   }, [deals]);
   const uniqueManagers = useMemo(() => {
@@ -1813,7 +1813,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
 
   // Team member filters (owner, manager, assignee)
   let roleFiltered = statusFiltered;
-  if (ownerFilter) roleFiltered = roleFiltered.filter(d => (d.user || "").toLowerCase() === ownerFilter.toLowerCase());
+  if (ownerFilter) roleFiltered = roleFiltered.filter(d => (d.owner || d.user || "").toLowerCase() === ownerFilter.toLowerCase());
   if (managerFilter) roleFiltered = roleFiltered.filter(d => (d.manager || "").toLowerCase() === managerFilter.toLowerCase());
   if (assigneeFilter) roleFiltered = roleFiltered.filter(d => (d.assignee || "").toLowerCase() === assigneeFilter.toLowerCase());
 
@@ -2111,8 +2111,8 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                           {(allAppUsers || []).map(u => <option key={u.email} value={u.email}>{u.full_name || u.email.split("@")[0]}</option>)}
                         </select>
                       ) : (
-                        <span onClick={e => { e.stopPropagation(); setEditingOwnerId(deal._id); setOwnerInput(deal.user || ""); }} style={{ fontSize: 12, color: deal.user ? "#475569" : "#cbd5e1", fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "3px 8px", borderRadius: 6, border: "1px dashed " + (deal.user ? "#64748b44" : "#e2e8f0"), background: deal.user ? "#f1f5f9" : "transparent", fontWeight: deal.user ? 500 : 400, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                          {deal.user ? fmtUserName(deal.user) : "Assign"}
+                        <span onClick={e => { e.stopPropagation(); setEditingOwnerId(deal._id); setOwnerInput(deal.owner || deal.user || ""); }} style={{ fontSize: 12, color: (deal.owner || deal.user) ? "#475569" : "#cbd5e1", fontFamily: "'DM Sans', sans-serif", cursor: "pointer", padding: "3px 8px", borderRadius: 6, border: "1px dashed " + (deal.user ? "#64748b44" : "#e2e8f0"), background: deal.user ? "#f1f5f9" : "transparent", fontWeight: (deal.owner || deal.user) ? 500 : 400, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          {(deal.owner || deal.user) ? fmtUserName(deal.owner || deal.user) : "Assign"}
                           <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
                         </span>
                       )}
@@ -18452,9 +18452,10 @@ export default function ReapApp() {
         longitude: r.longitude || null,
         marketplace_published: !!r.marketplace_published,
         marketplace_price: r.marketplace_price || null,
-        manager: r.manager || "",
-        assignee: r.assignee || "",
+        manager: r.manager_email || r.manager || "",
+        assignee: r.assignee_email || r.assignee || "",
         organization: r.organization || "",
+        owner: r.owner_email || r.user_email || "",
       })).filter(d => d.address);
 
       const userDeals = hasFullAccess ? parsed : parsed.filter(d => emailsToShow.includes((d.user || "").toLowerCase()));
