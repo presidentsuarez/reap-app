@@ -7502,6 +7502,202 @@ function PricingScreen({ userEmail, daysLeft, onCheckout, checkoutLoading, onDis
   );
 }
 
+function LenderPortalView({ session, portalData, isMobile }) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [deals, setDeals] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const contactName = portalData?.contact_name || "Lender";
+  const contactCompany = portalData?.company || "";
+
+  useEffect(() => {
+    async function loadPortalData() {
+      setLoading(true);
+      try {
+        // Fetch financing requests linked to this lender
+        const { data: reqs } = await supabase.from("financing_requests").select("*").or(`lender_name.ilike.%${contactName}%,contact_id.eq.${portalData?.contact_id || "00000000-0000-0000-0000-000000000000"}`).order("created_at", { ascending: false });
+        if (reqs) setRequests(reqs);
+        // Fetch deals linked to those requests
+        if (reqs && reqs.length > 0) {
+          const dealIds = [...new Set(reqs.map(r => r.deal_id).filter(Boolean))];
+          if (dealIds.length > 0) {
+            const { data: dealData } = await supabase.from("deals").select("id, property_address, city, state, deal_status, asking_price, our_offer, arv_value, sqft_net, type").in("id", dealIds);
+            if (dealData) setDeals(dealData);
+          }
+        }
+      } catch (e) { console.error("Portal load:", e); }
+      setLoading(false);
+    }
+    loadPortalData();
+  }, []);
+
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    { id: "pipeline", label: "Deal Pipeline" },
+    { id: "requests", label: "Loan Requests" },
+    { id: "profile", label: "Profile" },
+  ];
+
+  const fmt = (v) => { const n = parseFloat(v); return isNaN(n) || n === 0 ? "—" : "$" + n.toLocaleString(undefined, { maximumFractionDigits: 0 }); };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#0a0f1a", fontFamily: "'DM Sans', sans-serif" }}>
+      {/* Top nav */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobile ? "14px 16px" : "14px 32px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <img src="/favicon.png" alt="REAP" style={{ width: 32, height: 32, borderRadius: 8 }} />
+          <div>
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>REAP</span>
+            <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 700, marginLeft: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Lender Portal</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{session?.user?.email}</span>
+          <button onClick={() => supabase.auth.signOut()} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontSize: 11, cursor: "pointer" }}>Sign Out</button>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 0, borderBottom: "1px solid rgba(255,255,255,0.06)", padding: isMobile ? "0 16px" : "0 32px", flexShrink: 0 }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ background: "transparent", border: "none", borderBottom: activeTab === t.id ? "2px solid #16a34a" : "2px solid transparent", padding: "12px 20px", color: activeTab === t.id ? "#16a34a" : "rgba(255,255,255,0.4)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: -1, transition: "all 0.15s" }}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "20px 16px" : "28px 32px" }}>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 60, color: "rgba(255,255,255,0.3)" }}>Loading portal...</div>
+        ) : activeTab === "overview" ? (
+          <div>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Welcome, {contactName}</h1>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", margin: "0 0 28px" }}>{contactCompany ? contactCompany + " — " : ""}Lender Portal</p>
+
+            {/* KPI Cards */}
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 28 }}>
+              {[
+                { label: "Active Requests", value: requests.filter(r => r.status !== "Declined" && r.status !== "Closed").length, color: "#16a34a" },
+                { label: "Total Pipeline", value: fmt(requests.reduce((s, r) => s + (parseFloat(r.total_loan_amount) || 0), 0)), color: "#3b82f6" },
+                { label: "Deals Reviewed", value: deals.length, color: "#7c3aed" },
+                { label: "Avg LTV", value: requests.length > 0 ? (requests.reduce((s, r) => s + (parseFloat(r.ltv) || 0), 0) / requests.length).toFixed(1) + "%" : "—", color: "#d97706" },
+              ].map((kpi, i) => (
+                <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: 18, position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", top: 0, left: 0, width: 3, height: "100%", background: kpi.color }} />
+                  <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 6px" }}>{kpi.label}</p>
+                  <p style={{ fontSize: 22, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace", margin: 0 }}>{kpi.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Recent Requests */}
+            <h3 style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>Recent Loan Requests</h3>
+            {requests.slice(0, 5).map((req, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "14px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "#fff", margin: "0 0 3px" }}>{req.deal_address || "—"}</p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", margin: 0 }}>{req.financing_type} • {req.status || "Pending"}</p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: "#16a34a", fontFamily: "'DM Mono', monospace", margin: "0 0 3px" }}>{fmt(req.total_loan_amount)}</p>
+                  <p style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", margin: 0 }}>{req.interest_rate ? req.interest_rate + "%" : "—"} rate</p>
+                </div>
+              </div>
+            ))}
+            {requests.length === 0 && <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", textAlign: "center", padding: 40 }}>No loan requests yet</p>}
+          </div>
+        ) : activeTab === "pipeline" ? (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: "0 0 16px" }}>Deal Pipeline</h2>
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  {["Property", "City", "Type", "Asking", "Loan Amount", "LTV", "Status"].map(h => (
+                    <th key={h} style={{ padding: "10px 14px", fontSize: 9, color: "rgba(255,255,255,0.3)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", textAlign: "left" }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {deals.length === 0 ? (
+                    <tr><td colSpan={7} style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.2)", fontSize: 13 }}>No deals in pipeline</td></tr>
+                  ) : deals.map((d, i) => {
+                    const req = requests.find(r => r.deal_id === d.id);
+                    return (
+                      <tr key={i} style={{ borderBottom: i < deals.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+                        <td style={{ padding: "12px 14px", fontSize: 13, color: "#fff", fontWeight: 500 }}>{d.property_address || "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{d.city || "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{d.type || "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "#fff", fontFamily: "'DM Mono', monospace" }}>{fmt(d.asking_price)}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "#16a34a", fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{req ? fmt(req.total_loan_amount) : "—"}</td>
+                        <td style={{ padding: "12px 14px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: "'DM Mono', monospace" }}>{req?.ltv ? req.ltv + "%" : "—"}</td>
+                        <td style={{ padding: "12px 14px" }}><span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 5, background: (req?.status || "Pending") === "Approved" ? "rgba(22,163,74,0.15)" : "rgba(255,255,255,0.05)", color: (req?.status || "Pending") === "Approved" ? "#22c55e" : "rgba(255,255,255,0.4)" }}>{req?.status || "Pending"}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : activeTab === "requests" ? (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: "0 0 16px" }}>Loan Requests</h2>
+            {requests.map((req, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: 18, marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                  <div>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: "0 0 4px" }}>{req.deal_address || "—"}</p>
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", margin: 0 }}>{req.financing_type === "bridge" ? "Bridge Loan" : "Refinance"} • Submitted {new Date(req.created_at).toLocaleDateString()}</p>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 10px", borderRadius: 6, background: req.status === "Approved" ? "rgba(22,163,74,0.15)" : req.status === "Declined" ? "rgba(220,38,38,0.15)" : "rgba(255,255,255,0.05)", color: req.status === "Approved" ? "#22c55e" : req.status === "Declined" ? "#ef4444" : "rgba(255,255,255,0.4)" }}>{req.status || "Pending"}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 10 }}>
+                  {[
+                    ["Loan Amount", fmt(req.total_loan_amount)],
+                    ["Interest Rate", req.interest_rate ? req.interest_rate + "%" : "—"],
+                    ["LTV", req.ltv ? req.ltv + "%" : "—"],
+                    ["LTC", req.ltc ? req.ltc + "%" : "—"],
+                    ["Term", req.term_months ? req.term_months + " mo" : "—"],
+                    ["Points", req.points_pct ? req.points_pct + "%" : "—"],
+                    ["Monthly Payment", fmt(req.monthly_interest_payment)],
+                    ["Acq Financed", req.acq_financed_pct ? req.acq_financed_pct + "%" : "—"],
+                  ].map(([label, val], j) => (
+                    <div key={j}>
+                      <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>{label}</p>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "#fff", fontFamily: "'DM Mono', monospace", margin: 0 }}>{val}</p>
+                    </div>
+                  ))}
+                </div>
+                {req.notes && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", margin: "12px 0 0", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 10 }}>{req.notes}</p>}
+              </div>
+            ))}
+            {requests.length === 0 && <p style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", textAlign: "center", padding: 40 }}>No loan requests submitted yet</p>}
+          </div>
+        ) : activeTab === "profile" ? (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display', serif", margin: "0 0 16px" }}>Lender Profile</h2>
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: 24, maxWidth: 500 }}>
+              {[
+                ["Name", contactName],
+                ["Company", contactCompany || "—"],
+                ["Email", session?.user?.email || "—"],
+                ["Portal Status", "Active"],
+              ].map(([label, val], i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: i < 3 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{val}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: "10px 32px", borderTop: "1px solid rgba(255,255,255,0.04)", textAlign: "center", flexShrink: 0 }}>
+        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>Powered by REAP — Real Estate Analytics Platform — app.getreap.ai</span>
+      </div>
+    </div>
+  );
+}
+
 function PreviewOverlay({ onGetStarted, pageName }) {
   const isMobile = window.innerWidth < 768;
   return (
@@ -16522,6 +16718,38 @@ function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, in
                 </div>
               )}
             </div>
+
+            {/* Lender Portal Access */}
+            {(contact.contactType || "").toLowerCase().includes("lender") && (
+              <div style={{ marginTop: 24, padding: 16, borderRadius: 12, border: "1px solid #bfdbfe", background: "#eff6ff" }}>
+                <h2 style={{ fontSize: 11, color: "#2563eb", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                  Lender Portal <span style={{ flex: 1, height: 1, background: "#bfdbfe" }} />
+                </h2>
+                <p style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", lineHeight: 1.6, marginBottom: 12 }}>
+                  Enable so this lender can log in and view loan requests, deal pipeline, and financing details.
+                </p>
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#64748b", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase" }}>Portal Login Email</label>
+                    <input value={portalEmail || contact.email || ""} onChange={e => setPortalEmail(e.target.value)} placeholder="lender@email.com" type="email"
+                      style={{ width: "100%", padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: "1.5px solid #bfdbfe", borderRadius: 10, outline: "none", background: "#fff", color: "#0f172a", boxSizing: "border-box" }} />
+                  </div>
+                  <button onClick={async () => {
+                    const lEmail = (portalEmail || contact.email || "").trim().toLowerCase();
+                    if (!lEmail || !lEmail.includes("@")) { alert("Please enter a valid email"); return; }
+                    setPortalSaving(true);
+                    try {
+                      await supabase.from("lender_portal_access").upsert({ contact_id: contact.rowId, portal_email: lEmail, is_active: true, granted_by: userEmail, org_id: orgData?.id || null }, { onConflict: "portal_email" });
+                      await supabase.from("contacts").update({ portal_enabled: true, portal_email: lEmail }).eq("id", contact.rowId);
+                      setPortalSuccess("Lender portal enabled! They can sign in at app.getreap.ai");
+                    } catch (err) { alert("Error: " + err.message); }
+                    setPortalSaving(false);
+                  }} disabled={portalSaving} style={{ padding: "10px 20px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", background: "linear-gradient(135deg, #3b82f6, #2563eb)", color: "#fff", boxShadow: "0 2px 10px rgba(37,99,235,0.3)", whiteSpace: "nowrap" }}>
+                    {portalSaving ? "Saving..." : "Enable Lender Portal"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -17664,6 +17892,8 @@ export default function ReapApp() {
   const [selectedMLSListing, setSelectedMLSListing] = useState(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [isLenderPortal, setIsLenderPortal] = useState(false);
+  const [lenderPortalData, setLenderPortalData] = useState(null);
   const [trialDaysLeft, setTrialDaysLeft] = useState(TRIAL_DAYS);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -17966,6 +18196,15 @@ export default function ReapApp() {
         if (!onboarded) setShowOnboarding(true);
         return;
       }
+
+      // Check if user is a lender portal user
+      supabase.from("lender_portal_access").select("*, contacts:contact_id(contact_name, company)").eq("portal_email", email.toLowerCase()).eq("is_active", true).maybeSingle().then(({ data: portalAccess }) => {
+        if (portalAccess) {
+          setIsLenderPortal(true);
+          setLenderPortalData({ ...portalAccess, contact_name: portalAccess.contacts?.contact_name, company: portalAccess.contacts?.company });
+          setLoading(false);
+        }
+      }).catch(e => console.log("Portal check skipped:", e));
 
       // Check subscription: subscriptions table, user_profiles.is_subscribed (admin override), AND org membership
       Promise.all([
@@ -19028,6 +19267,11 @@ export default function ReapApp() {
     setShowOnboarding(false);
     if (openNewDeal) setShowNewDeal(true);
   };
+
+  // Lender Portal — full takeover if user is a portal lender
+  if (isLenderPortal && lenderPortalData) {
+    return <LenderPortalView session={session} portalData={lenderPortalData} isMobile={window.innerWidth < 768} />;
+  }
 
   if (showOnboarding) {
     const onboardName = session?.user?.user_metadata?.full_name || session?.user?.email || "";
