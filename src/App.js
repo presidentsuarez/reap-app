@@ -1537,6 +1537,8 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const tableScrollRef = useRef(null);
+  const [showScrollLeft, setShowScrollLeft] = useState(false);
+  const [showScrollRight, setShowScrollRight] = useState(true);
   const [searchOpen, setSearchOpen] = useState(!!initialFilters?.search);
   const [statusFilter, setStatusFilter] = useState(initialFilters?.statusFilter || null);
   const [sortCol, setSortCol] = useState(initialFilters?.sortCol || null);
@@ -2080,8 +2082,11 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
             </div>
           </div>
           {/* Scroll hint */}
-          {!isMobile && <div style={{ fontSize: 10, color: "#cbd5e1", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>← Scroll horizontally to see all columns →</div>}
-          <div ref={tableScrollRef} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "auto", boxShadow: "0 1px 8px rgba(0,0,0,0.04)", position: "relative" }}>
+          {/* Scroll arrow buttons */}
+          <div style={{ position: "relative" }}>
+            {showScrollLeft && <button onClick={() => { const el = tableScrollRef.current; if (el) el.scrollBy({ left: -300, behavior: "smooth" }); }} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 36, zIndex: 10, border: "none", background: "linear-gradient(90deg, rgba(255,255,255,0.95) 60%, transparent)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "14px 0 0 14px" }}><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth={2.5}><polyline points="15 18 9 12 15 6"/></svg></button>}
+            {showScrollRight && <button onClick={() => { const el = tableScrollRef.current; if (el) el.scrollBy({ left: 300, behavior: "smooth" }); }} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 36, zIndex: 10, border: "none", background: "linear-gradient(270deg, rgba(255,255,255,0.95) 60%, transparent)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "0 14px 14px 0" }}><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth={2.5}><polyline points="9 18 15 12 9 6"/></svg></button>}
+          <div ref={tableScrollRef} onScroll={() => { const el = tableScrollRef.current; if (el) { setShowScrollLeft(el.scrollLeft > 10); setShowScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10); } }} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "auto", boxShadow: "0 1px 8px rgba(0,0,0,0.04)", position: "relative" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1400 }}>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
@@ -2201,6 +2206,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                 ))}
               </tbody>
             </table>
+          </div>
           </div>
         </div>
       ) : (
