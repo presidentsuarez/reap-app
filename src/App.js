@@ -16053,8 +16053,7 @@ function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, in
   const [portalEmail, setPortalEmail] = useState(contact.portalEmail || contact.email || "");
   const [portalSaving, setPortalSaving] = useState(false);
   const [portalSuccess, setPortalSuccess] = useState("");
-
-  // Documents
+  const [showLenderPreview, setShowLenderPreview] = useState(false);
   const [contactDocs, setContactDocs] = useState([]);
   const [contactDocsLoading, setContactDocsLoading] = useState(false);
   const [contactDocUploading, setContactDocUploading] = useState(false);
@@ -16747,6 +16746,22 @@ function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, in
                   }} disabled={portalSaving} style={{ padding: "10px 20px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", background: "linear-gradient(135deg, #3b82f6, #2563eb)", color: "#fff", boxShadow: "0 2px 10px rgba(37,99,235,0.3)", whiteSpace: "nowrap" }}>
                     {portalSaving ? "Saving..." : "Enable Lender Portal"}
                   </button>
+                  <button onClick={() => setShowLenderPreview(true)} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #bfdbfe", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", background: "#fff", color: "#3b82f6", whiteSpace: "nowrap" }}>
+                    Preview Portal
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Lender Portal Preview Modal */}
+            {showLenderPreview && (
+              <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.85)", display: "flex", flexDirection: "column" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 20px", background: "#0a0f1a", borderBottom: "1px solid rgba(255,255,255,0.1)", flexShrink: 0 }}>
+                  <span style={{ fontSize: 12, color: "#3b82f6", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>Lender Portal Preview — {contact.name || "Lender"}</span>
+                  <button onClick={() => setShowLenderPreview(false)} style={{ padding: "6px 16px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>✕ Close Preview</button>
+                </div>
+                <div style={{ flex: 1, overflow: "hidden" }}>
+                  <LenderPortalView session={{ user: { email: contact.email || portalEmail || "" } }} portalData={{ contact_id: contact.rowId, contact_name: contact.name, company: contact.company }} isMobile={isMobile} />
                 </div>
               </div>
             )}
