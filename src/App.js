@@ -1542,10 +1542,18 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
   const [managerFilter, setManagerFilter] = useState(initialFilters?.managerFilter || null);
   const [assigneeFilter, setAssigneeFilter] = useState(initialFilters?.assigneeFilter || null);
   const [pipelineView, setPipelineViewState] = useState(() => {
+    if (initialView && ["table","cards","map"].includes(initialView)) return initialView;
     try { const saved = window.localStorage?.getItem("reap_pipeline_view"); if (saved && ["table","cards","map"].includes(saved)) return saved; } catch(e) {}
-    return initialView || "table";
+    return "table";
   }); // "table", "cards", or "map"
   const setPipelineView = (v) => { setPipelineViewState(v); try { window.localStorage?.setItem("reap_pipeline_view", v); } catch(e) {} if (onViewChange) onViewChange(v); };
+  // Sync if initialView changes
+  useEffect(() => {
+    if (initialView && ["table","cards","map"].includes(initialView) && initialView !== pipelineView) {
+      setPipelineViewState(initialView);
+      try { window.localStorage?.setItem("reap_pipeline_view", initialView); } catch(e) {}
+    }
+  }, [initialView]);
   // Report filter changes to parent
   useEffect(() => {
     if (onFilterChange) onFilterChange({ statusFilter, sortCol, sortDir, search, ownerFilter, managerFilter, assigneeFilter });
@@ -2066,7 +2074,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                     </th>
                   ))}
                   <th style={{ padding: "11px 8px 11px 16px", width: 52 }} />
-                  {["Owner", "Manager", "Assignee", "Organization", "Status", "REAP Score", "Address", "City", "Type", "Asking Price", "Sq Ft", "$/SF", "Units", "$/Unit", "Source"].map(h => (
+                  {["Status", "Address", "City", "REAP Score", "Owner", "Manager", "Assignee", "Organization", "Type", "Asking Price", "Sq Ft", "$/SF", "Units", "$/Unit", "Source"].map(h => (
                     <th key={h} onClick={() => handleSort(h)} style={{
                       padding: "11px 16px", textAlign: "left", fontSize: 10, color: sortCol === h ? "#16a34a" : "#94a3b8",
                       fontFamily: "'DM Sans', sans-serif", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
@@ -2103,6 +2111,14 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                         </div>
                       </div>
                     </td>
+                    {/* Status */}
+                    <td style={{ padding: "13px 16px" }}><StatusBadge status={deal.status} /></td>
+                    {/* Address */}
+                    <td style={{ padding: "13px 16px", fontSize: 13, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>{deal.address || "—"}</td>
+                    {/* City */}
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>{deal.city || "—"}</td>
+                    {/* REAP Score (always computed) */}
+                    <td style={{ padding: "13px 16px", textAlign: "center" }}>{(() => { const s = calcReapScore(deal); return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: s >= 70 ? "#f0fdf4" : s >= 40 ? "#fffbeb" : "#fef2f2", color: s >= 70 ? "#16a34a" : s >= 40 ? "#d97706" : "#dc2626", fontSize: 12, fontWeight: 700, fontFamily: "'DM Mono', monospace", border: "1px solid " + (s >= 70 ? "#16a34a" : s >= 40 ? "#d97706" : "#dc2626") + "22" }}>{s}</span>; })()}</td>
                     {/* Owner (dropdown – all app users) */}
                     <td style={{ padding: "13px 10px", width: 140, minWidth: 140, maxWidth: 140 }} onClick={e => e.stopPropagation()}>
                       {editingOwnerId === deal._id ? (
