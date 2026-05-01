@@ -1534,6 +1534,9 @@ function DealCard({ deal, onSelect }) {
 function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal, isMobile, initialView, onViewChange, initialFilters, onFilterChange, orgMembers, allAppUsers }) {
   const [search, setSearch] = useState(initialFilters?.search || "");
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
+  const tableScrollRef = useRef(null);
   const [searchOpen, setSearchOpen] = useState(!!initialFilters?.search);
   const [statusFilter, setStatusFilter] = useState(initialFilters?.statusFilter || null);
   const [sortCol, setSortCol] = useState(initialFilters?.sortCol || null);
@@ -1891,6 +1894,12 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
     return sortDir === "desc" ? -cmp : cmp;
   });
 
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const paginatedDeals = pageSize === 0 ? filtered : filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setCurrentPage(1); }, [statusFilter, search, ownerFilter, managerFilter, assigneeFilter]);
+
   const totalVolume = deals.reduce((s, d) => {
     const n = parseFloat(String(d.offer || "0").replace(/[$,]/g, ""));
     return s + (isNaN(n) ? 0 : n);
@@ -2053,8 +2062,27 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
         </div>
       ) : pipelineView === "table" ? (
         <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "12px 12px 24px" : "20px 24px 32px", WebkitOverflowScrolling: "touch", minHeight: 0 }}>
-          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "auto", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: isMobile ? 900 : 0 }}>
+          {/* Pagination controls */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif" }}>
+              <span>{filtered.length} deals</span>
+              {filtered.length > 0 && <span style={{ color: "#cbd5e1" }}>•</span>}
+              <span>Page {currentPage} of {totalPages || 1}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Show:</span>
+              {[10, 25, 50, 100, 0].map(s => (
+                <button key={s} onClick={() => { setPageSize(s); setCurrentPage(1); }} style={{ padding: "4px 8px", fontSize: 11, fontWeight: pageSize === s ? 700 : 500, color: pageSize === s ? "#16a34a" : "#64748b", background: pageSize === s ? "#f0fdf4" : "transparent", border: pageSize === s ? "1px solid #bbf7d0" : "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{s === 0 ? "All" : s}</button>
+              ))}
+              <div style={{ width: 1, height: 16, background: "#e2e8f0", margin: "0 4px" }} />
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} style={{ padding: "4px 8px", border: "1px solid #e2e8f0", borderRadius: 6, background: "#fff", cursor: currentPage <= 1 ? "default" : "pointer", opacity: currentPage <= 1 ? 0.4 : 1, fontSize: 11, color: "#334155", fontFamily: "'DM Sans', sans-serif" }}>← Prev</button>
+              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} style={{ padding: "4px 8px", border: "1px solid #e2e8f0", borderRadius: 6, background: "#fff", cursor: currentPage >= totalPages ? "default" : "pointer", opacity: currentPage >= totalPages ? 0.4 : 1, fontSize: 11, color: "#334155", fontFamily: "'DM Sans', sans-serif" }}>Next →</button>
+            </div>
+          </div>
+          {/* Scroll hint */}
+          {!isMobile && <div style={{ fontSize: 10, color: "#cbd5e1", marginBottom: 4, fontFamily: "'DM Sans', sans-serif" }}>← Scroll horizontally to see all columns →</div>}
+          <div ref={tableScrollRef} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "auto", boxShadow: "0 1px 8px rgba(0,0,0,0.04)", position: "relative" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1400 }}>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                   {["Date Added"].map(h => (
@@ -2094,10 +2122,10 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {paginatedDeals.length === 0 ? (
                   <tr><td colSpan={17} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No deals found</td></tr>
-                ) : filtered.map((deal, i) => (
-                  <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
+                ) : paginatedDeals.map((deal, i) => (
+                  <tr key={i} onClick={() => onSelectDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < paginatedDeals.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
                     {/* Date Added */}
                     <td style={{ padding: "13px 16px", fontSize: 12, color: "#94a3b8", fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{fmtDate(deal.date)}</td>
                     {/* Thumbnail */}
