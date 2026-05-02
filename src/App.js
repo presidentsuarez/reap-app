@@ -7723,6 +7723,7 @@ function RobotsView({ session, isMobile }) {
   const [rightTab, setRightTab] = useState("tasks");
   const [reviewDraft, setReviewDraft] = useState(null);
   const [draftEdited, setDraftEdited] = useState("");
+  const [feedbackGiven, setFeedbackGiven] = useState({});
   const [showKB, setShowKB] = useState(false);
   const [kbTab, setKbTab] = useState("soul");
   const [soul, setSoul] = useState(null);
@@ -7999,6 +8000,18 @@ function RobotsView({ session, isMobile }) {
                     <span style={{ fontSize: 9, fontWeight: 700, color: "#fff" }}>{r?.name?.slice(0, 2).toUpperCase()}</span>
                   </div>
                   <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: "14px 14px 14px 4px", background: "rgba(255,255,255,0.06)", color: "#e2e8f0", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap", border: turn.error ? "1px solid rgba(220,38,38,0.3)" : "none" }}>{turn.assistant_response}</div>
+                </div>
+              )}
+              {/* Feedback buttons */}
+              {turn.assistant_response && !turn.error && (
+                <div style={{ paddingLeft: 36, display: "flex", gap: 4, marginTop: 2 }}>
+                  {feedbackGiven[i] ? (
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>{feedbackGiven[i] === "up" ? "👍 Noted" : feedbackGiven[i] === "down" ? "👎 Noted" : "💾 Saved"}</span>
+                  ) : (<>
+                    <button onClick={async () => { setFeedbackGiven({...feedbackGiven, [i]: "up"}); await supabase.from("robot_feedback_events").insert({ user_id: session?.user?.id, robot_id: selectedRobot?.id, event_type: "thumbs_up", verdict: "approved", original_content: turn.assistant_response }); }} style={{ padding: "2px 6px", border: "none", borderRadius: 4, background: "transparent", cursor: "pointer", fontSize: 12, opacity: 0.3, transition: "opacity 0.15s" }} onMouseEnter={e => e.target.style.opacity=1} onMouseLeave={e => e.target.style.opacity=0.3}>👍</button>
+                    <button onClick={async () => { setFeedbackGiven({...feedbackGiven, [i]: "down"}); const note = window.prompt("What was wrong? (optional)"); await supabase.from("robot_feedback_events").insert({ user_id: session?.user?.id, robot_id: selectedRobot?.id, event_type: "thumbs_down", verdict: "rejected", original_content: turn.assistant_response, user_note: note || null }); }} style={{ padding: "2px 6px", border: "none", borderRadius: 4, background: "transparent", cursor: "pointer", fontSize: 12, opacity: 0.3, transition: "opacity 0.15s" }} onMouseEnter={e => e.target.style.opacity=1} onMouseLeave={e => e.target.style.opacity=0.3}>👎</button>
+                    <button onClick={async () => { setFeedbackGiven({...feedbackGiven, [i]: "saved"}); await supabase.from("robot_exemplars").insert({ user_id: session?.user?.id, exemplar_type: "response", channel: "general", title: turn.user_message?.substring(0, 60) || "Robot Response", content: turn.assistant_response, why_its_good: "Approved by user as exemplar", importance: 7 }); }} style={{ padding: "2px 6px", border: "none", borderRadius: 4, background: "transparent", cursor: "pointer", fontSize: 10, color: "rgba(255,255,255,0.3)", opacity: 0.3, transition: "opacity 0.15s" }} onMouseEnter={e => e.target.style.opacity=1} onMouseLeave={e => e.target.style.opacity=0.3}>💾 Save as exemplar</button>
+                  </>)}
                 </div>
               )}
               {/* Artifact cards */}
