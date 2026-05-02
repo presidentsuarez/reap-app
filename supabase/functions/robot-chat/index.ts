@@ -1,14 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-const AK = Deno.env.get("ANTHROPIC_API_KEY")||"";
-const SU = Deno.env.get("SUPABASE_URL")||"";
-const SK = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
-const CH = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
-const MI = 10;
-function dc(m){const l=m.toLowerCase();const c=["general"];if(/email|gmail|reply|inbox|draft.*email/.test(l))c.push("email");if(/text|sms|message them|send.*text/.test(l))c.push("sms");return c;}
+const AK=Deno.env.get("ANTHROPIC_API_KEY")||"";const SU=Deno.env.get("SUPABASE_URL")||"";const SK=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
+const CH={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
+const MI=10;
+function dc(m){const l=m.toLowerCase();const c=["general"];if(/email|gmail|reply|inbox/.test(l))c.push("email");if(/text|sms|message them/.test(l))c.push("sms");return c;}
 async function bp(r,uid,msg,sb){
-  const p=[];
-  p.push(`You are ${r.name}, a ${r.role}.`);if(r.personality)p.push(r.personality);if(r.description)p.push(r.description);p.push("");
+  const p=[];p.push(`You are ${r.name}, a ${r.role}.`);if(r.personality)p.push(r.personality);if(r.description)p.push(r.description);p.push("");
   try{const{data:s}=await sb.from("org_soul").select("*").eq("user_id",uid).eq("active",true).maybeSingle();
     if(s){p.push("=== ORGANIZATION ===");p.push(`Company: ${s.org_name}`);if(s.mission)p.push(`Mission: ${s.mission}`);if(s.vision)p.push(`Vision: ${s.vision}`);
       if(s.values?.length){p.push("Values:");s.values.forEach(v=>p.push(`  - ${v.value}: ${v.description}`));}
@@ -23,24 +20,25 @@ async function bp(r,uid,msg,sb){
     if(ex?.length){p.push("=== EXEMPLARS ===");ex.forEach(e=>p.push(`- "${e.title}" [${e.channel}]`));p.push("");}}catch(_){}
   p.push(`Today: ${new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}`);
   p.push("You work for Javier Suarez at REAP and Tampa Development Group.\n");
-  p.push("RULES:");
-  p.push("- Be concise. Use tools for real data. Never make up numbers.");
-  p.push("- Format currency as $X,XXX. Percentages as X.X%.");
-  p.push("- Emails, texts, and messages are ALWAYS created as DRAFTS using the draft tools. Never imply you sent something — say 'drafted for your review.'");
-  p.push("- When user asks to draft/write/compose an email, use create_email_draft. When they ask to draft a text/SMS, use create_text_draft.");
-  p.push("- Use search_memories for contextual knowledge you don't see in your memories.");
+  p.push("RULES: Be concise. Use tools for real data. Never fabricate. Format $X,XXX. Outbound comms ALWAYS drafts. Use search_memories for context.");
   return p.join("\n");
 }
 const tools=[
   {name:"assign_task",description:"Create a task/reminder/to-do.",input_schema:{type:"object",properties:{name:{type:"string"},description:{type:"string"},priority:{type:"string",enum:["low","medium","high","urgent"]},due_date:{type:"string"}},required:["name"]}},
-  {name:"query_deals",description:"Query real estate deals. Look up pipeline, properties, financials, REAP scores.",input_schema:{type:"object",properties:{search:{type:"string"},status:{type:"string"},sort_by:{type:"string",enum:["reap_score","asking_price","arv_value","date_added"]},limit:{type:"number"}}}},
-  {name:"query_contacts",description:"Query contacts from CRM. Look up lenders, buyers, investors, wholesalers.",input_schema:{type:"object",properties:{search:{type:"string"},contact_type:{type:"string"},limit:{type:"number"}}}},
-  {name:"get_pipeline_summary",description:"Get pipeline summary — counts, total value, avg REAP score.",input_schema:{type:"object",properties:{}}},
-  {name:"search_memories",description:"Search knowledge base for context, decisions, preferences.",input_schema:{type:"object",properties:{query:{type:"string"},category:{type:"string"}},required:["query"]}},
+  {name:"query_deals",description:"Query real estate deals. Pipeline, properties, financials, REAP scores.",input_schema:{type:"object",properties:{search:{type:"string"},status:{type:"string"},sort_by:{type:"string",enum:["reap_score","asking_price","arv_value","date_added"]},limit:{type:"number"}}}},
+  {name:"query_contacts",description:"Query CRM contacts. Lenders, buyers, investors, wholesalers.",input_schema:{type:"object",properties:{search:{type:"string"},contact_type:{type:"string"},limit:{type:"number"}}}},
+  {name:"get_pipeline_summary",description:"Pipeline summary — counts, value, REAP score, NOI.",input_schema:{type:"object",properties:{}}},
+  {name:"search_memories",description:"Search knowledge base for context and decisions.",input_schema:{type:"object",properties:{query:{type:"string"},category:{type:"string"}},required:["query"]}},
   {name:"get_exemplars",description:"Get gold-standard communication examples.",input_schema:{type:"object",properties:{channel:{type:"string"}}}},
-  {name:"create_email_draft",description:"Draft an email for the user to review before sending. Use when user asks to write, draft, compose, or reply to an email. ALWAYS use this tool for email-related requests.",input_schema:{type:"object",properties:{to:{type:"string",description:"Recipient email address"},cc:{type:"string",description:"CC recipients (optional)"},subject:{type:"string",description:"Email subject line"},body:{type:"string",description:"Email body text (plain text or HTML)"},context:{type:"string",description:"Why this email is being drafted (internal note)"}},required:["to","subject","body"]}},
-  {name:"create_text_draft",description:"Draft a text/SMS message for the user to review before sending. Use when user asks to text, message, or SMS someone.",input_schema:{type:"object",properties:{to_name:{type:"string",description:"Recipient name"},to_number:{type:"string",description:"Phone number (if known)"},body:{type:"string",description:"Message text (keep under 160 chars when possible)"},context:{type:"string",description:"Why this text is being drafted"}},required:["to_name","body"]}},
-  {name:"create_memo_draft",description:"Draft a memo, note, or document for the user to review. Use for anything that isn't email or text — reports, summaries, talking points, proposals.",input_schema:{type:"object",properties:{title:{type:"string",description:"Document title"},body:{type:"string",description:"Full document content"},doc_type:{type:"string",description:"Type: memo, report, summary, proposal, talking_points, letter"}},required:["title","body"]}},
+  {name:"create_email_draft",description:"Draft an email. ALWAYS use for email requests.",input_schema:{type:"object",properties:{to:{type:"string"},cc:{type:"string"},subject:{type:"string"},body:{type:"string"},context:{type:"string"}},required:["to","subject","body"]}},
+  {name:"create_text_draft",description:"Draft a text/SMS message.",input_schema:{type:"object",properties:{to_name:{type:"string"},to_number:{type:"string"},body:{type:"string"},context:{type:"string"}},required:["to_name","body"]}},
+  {name:"create_memo_draft",description:"Draft a memo, report, summary, or proposal.",input_schema:{type:"object",properties:{title:{type:"string"},body:{type:"string"},doc_type:{type:"string"}},required:["title","body"]}},
+  // Phase 5 tools
+  {name:"get_financial_summary",description:"Get financial summary of the deal pipeline — total investment, equity required, projected returns, NOI breakdown. Use for financial questions.",input_schema:{type:"object",properties:{status:{type:"string",description:"Filter by deal status"}}}},
+  {name:"add_pipeline_deal",description:"Add a new deal to the pipeline. Use when user says to add, create, or log a new deal/property.",input_schema:{type:"object",properties:{address:{type:"string"},city:{type:"string"},state:{type:"string",description:"State abbreviation"},type:{type:"string",description:"SFR, Multifamily, Commercial, Office, Retail, Land, Industrial"},asking_price:{type:"number"},sqft:{type:"number"},units:{type:"number"},notes:{type:"string"}},required:["address","city"]}},
+  {name:"update_deal_stage",description:"Move a deal to a new pipeline stage. Use when user says to move, update, advance, or change the status of a deal.",input_schema:{type:"object",properties:{deal_id:{type:"string",description:"Deal UUID"},new_status:{type:"string",enum:["New","Underwriting","Offer","Under Contract","Closed","Dead","On Hold"]},note:{type:"string"}},required:["deal_id","new_status"]}},
+  {name:"get_financing_summary",description:"Get financing/loan requests summary — active requests, total loan amounts, avg LTV, avg rate. Use for lending/financing questions.",input_schema:{type:"object",properties:{}}},
+  {name:"query_support_tickets",description:"Query support tickets. Use when user asks about tickets, issues, or support requests.",input_schema:{type:"object",properties:{status:{type:"string",description:"open, in_progress, resolved, closed"}}}},
 ];
 async function et(name,input,uid,rid,sb){
   try{switch(name){
@@ -63,21 +61,70 @@ async function et(name,input,uid,rid,sb){
       return{memories:data||[],count:data?.length||0};}
     case "get_exemplars":{let q=sb.from("robot_exemplars").select("*").eq("user_id",uid).order("importance",{ascending:false});
       if(input.channel)q=q.eq("channel",input.channel);q=q.limit(3);const{data}=await q;return{exemplars:data||[],count:data?.length||0};}
-    case "create_email_draft":{
-      const{data,error}=await sb.from("robot_artifacts").insert({user_id:uid,robot_id:rid,artifact_type:"email_draft",title:`Email to ${input.to}: ${input.subject}`,summary:input.context||`Email draft: ${input.subject}`,
-        payload:{to:input.to,cc:input.cc||null,subject:input.subject,body:input.body,context:input.context||null},status:"draft"}).select().single();
+    case "create_email_draft":{const{data,error}=await sb.from("robot_artifacts").insert({user_id:uid,robot_id:rid,artifact_type:"email_draft",title:`Email to ${input.to}: ${input.subject}`,summary:input.context||`Email: ${input.subject}`,payload:{to:input.to,cc:input.cc||null,subject:input.subject,body:input.body},status:"draft"}).select().single();
+      return error?{error:error.message}:{success:true,artifact:{id:data.id,type:"email_draft",title:data.title},message:`Email drafted: "${input.subject}" to ${input.to}`};}
+    case "create_text_draft":{const{data,error}=await sb.from("robot_artifacts").insert({user_id:uid,robot_id:rid,artifact_type:"text_draft",title:`Text to ${input.to_name}`,summary:input.context||`SMS to ${input.to_name}`,payload:{to_name:input.to_name,to_number:input.to_number||null,body:input.body},status:"draft"}).select().single();
+      return error?{error:error.message}:{success:true,artifact:{id:data.id,type:"text_draft",title:data.title},message:`Text drafted to ${input.to_name}`};}
+    case "create_memo_draft":{const{data,error}=await sb.from("robot_artifacts").insert({user_id:uid,robot_id:rid,artifact_type:"memo_draft",title:input.title,summary:`${input.doc_type||"memo"}: ${input.title}`,payload:{title:input.title,body:input.body,doc_type:input.doc_type||"memo"},status:"draft"}).select().single();
+      return error?{error:error.message}:{success:true,artifact:{id:data.id,type:"memo_draft",title:data.title},message:`Draft created: "${input.title}"`};}
+    // Phase 5 tools
+    case "get_financial_summary":{
+      let q=sb.from("deals").select("deal_status,asking_price,our_offer,arv_value,improvement_budget,noi_annual,cap_rate,roi,cash_flow_monthly");
+      if(input.status)q=q.eq("deal_status",input.status);
+      const{data:deals}=await q;if(!deals)return{error:"No deals"};
+      const a=deals.filter(d=>!["Dead","Closed"].includes(d.deal_status));
+      const totalAsking=a.reduce((s,d)=>s+(parseFloat(d.asking_price)||0),0);
+      const totalOffer=a.reduce((s,d)=>s+(parseFloat(d.our_offer)||0),0);
+      const totalARV=a.reduce((s,d)=>s+(parseFloat(d.arv_value)||0),0);
+      const totalRehab=a.reduce((s,d)=>s+(parseFloat(d.improvement_budget)||0),0);
+      const totalNOI=a.reduce((s,d)=>s+(parseFloat(d.noi_annual)||0),0);
+      const totalCashFlow=a.reduce((s,d)=>s+(parseFloat(d.cash_flow_monthly)||0),0);
+      const withROI=a.filter(d=>d.roi&&parseFloat(d.roi)>0);
+      const avgROI=withROI.length?withROI.reduce((s,d)=>s+parseFloat(d.roi),0)/withROI.length:0;
+      const withCap=a.filter(d=>d.cap_rate&&parseFloat(d.cap_rate)>0);
+      const avgCap=withCap.length?withCap.reduce((s,d)=>s+parseFloat(d.cap_rate),0)/withCap.length:0;
+      return{active_deals:a.length,total_asking:totalAsking,total_offers:totalOffer,total_arv:totalARV,total_rehab_budget:totalRehab,total_noi_annual:totalNOI,total_cash_flow_monthly:totalCashFlow,avg_roi:Math.round(avgROI*10)/10,avg_cap_rate:Math.round(avgCap*10)/10,spread:totalARV-totalOffer};}
+    case "add_pipeline_deal":{
+      // Get user email
+      const{data:usr}=await sb.from("auth.users").select("email").eq("id",uid).maybeSingle();
+      const email=usr?.email||"";
+      // Get org info
+      const{data:prof}=await sb.from("user_profiles").select("org_id").eq("email",email.toLowerCase()).maybeSingle();
+      let ownerEmail=email;
+      if(prof?.org_id){const{data:org}=await sb.from("organizations").select("owner_email").eq("id",prof.org_id).maybeSingle();if(org?.owner_email)ownerEmail=org.owner_email;}
+      const{data,error}=await sb.from("deals").insert({
+        user_email:email,property_address:input.address,city:input.city,state:input.state||"FL",type:input.type||null,
+        asking_price:input.asking_price||null,sqft_net:input.sqft||null,units:input.units||null,
+        deal_status:"New",source:"REAP App",org_id:prof?.org_id||null,owner_email:ownerEmail,assignee_email:email,
+        deal_name:input.address,notes:input.notes||null
+      }).select("id,property_address,city,deal_status").single();
+      return error?{error:error.message}:{success:true,deal:{id:data.id,address:data.property_address,city:data.city,status:data.deal_status},message:`Deal added: ${data.property_address}, ${data.city}`};}
+    case "update_deal_stage":{
+      const updates={deal_status:input.new_status};
+      if(input.new_status==="Underwriting")updates.underwriting_date=new Date().toISOString();
+      if(input.new_status==="Offer")updates.offer_date=new Date().toISOString();
+      if(input.new_status==="Under Contract")updates.under_contract_date=new Date().toISOString();
+      if(input.new_status==="Closed")updates.closed_date=new Date().toISOString();
+      const{data,error}=await sb.from("deals").update(updates).eq("id",input.deal_id).select("id,property_address,deal_status").single();
       if(error)return{error:error.message};
-      return{success:true,artifact:{id:data.id,type:"email_draft",title:data.title},message:`Email draft created: "${input.subject}" to ${input.to}. Review it in your Drafts tab.`};}
-    case "create_text_draft":{
-      const{data,error}=await sb.from("robot_artifacts").insert({user_id:uid,robot_id:rid,artifact_type:"text_draft",title:`Text to ${input.to_name}`,summary:input.context||`SMS draft to ${input.to_name}`,
-        payload:{to_name:input.to_name,to_number:input.to_number||null,body:input.body,context:input.context||null},status:"draft"}).select().single();
-      if(error)return{error:error.message};
-      return{success:true,artifact:{id:data.id,type:"text_draft",title:data.title},message:`Text draft created to ${input.to_name}. Review it in your Drafts tab.`};}
-    case "create_memo_draft":{
-      const{data,error}=await sb.from("robot_artifacts").insert({user_id:uid,robot_id:rid,artifact_type:"memo_draft",title:input.title,summary:`${input.doc_type||"memo"}: ${input.title}`,
-        payload:{title:input.title,body:input.body,doc_type:input.doc_type||"memo"},status:"draft"}).select().single();
-      if(error)return{error:error.message};
-      return{success:true,artifact:{id:data.id,type:"memo_draft",title:data.title},message:`Draft created: "${input.title}". Review it in your Drafts tab.`};}
+      if(input.note){await sb.from("robot_tasks").insert({user_id:uid,robot_id:rid,name:`Stage update: ${data.property_address} → ${input.new_status}`,description:input.note,status:"open"});}
+      return{success:true,deal:{id:data.id,address:data.property_address,new_status:data.deal_status},message:`${data.property_address} moved to ${input.new_status}`};}
+    case "get_financing_summary":{
+      const{data:reqs}=await sb.from("financing_requests").select("*").order("created_at",{ascending:false});
+      if(!reqs)return{error:"No financing data"};
+      const active=reqs.filter(r=>r.status!=="Declined"&&r.status!=="Closed");
+      const totalLoan=active.reduce((s,r)=>s+(parseFloat(r.total_loan_amount)||0),0);
+      const withLTV=active.filter(r=>r.ltv&&parseFloat(r.ltv)>0);
+      const avgLTV=withLTV.length?withLTV.reduce((s,r)=>s+parseFloat(r.ltv),0)/withLTV.length:0;
+      const withRate=active.filter(r=>r.interest_rate&&parseFloat(r.interest_rate)>0);
+      const avgRate=withRate.length?withRate.reduce((s,r)=>s+parseFloat(r.interest_rate),0)/withRate.length:0;
+      const statusCounts={};reqs.forEach(r=>{statusCounts[r.status||"Pending"]=(statusCounts[r.status||"Pending"]||0)+1;});
+      return{total_requests:reqs.length,active_requests:active.length,total_loan_amount:totalLoan,avg_ltv:Math.round(avgLTV*10)/10,avg_interest_rate:Math.round(avgRate*10)/10,status_breakdown:statusCounts,recent:reqs.slice(0,5).map(r=>({deal_address:r.deal_address,type:r.financing_type,amount:r.total_loan_amount,rate:r.interest_rate,status:r.status}))};}
+    case "query_support_tickets":{
+      let q=sb.from("support_tickets").select("*").order("created_at",{ascending:false});
+      if(input.status)q=q.eq("status",input.status);
+      const{data}=await q;
+      return{tickets:data||[],count:data?.length||0,open:data?.filter(t=>t.status==="open").length||0};}
     default:return{error:`Unknown tool: ${name}`};
   }}catch(e){return{error:e.message};}
 }
@@ -99,6 +146,7 @@ serve(async(req)=>{
       if(res.stop_reason==="end_turn"){ft=res.content.filter(c=>c.type==="text").map(c=>c.text).join("");break;}
       if(res.stop_reason==="tool_use"){const tr=[];for(const b of res.content){if(b.type==="tool_use"){const result=await et(b.name,b.input,user_id,robot_id,sb);tc.push({tool:b.name,input:b.input,result});
         if(result.success&&result.artifact)ar.push(result.artifact);if(result.success&&result.task)ar.push({type:"task",title:result.task.name,id:result.task.id});
+        if(result.success&&result.deal)ar.push({type:"deal",title:result.deal.address||result.deal.message,id:result.deal.id});
         tr.push({type:"tool_result",tool_use_id:b.id,content:JSON.stringify(result)});}}msgs=[...msgs,{role:"assistant",content:res.content},{role:"user",content:tr}];continue;}
       ft=res.content.filter(c=>c.type==="text").map(c=>c.text).join("")||"Done.";break;
     }
