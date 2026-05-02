@@ -7711,6 +7711,226 @@ function LenderPortalView({ session, portalData, isMobile }) {
   );
 }
 
+function RobotsView({ session, isMobile }) {
+  const [robots, setRobots] = useState([]);
+  const [selectedRobot, setSelectedRobot] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [tasks, setTasks] = useState([]);
+  const [artifacts, setArtifacts] = useState([]);
+  const [convoId, setConvoId] = useState(null);
+  const [rightTab, setRightTab] = useState("tasks");
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    supabase.from("robots").select("*").eq("user_id", session?.user?.id).eq("status", "active").order("created_at").then(({ data }) => {
+      if (data && data.length > 0) { setRobots(data); setSelectedRobot(data[0]); }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedRobot) return;
+    // Load conversation
+    supabase.from("robot_conversations").select("*").eq("user_id", session?.user?.id).eq("robot_id", selectedRobot.id).eq("channel_type", "workspace").maybeSingle().then(({ data }) => {
+      if (data) { setMessages(data.messages || []); setConvoId(data.id); }
+      else { setMessages([]); setConvoId(null); }
+    });
+    // Load tasks
+    supabase.from("robot_tasks").select("*").eq("user_id", session?.user?.id).order("created_at", { ascending: false }).then(({ data }) => { if (data) setTasks(data); });
+    // Load artifacts
+    supabase.from("robot_artifacts").select("*").eq("user_id", session?.user?.id).eq("robot_id", selectedRobot.id).order("created_at", { ascending: false }).then(({ data }) => { if (data) setArtifacts(data); });
+  }, [selectedRobot]);
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const sendMessage = async () => {
+    if (!input.trim() || !selectedRobot || sending) return;
+    const userMsg = input.trim();
+    setInput("");
+    setSending(true);
+
+    const newTurn = { timestamp: new Date().toISOString(), user_message: userMsg, assistant_response: "", tool_calls: [], artifacts: [] };
+    const updatedMsgs = [...messages, newTurn];
+    setMessages(updatedMsgs);
+
+    try {
+      // For now, call Anthropic directly from client (Phase 1 — will move to edge function)
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({
+          model: selectedRobot.model || "claude-sonnet-4-6",
+          max_tokens: 1024,
+          system: `You are ${selectedRobot.name}, a ${selectedRobot.role}. ${selectedRobot.personality || ""}\n\n${selectedRobot.description || ""}\n\nYou work for Javier Suarez at REAP (Real Estate Analytics Platform). Today is ${new Date().toLocaleDateString()}. Be helpful, concise, and proactive.`,
+          messages: [
+            ...messages.slice(-10).flatMap(m => [
+              ...(m.user_message ? [{ role: "user", content: m.user_message }] : []),
+              ...(m.assistant_response ? [{ role: "assistant", content: m.assistant_response }] : []),
+            ]),
+            { role: "user", content: userMsg }
+          ],
+        }),
+      });
+      const data = await response.json();
+      const assistantText = data.content?.map(c => c.type === "text" ? c.text : "").join("") || "I couldn't process that request.";
+      newTurn.assistant_response = assistantText;
+    } catch (e) {
+      newTurn.assistant_response = "Error connecting to AI: " + e.message + ". Please check your Anthropic API key configuration.";
+      newTurn.error = true;
+    }
+
+    const finalMsgs = [...messages, newTurn];
+    setMessages(finalMsgs);
+
+    // Persist conversation
+    try {
+      if (convoId) {
+        await supabase.from("robot_conversations").update({ messages: finalMsgs, updated_at: new Date().toISOString() }).eq("id", convoId);
+      } else {
+        const { data: created } = await supabase.from("robot_conversations").insert({ user_id: session?.user?.id, robot_id: selectedRobot.id, channel_type: "workspace", messages: finalMsgs }).select().single();
+        if (created) setConvoId(created.id);
+      }
+    } catch (e) { console.error("Save convo:", e); }
+
+    // Log usage
+    try {
+      await supabase.from("api_usage_log").insert({ service: "Anthropic", endpoint: "Messages API", user_email: session?.user?.email, cost_estimate: 0.03 });
+    } catch (e) {}
+
+    setSending(false);
+  };
+
+  const clearChat = async () => {
+    if (!window.confirm("Clear this conversation?")) return;
+    setMessages([]);
+    if (convoId) await supabase.from("robot_conversations").update({ messages: [], updated_at: new Date().toISOString() }).eq("id", convoId);
+  };
+
+  const r = selectedRobot;
+
+  return (
+    <div style={{ display: "flex", height: "100%", fontFamily: "'DM Sans', sans-serif", background: "#0a0f1a" }}>
+      {/* LEFT SIDEBAR — Robot list */}
+      <div style={{ width: isMobile ? 0 : 220, flexShrink: 0, background: "#0f1520", borderRight: "1px solid rgba(255,255,255,0.06)", display: isMobile ? "none" : "flex", flexDirection: "column", padding: "16px 0" }}>
+        <div style={{ padding: "0 16px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: "#fff", margin: "0 0 2px" }}>Robots</h2>
+          <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", margin: 0 }}>AI Team Members</p>
+        </div>
+        <div style={{ flex: 1, padding: "12px 8px", overflow: "auto" }}>
+          {robots.map(bot => (
+            <button key={bot.id} onClick={() => setSelectedRobot(bot)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "none", borderRadius: 10, background: selectedRobot?.id === bot.id ? "rgba(255,255,255,0.08)" : "transparent", cursor: "pointer", marginBottom: 4, transition: "all 0.15s", textAlign: "left" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: bot.avatar_color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{bot.name.slice(0, 2).toUpperCase()}</span>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "#fff", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bot.name}</p>
+                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: 0 }}>{bot.role}</p>
+              </div>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* CENTER — Chat */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* Header */}
+        {r && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: r.avatar_color, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>{r.name.slice(0, 2).toUpperCase()}</span>
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: "#fff", margin: 0 }}>{r.name}</p>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: 0 }}>{r.role}</p>
+            </div>
+            <button onClick={clearChat} style={{ padding: "6px 12px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 11, cursor: "pointer" }}>Clear chat</button>
+          </div>
+        )}
+
+        {/* Messages */}
+        <div style={{ flex: 1, overflow: "auto", padding: "20px", display: "flex", flexDirection: "column", gap: 16, minHeight: 0 }}>
+          {messages.length === 0 && r && (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+              <div style={{ width: 64, height: 64, borderRadius: 16, background: r.avatar_color, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 22, fontWeight: 700, color: "#fff" }}>{r.name.slice(0, 2).toUpperCase()}</span>
+              </div>
+              <p style={{ fontSize: 16, fontWeight: 600, color: "#fff", margin: 0 }}>Hi, I'm {r.name}</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: 0, maxWidth: 300, textAlign: "center" }}>{r.description}</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                {["What deals are in underwriting right now?", "Show me my top 5 deals by REAP score", "Create a task to follow up on financing", "What's my pipeline summary?"].map((prompt, i) => (
+                  <button key={i} onClick={() => { setInput(prompt); }} style={{ padding: "10px 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.6)", fontSize: 12, cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}>{prompt}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {messages.map((turn, i) => (
+            <div key={i}>
+              {/* User message */}
+              {turn.user_message && (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                  <div style={{ maxWidth: "70%", padding: "10px 14px", borderRadius: "14px 14px 4px 14px", background: "#16a34a", color: "#fff", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{turn.user_message}</div>
+                </div>
+              )}
+              {/* Assistant response */}
+              {turn.assistant_response && (
+                <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: r?.avatar_color || "#334155", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: "#fff" }}>{r?.name?.slice(0, 2).toUpperCase()}</span>
+                  </div>
+                  <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: "14px 14px 14px 4px", background: "rgba(255,255,255,0.06)", color: "#e2e8f0", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap", border: turn.error ? "1px solid rgba(220,38,38,0.3)" : "none" }}>{turn.assistant_response}</div>
+                </div>
+              )}
+            </div>
+          ))}
+          <div ref={chatEndRef} />
+        </div>
+
+        {/* Input */}
+        <div style={{ padding: "12px 20px", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 8, maxWidth: 700 }}>
+            <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} placeholder={r ? `Message ${r.name}...` : "Select a robot..."} rows={1} style={{ flex: 1, padding: "10px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#fff", fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: "none", outline: "none", minHeight: 40, maxHeight: 120 }} />
+            <button onClick={sendMessage} disabled={sending || !input.trim()} style={{ padding: "10px 18px", borderRadius: 12, border: "none", background: sending ? "rgba(22,163,74,0.3)" : "#16a34a", color: "#fff", fontSize: 13, fontWeight: 700, cursor: sending ? "default" : "pointer", opacity: !input.trim() ? 0.4 : 1, transition: "all 0.15s" }}>{sending ? "..." : "Send"}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT PANE — Tasks & Drafts (desktop only) */}
+      {!isMobile && (
+        <div style={{ width: 280, flexShrink: 0, borderLeft: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", background: "#0f1520" }}>
+          <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <button onClick={() => setRightTab("tasks")} style={{ flex: 1, padding: "12px", border: "none", borderBottom: rightTab === "tasks" ? "2px solid #16a34a" : "2px solid transparent", background: "transparent", color: rightTab === "tasks" ? "#16a34a" : "rgba(255,255,255,0.35)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Tasks ({tasks.filter(t => t.status === "open").length})</button>
+            <button onClick={() => setRightTab("drafts")} style={{ flex: 1, padding: "12px", border: "none", borderBottom: rightTab === "drafts" ? "2px solid #16a34a" : "2px solid transparent", background: "transparent", color: rightTab === "drafts" ? "#16a34a" : "rgba(255,255,255,0.35)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Drafts ({artifacts.length})</button>
+          </div>
+          <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
+            {rightTab === "tasks" ? (
+              tasks.filter(t => t.status === "open").length === 0 ? (
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", textAlign: "center", padding: 30 }}>No open tasks</p>
+              ) : tasks.filter(t => t.status === "open").map(t => (
+                <div key={t.id} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: 10, marginBottom: 6 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: "#fff", margin: "0 0 3px" }}>{t.name}</p>
+                  {t.description && <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: 0 }}>{t.description}</p>}
+                </div>
+              ))
+            ) : (
+              artifacts.length === 0 ? (
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", textAlign: "center", padding: 30 }}>No drafts yet</p>
+              ) : artifacts.map(a => (
+                <div key={a.id} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: 10, marginBottom: 6 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: "#fff", margin: "0 0 3px" }}>{a.title || a.artifact_type}</p>
+                  {a.summary && <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: 0 }}>{a.summary}</p>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PreviewOverlay({ onGetStarted, pageName }) {
   const isMobile = window.innerWidth < 768;
   return (
@@ -10759,6 +10979,9 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
   const [newTicket, setNewTicket] = useState({ subject: "", description: "", category: "general", priority: "medium" });
   const [ticketSubmitting, setTicketSubmitting] = useState(false);
   const [ticketMsg, setTicketMsg] = useState("");
+  const [notes, setNotes] = useState([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [editingNote, setEditingNote] = useState(null);
 
   // Load presets when presets tab is active
   useEffect(() => {
@@ -10833,6 +11056,16 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
     loadTickets();
   }, [activeTab]);
 
+  // Load notes
+  useEffect(() => {
+    if (activeTab !== "notepad") return;
+    setNotesLoading(true);
+    supabase.from("admin_notes").select("*").eq("user_id", session?.user?.id).order("pinned", { ascending: false }).order("updated_at", { ascending: false }).then(({ data }) => {
+      if (data) setNotes(data);
+      setNotesLoading(false);
+    });
+  }, [activeTab]);
+
   const user = session?.user || {};
   const email = user.email || "—";
   const fullName = user.user_metadata?.full_name || "";
@@ -10850,6 +11083,7 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
     { id: "presets", label: "Presets" },
     ...(isSubscribed ? [{ id: "financials", label: "Financials" }] : []),
     ...(isSubscribed ? [{ id: "support", label: "Support" }] : []),
+    ...(isAdmin ? [{ id: "notepad", label: "Notepad" }] : []),
     ...(isAdmin ? [{ id: "performance", label: "Performance" }, { id: "admin", label: "Admin" }] : []),
   ];
 
@@ -11208,6 +11442,46 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
         })()}
 
         {/* ═══ ADMIN TAB ═══ */}
+
+        {/* ── NOTEPAD TAB (Admin) ── */}
+        {activeTab === "notepad" && isAdmin && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Notepad</h2>
+              <button onClick={async () => {
+                const { data } = await supabase.from("admin_notes").insert({ user_id: session?.user?.id, title: "New Note", content: "" }).select().single();
+                if (data) { setNotes([data, ...notes]); setEditingNote(data); }
+              }} style={{ padding: "8px 16px", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ New Note</button>
+            </div>
+
+            {editingNote ? (
+              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 20 }}>
+                <input value={editingNote.title} onChange={e => setEditingNote({ ...editingNote, title: e.target.value })} placeholder="Note title" style={{ width: "100%", padding: "10px 0", fontSize: 18, fontWeight: 700, border: "none", outline: "none", color: "#0f172a", fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box", borderBottom: "1px solid #f1f5f9", marginBottom: 12 }} />
+                <textarea value={editingNote.content} onChange={e => setEditingNote({ ...editingNote, content: e.target.value })} placeholder="Write your notes here..." rows={15} style={{ width: "100%", padding: "10px 0", fontSize: 13, border: "none", outline: "none", color: "#334155", fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box", resize: "vertical", lineHeight: 1.7 }} />
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+                  <button onClick={() => setEditingNote(null)} style={{ padding: "8px 16px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff", color: "#64748b", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+                  <button onClick={async () => {
+                    await supabase.from("admin_notes").update({ title: editingNote.title, content: editingNote.content, updated_at: new Date().toISOString() }).eq("id", editingNote.id);
+                    setNotes(notes.map(n => n.id === editingNote.id ? { ...n, ...editingNote, updated_at: new Date().toISOString() } : n));
+                    setEditingNote(null);
+                  }} style={{ padding: "8px 20px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
+                </div>
+              </div>
+            ) : (
+              notesLoading ? <p style={{ color: "#94a3b8" }}>Loading...</p> :
+              notes.length === 0 ? <p style={{ color: "#94a3b8", textAlign: "center", padding: 40 }}>No notes yet. Click + New Note to get started.</p> :
+              notes.map(n => (
+                <div key={n.id} onClick={() => setEditingNote(n)} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 8, cursor: "pointer", transition: "all 0.15s" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: "0 0 4px" }}>{n.title || "Untitled"}</p>
+                    <span style={{ fontSize: 10, color: "#cbd5e1" }}>{new Date(n.updated_at).toLocaleDateString()}</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: "#64748b", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.content ? n.content.substring(0, 100) : "Empty note"}</p>
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
         {/* ── SUPPORT TAB ── */}
         {activeTab === "support" && (
@@ -19451,6 +19725,7 @@ export default function ReapApp() {
     { id: "contacts", label: "Contacts", mobileOrder: 3, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
     { id: "education", label: "Education", mobileBottom: false, mobileOrder: 5, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="14" y2="11"/></svg> },
     { id: "assignments", label: "Assignments", mobileOrder: 4, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
+    ...(session?.user?.email === PLATFORM_ADMIN_EMAIL ? [{ id: "robots", label: "Robots", mobileBottom: false, icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="11"/><circle cx="8" cy="16" r="1"/><circle cx="16" cy="16" r="1"/></svg> }] : []),
   ];
   // Filter nav items by feature flags AND tier restrictions
   const navItems = (() => {
@@ -19721,6 +19996,8 @@ export default function ReapApp() {
               </div>
             ) : activeNav === "assignments" ? (
               <AssignmentsView session={session} isMobile={true} orgData={orgData} orgMembers={orgMembers} teamEmails={teamEmails} />
+            ) : activeNav === "robots" ? (
+              <RobotsView session={session} isMobile={true} />
             ) : null
           ) : (
             showProfile
@@ -19790,6 +20067,8 @@ export default function ReapApp() {
                 </div>
               : activeNav === "assignments"
               ? <AssignmentsView session={session} isMobile={false} orgData={orgData} orgMembers={orgMembers} teamEmails={teamEmails} />
+              : activeNav === "robots"
+              ? <RobotsView session={session} isMobile={false} />
               : <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
           )}
         </div>
