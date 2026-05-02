@@ -1673,12 +1673,14 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
       setMapLoading(false);
 
       // Geocode deals without coordinates (batch with delay to respect rate limits)
-      if (needsGeocode.length > 0) {
-        setGeocodingProgress(`Mapping ${needsGeocode.length} remaining...`);
-        for (let j = 0; j < needsGeocode.length; j++) {
-          const { deal, index } = needsGeocode[j];
+      // Limit to 50 per session to prevent excessive API usage
+      const geocodeBatch = needsGeocode.slice(0, 50);
+      if (geocodeBatch.length > 0) {
+        setGeocodingProgress(`Mapping ${geocodeBatch.length} of ${needsGeocode.length} remaining...`);
+        for (let j = 0; j < geocodeBatch.length; j++) {
+          const { deal, index } = geocodeBatch[j];
           if (!deal.address && !deal.city) { continue; }
-          setGeocodingProgress(`Geocoding ${j + 1}/${needsGeocode.length}: ${(deal.address || "").substring(0, 30)}...`);
+          setGeocodingProgress(`Geocoding ${j + 1}/${geocodeBatch.length}: ${(deal.address || "").substring(0, 30)}...`);
           try {
             const result = await geocodeAndStore(deal._id, deal.address, deal.city, deal.state, deal.zip);
             if (result) {
@@ -1689,7 +1691,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
               deal.longitude = result.lng;
             }
           } catch (_) { /* skip */ }
-          if (j < needsGeocode.length - 1) await new Promise(r => setTimeout(r, 250));
+          if (j < geocodeBatch.length - 1) await new Promise(r => setTimeout(r, 250));
         }
         setGeocodingProgress("");
       }
@@ -2137,7 +2139,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
                     {/* Thumbnail */}
                     <td style={{ padding: "8px 4px 8px 8px", width: 52 }}>
                       <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
-                        {deal.address ? (<img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />) : null}
+                        
                         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
                       </div>
                     </td>
@@ -12867,7 +12869,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
                     <td style={{ padding: "8px 4px 8px 10px", width: 36 }} onClick={e => toggleSelect(listing._id, e)}><input type="checkbox" checked={isSelected} onChange={() => {}} style={{ cursor: "pointer", accentColor: "#16a34a" }} /></td>
                     <td style={{ padding: "8px 4px 8px 6px", width: 44 }}>
                       <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
-                        {listing.address ? (<img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />) : null}
+                        
                         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}><svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
                       </div>
                     </td>
@@ -14041,7 +14043,7 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
                   <tr key={deal._id || i} onClick={() => setSelectedDeal(deal)} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: "1px solid #f1f5f9", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
                     <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
                       <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", position: "relative" }}>
-                        {deal.address && <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />}
+                        
                         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
                       </div>
                     </td>
@@ -14145,9 +14147,7 @@ function OfferingsView({ deals, isMobile, session, userEmail, updateHash }) {
                 <tr key={deal._id || i} onMouseEnter={() => setHoveredRow(i)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f1f5f9" : "none", background: hoveredRow === i ? "#f8fafc" : "#fff", cursor: "pointer", transition: "background 0.1s" }}>
                   <td style={{ padding: "8px 4px 8px 12px", width: 52 }}>
                     <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "#f1f5f9", border: "1px solid #e2e8f0", flexShrink: 0, position: "relative" }}>
-                      {deal.address ? (
-                        <img src={`https://maps.googleapis.com/maps/api/streetview?size=100x100&location=${encodeURIComponent([deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", "))}&fov=90&pitch=0&key=${STREET_VIEW_KEY}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
-                      ) : null}
+                      
                       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
                         <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                       </div>
