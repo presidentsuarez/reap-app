@@ -7756,25 +7756,23 @@ function RobotsView({ session, isMobile }) {
 
     try {
       // For now, call Anthropic directly from client (Phase 1 — will move to edge function)
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const history = messages.slice(-10).flatMap(m => [
+        ...(m.user_message ? [{ role: "user", content: m.user_message }] : []),
+        ...(m.assistant_response ? [{ role: "assistant", content: m.assistant_response }] : []),
+      ]);
+      const response = await fetch("https://cpgwnrpaflaftlxrzlar.supabase.co/functions/v1/robot-chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-        body: JSON.stringify({
-          model: selectedRobot.model || "claude-sonnet-4-6",
-          max_tokens: 1024,
-          system: `You are ${selectedRobot.name}, a ${selectedRobot.role}. ${selectedRobot.personality || ""}\n\n${selectedRobot.description || ""}\n\nYou work for Javier Suarez at REAP (Real Estate Analytics Platform). Today is ${new Date().toLocaleDateString()}. Be helpful, concise, and proactive.`,
-          messages: [
-            ...messages.slice(-10).flatMap(m => [
-              ...(m.user_message ? [{ role: "user", content: m.user_message }] : []),
-              ...(m.assistant_response ? [{ role: "assistant", content: m.assistant_response }] : []),
-            ]),
-            { role: "user", content: userMsg }
-          ],
-        }),
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (await supabase.auth.getSession()).data.session?.access_token },
+        body: JSON.stringify({ robot_id: selectedRobot.id, user_id: session?.user?.id, message: userMsg, history }),
       });
       const data = await response.json();
-      const assistantText = data.content?.map(c => c.type === "text" ? c.text : "").join("") || "I couldn't process that request.";
-      newTurn.assistant_response = assistantText;
+      newTurn.assistant_response = data.response || "I couldn't process that request.";
+      newTurn.tool_calls = data.tool_calls || [];
+      newTurn.artifacts = data.artifacts || [];
+      // Refresh tasks if any were created
+      if (data.tool_calls?.some(tc => tc.tool === "assign_task")) {
+        supabase.from("robot_tasks").select("*").eq("user_id", session?.user?.id).order("created_at", { ascending: false }).then(({ data: t }) => { if (t) setTasks(t); });
+      }
     } catch (e) {
       newTurn.assistant_response = "Error connecting to AI: " + e.message + ". Please check your Anthropic API key configuration.";
       newTurn.error = true;
@@ -7783,20 +7781,11 @@ function RobotsView({ session, isMobile }) {
     const finalMsgs = [...messages, newTurn];
     setMessages(finalMsgs);
 
-    // Persist conversation
+    // Reload conversation from DB (edge function persists it)
     try {
-      if (convoId) {
-        await supabase.from("robot_conversations").update({ messages: finalMsgs, updated_at: new Date().toISOString() }).eq("id", convoId);
-      } else {
-        const { data: created } = await supabase.from("robot_conversations").insert({ user_id: session?.user?.id, robot_id: selectedRobot.id, channel_type: "workspace", messages: finalMsgs }).select().single();
-        if (created) setConvoId(created.id);
-      }
-    } catch (e) { console.error("Save convo:", e); }
-
-    // Log usage
-    try {
-      await supabase.from("api_usage_log").insert({ service: "Anthropic", endpoint: "Messages API", user_email: session?.user?.email, cost_estimate: 0.03 });
-    } catch (e) {}
+      const { data: convo } = await supabase.from("robot_conversations").select("*").eq("user_id", session?.user?.id).eq("robot_id", selectedRobot.id).eq("channel_type", "workspace").maybeSingle();
+      if (convo) { setMessages(convo.messages || []); setConvoId(convo.id); }
+    } catch (e) { console.error("Reload convo:", e); }
 
     setSending(false);
   };
