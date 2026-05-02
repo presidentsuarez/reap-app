@@ -20,10 +20,10 @@ async function bp(r,uid,msg,sb){
     if(ex?.length){p.push("=== EXEMPLARS ===");ex.forEach(e=>p.push(`- "${e.title}" [${e.channel}]`));p.push("");}}catch(_){}
   p.push(`Today: ${new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}`);
   p.push("You work for Javier Suarez at REAP and Tampa Development Group.\n");
-  p.push("RULES: Be concise. Use tools for real data. Never fabricate. Format $X,XXX. Outbound comms ALWAYS drafts. Use search_memories for context.");
+  p.push("RULES: Be concise. Use tools for real data. Never fabricate. Format $X,XXX. Outbound comms ALWAYS drafts. Use search_memories for context. You have web search available for market research.");
   return p.join("\n");
 }
-const tools=[
+const ALL_TOOLS=[
   {name:"assign_task",description:"Create a task/reminder/to-do.",input_schema:{type:"object",properties:{name:{type:"string"},description:{type:"string"},priority:{type:"string",enum:["low","medium","high","urgent"]},due_date:{type:"string"}},required:["name"]}},
   {name:"query_deals",description:"Query real estate deals. Pipeline, properties, financials, REAP scores.",input_schema:{type:"object",properties:{search:{type:"string"},status:{type:"string"},sort_by:{type:"string",enum:["reap_score","asking_price","arv_value","date_added"]},limit:{type:"number"}}}},
   {name:"query_contacts",description:"Query CRM contacts. Lenders, buyers, investors, wholesalers.",input_schema:{type:"object",properties:{search:{type:"string"},contact_type:{type:"string"},limit:{type:"number"}}}},
@@ -33,12 +33,11 @@ const tools=[
   {name:"create_email_draft",description:"Draft an email. ALWAYS use for email requests.",input_schema:{type:"object",properties:{to:{type:"string"},cc:{type:"string"},subject:{type:"string"},body:{type:"string"},context:{type:"string"}},required:["to","subject","body"]}},
   {name:"create_text_draft",description:"Draft a text/SMS message.",input_schema:{type:"object",properties:{to_name:{type:"string"},to_number:{type:"string"},body:{type:"string"},context:{type:"string"}},required:["to_name","body"]}},
   {name:"create_memo_draft",description:"Draft a memo, report, summary, or proposal.",input_schema:{type:"object",properties:{title:{type:"string"},body:{type:"string"},doc_type:{type:"string"}},required:["title","body"]}},
-  // Phase 5 tools
-  {name:"get_financial_summary",description:"Get financial summary of the deal pipeline — total investment, equity required, projected returns, NOI breakdown. Use for financial questions.",input_schema:{type:"object",properties:{status:{type:"string",description:"Filter by deal status"}}}},
-  {name:"add_pipeline_deal",description:"Add a new deal to the pipeline. Use when user says to add, create, or log a new deal/property.",input_schema:{type:"object",properties:{address:{type:"string"},city:{type:"string"},state:{type:"string",description:"State abbreviation"},type:{type:"string",description:"SFR, Multifamily, Commercial, Office, Retail, Land, Industrial"},asking_price:{type:"number"},sqft:{type:"number"},units:{type:"number"},notes:{type:"string"}},required:["address","city"]}},
-  {name:"update_deal_stage",description:"Move a deal to a new pipeline stage. Use when user says to move, update, advance, or change the status of a deal.",input_schema:{type:"object",properties:{deal_id:{type:"string",description:"Deal UUID"},new_status:{type:"string",enum:["New","Underwriting","Offer","Under Contract","Closed","Dead","On Hold"]},note:{type:"string"}},required:["deal_id","new_status"]}},
-  {name:"get_financing_summary",description:"Get financing/loan requests summary — active requests, total loan amounts, avg LTV, avg rate. Use for lending/financing questions.",input_schema:{type:"object",properties:{}}},
-  {name:"query_support_tickets",description:"Query support tickets. Use when user asks about tickets, issues, or support requests.",input_schema:{type:"object",properties:{status:{type:"string",description:"open, in_progress, resolved, closed"}}}},
+  {name:"get_financial_summary",description:"Financial summary — total investment, equity, returns, NOI, cash flow.",input_schema:{type:"object",properties:{status:{type:"string"}}}},
+  {name:"add_pipeline_deal",description:"Add a new deal to pipeline.",input_schema:{type:"object",properties:{address:{type:"string"},city:{type:"string"},state:{type:"string"},type:{type:"string"},asking_price:{type:"number"},sqft:{type:"number"},units:{type:"number"},notes:{type:"string"}},required:["address","city"]}},
+  {name:"update_deal_stage",description:"Move a deal to a new pipeline stage.",input_schema:{type:"object",properties:{deal_id:{type:"string"},new_status:{type:"string",enum:["New","Underwriting","Offer","Under Contract","Closed","Dead","On Hold"]},note:{type:"string"}},required:["deal_id","new_status"]}},
+  {name:"get_financing_summary",description:"Financing/loan summary — requests, amounts, LTV, rates.",input_schema:{type:"object",properties:{}}},
+  {name:"query_support_tickets",description:"Query support tickets by status.",input_schema:{type:"object",properties:{status:{type:"string"}}}},
 ];
 async function et(name,input,uid,rid,sb){
   try{switch(name){
@@ -67,65 +66,23 @@ async function et(name,input,uid,rid,sb){
       return error?{error:error.message}:{success:true,artifact:{id:data.id,type:"text_draft",title:data.title},message:`Text drafted to ${input.to_name}`};}
     case "create_memo_draft":{const{data,error}=await sb.from("robot_artifacts").insert({user_id:uid,robot_id:rid,artifact_type:"memo_draft",title:input.title,summary:`${input.doc_type||"memo"}: ${input.title}`,payload:{title:input.title,body:input.body,doc_type:input.doc_type||"memo"},status:"draft"}).select().single();
       return error?{error:error.message}:{success:true,artifact:{id:data.id,type:"memo_draft",title:data.title},message:`Draft created: "${input.title}"`};}
-    // Phase 5 tools
-    case "get_financial_summary":{
-      let q=sb.from("deals").select("deal_status,asking_price,our_offer,arv_value,improvement_budget,noi_annual,cap_rate,roi,cash_flow_monthly");
-      if(input.status)q=q.eq("deal_status",input.status);
-      const{data:deals}=await q;if(!deals)return{error:"No deals"};
+    case "get_financial_summary":{let q=sb.from("deals").select("deal_status,asking_price,our_offer,arv_value,improvement_budget,noi_annual,cap_rate,roi,cash_flow_monthly");
+      if(input.status)q=q.eq("deal_status",input.status);const{data:deals}=await q;if(!deals)return{error:"No deals"};
       const a=deals.filter(d=>!["Dead","Closed"].includes(d.deal_status));
-      const totalAsking=a.reduce((s,d)=>s+(parseFloat(d.asking_price)||0),0);
-      const totalOffer=a.reduce((s,d)=>s+(parseFloat(d.our_offer)||0),0);
-      const totalARV=a.reduce((s,d)=>s+(parseFloat(d.arv_value)||0),0);
-      const totalRehab=a.reduce((s,d)=>s+(parseFloat(d.improvement_budget)||0),0);
-      const totalNOI=a.reduce((s,d)=>s+(parseFloat(d.noi_annual)||0),0);
-      const totalCashFlow=a.reduce((s,d)=>s+(parseFloat(d.cash_flow_monthly)||0),0);
-      const withROI=a.filter(d=>d.roi&&parseFloat(d.roi)>0);
-      const avgROI=withROI.length?withROI.reduce((s,d)=>s+parseFloat(d.roi),0)/withROI.length:0;
-      const withCap=a.filter(d=>d.cap_rate&&parseFloat(d.cap_rate)>0);
-      const avgCap=withCap.length?withCap.reduce((s,d)=>s+parseFloat(d.cap_rate),0)/withCap.length:0;
-      return{active_deals:a.length,total_asking:totalAsking,total_offers:totalOffer,total_arv:totalARV,total_rehab_budget:totalRehab,total_noi_annual:totalNOI,total_cash_flow_monthly:totalCashFlow,avg_roi:Math.round(avgROI*10)/10,avg_cap_rate:Math.round(avgCap*10)/10,spread:totalARV-totalOffer};}
-    case "add_pipeline_deal":{
-      // Get user email
-      const{data:usr}=await sb.from("auth.users").select("email").eq("id",uid).maybeSingle();
-      const email=usr?.email||"";
-      // Get org info
-      const{data:prof}=await sb.from("user_profiles").select("org_id").eq("email",email.toLowerCase()).maybeSingle();
-      let ownerEmail=email;
-      if(prof?.org_id){const{data:org}=await sb.from("organizations").select("owner_email").eq("id",prof.org_id).maybeSingle();if(org?.owner_email)ownerEmail=org.owner_email;}
-      const{data,error}=await sb.from("deals").insert({
-        user_email:email,property_address:input.address,city:input.city,state:input.state||"FL",type:input.type||null,
-        asking_price:input.asking_price||null,sqft_net:input.sqft||null,units:input.units||null,
-        deal_status:"New",source:"REAP App",org_id:prof?.org_id||null,owner_email:ownerEmail,assignee_email:email,
-        deal_name:input.address,notes:input.notes||null
-      }).select("id,property_address,city,deal_status").single();
-      return error?{error:error.message}:{success:true,deal:{id:data.id,address:data.property_address,city:data.city,status:data.deal_status},message:`Deal added: ${data.property_address}, ${data.city}`};}
-    case "update_deal_stage":{
-      const updates={deal_status:input.new_status};
-      if(input.new_status==="Underwriting")updates.underwriting_date=new Date().toISOString();
-      if(input.new_status==="Offer")updates.offer_date=new Date().toISOString();
-      if(input.new_status==="Under Contract")updates.under_contract_date=new Date().toISOString();
-      if(input.new_status==="Closed")updates.closed_date=new Date().toISOString();
+      return{active_deals:a.length,total_asking:a.reduce((s,d)=>s+(parseFloat(d.asking_price)||0),0),total_offers:a.reduce((s,d)=>s+(parseFloat(d.our_offer)||0),0),total_arv:a.reduce((s,d)=>s+(parseFloat(d.arv_value)||0),0),total_rehab:a.reduce((s,d)=>s+(parseFloat(d.improvement_budget)||0),0),total_noi:a.reduce((s,d)=>s+(parseFloat(d.noi_annual)||0),0),total_cashflow:a.reduce((s,d)=>s+(parseFloat(d.cash_flow_monthly)||0),0),avg_roi:Math.round(a.filter(d=>parseFloat(d.roi)>0).reduce((s,d,_,arr)=>s+parseFloat(d.roi)/arr.length,0)*10)/10,avg_cap:Math.round(a.filter(d=>parseFloat(d.cap_rate)>0).reduce((s,d,_,arr)=>s+parseFloat(d.cap_rate)/arr.length,0)*10)/10};}
+    case "add_pipeline_deal":{const{data,error}=await sb.from("deals").insert({user_email:"javier@thesuarezcapital.com",property_address:input.address,city:input.city,state:input.state||"FL",type:input.type||null,asking_price:input.asking_price||null,sqft_net:input.sqft||null,units:input.units||null,deal_status:"New",source:"REAP App",deal_name:input.address,notes:input.notes||null,owner_email:"javier@thesuarezcapital.com",assignee_email:"javier@thesuarezcapital.com"}).select("id,property_address,city,deal_status").single();
+      return error?{error:error.message}:{success:true,deal:{id:data.id,address:data.property_address,city:data.city},message:`Deal added: ${data.property_address}, ${data.city}`};}
+    case "update_deal_stage":{const updates:any={deal_status:input.new_status};
+      if(input.new_status==="Underwriting")updates.underwriting_date=new Date().toISOString();if(input.new_status==="Offer")updates.offer_date=new Date().toISOString();
+      if(input.new_status==="Under Contract")updates.under_contract_date=new Date().toISOString();if(input.new_status==="Closed")updates.closed_date=new Date().toISOString();
       const{data,error}=await sb.from("deals").update(updates).eq("id",input.deal_id).select("id,property_address,deal_status").single();
-      if(error)return{error:error.message};
-      if(input.note){await sb.from("robot_tasks").insert({user_id:uid,robot_id:rid,name:`Stage update: ${data.property_address} → ${input.new_status}`,description:input.note,status:"open"});}
-      return{success:true,deal:{id:data.id,address:data.property_address,new_status:data.deal_status},message:`${data.property_address} moved to ${input.new_status}`};}
-    case "get_financing_summary":{
-      const{data:reqs}=await sb.from("financing_requests").select("*").order("created_at",{ascending:false});
-      if(!reqs)return{error:"No financing data"};
-      const active=reqs.filter(r=>r.status!=="Declined"&&r.status!=="Closed");
-      const totalLoan=active.reduce((s,r)=>s+(parseFloat(r.total_loan_amount)||0),0);
-      const withLTV=active.filter(r=>r.ltv&&parseFloat(r.ltv)>0);
-      const avgLTV=withLTV.length?withLTV.reduce((s,r)=>s+parseFloat(r.ltv),0)/withLTV.length:0;
-      const withRate=active.filter(r=>r.interest_rate&&parseFloat(r.interest_rate)>0);
-      const avgRate=withRate.length?withRate.reduce((s,r)=>s+parseFloat(r.interest_rate),0)/withRate.length:0;
-      const statusCounts={};reqs.forEach(r=>{statusCounts[r.status||"Pending"]=(statusCounts[r.status||"Pending"]||0)+1;});
-      return{total_requests:reqs.length,active_requests:active.length,total_loan_amount:totalLoan,avg_ltv:Math.round(avgLTV*10)/10,avg_interest_rate:Math.round(avgRate*10)/10,status_breakdown:statusCounts,recent:reqs.slice(0,5).map(r=>({deal_address:r.deal_address,type:r.financing_type,amount:r.total_loan_amount,rate:r.interest_rate,status:r.status}))};}
-    case "query_support_tickets":{
-      let q=sb.from("support_tickets").select("*").order("created_at",{ascending:false});
-      if(input.status)q=q.eq("status",input.status);
-      const{data}=await q;
+      return error?{error:error.message}:{success:true,deal:{id:data.id,address:data.property_address,new_status:data.deal_status},message:`${data.property_address} → ${input.new_status}`};}
+    case "get_financing_summary":{const{data:reqs}=await sb.from("financing_requests").select("*").order("created_at",{ascending:false});if(!reqs)return{error:"No data"};
+      const active=reqs.filter(r=>r.status!=="Declined"&&r.status!=="Closed");const sc={};reqs.forEach(r=>{sc[r.status||"Pending"]=(sc[r.status||"Pending"]||0)+1;});
+      return{total:reqs.length,active:active.length,total_loan:active.reduce((s,r)=>s+(parseFloat(r.total_loan_amount)||0),0),avg_ltv:Math.round((active.filter(r=>parseFloat(r.ltv)>0).reduce((s,r,_,a)=>s+parseFloat(r.ltv)/a.length,0))*10)/10,avg_rate:Math.round((active.filter(r=>parseFloat(r.interest_rate)>0).reduce((s,r,_,a)=>s+parseFloat(r.interest_rate)/a.length,0))*10)/10,status:sc,recent:reqs.slice(0,5).map(r=>({address:r.deal_address,type:r.financing_type,amount:r.total_loan_amount,rate:r.interest_rate,status:r.status}))};}
+    case "query_support_tickets":{let q=sb.from("support_tickets").select("*").order("created_at",{ascending:false});if(input.status)q=q.eq("status",input.status);const{data}=await q;
       return{tickets:data||[],count:data?.length||0,open:data?.filter(t=>t.status==="open").length||0};}
-    default:return{error:`Unknown tool: ${name}`};
+    default:return{error:`Unknown: ${name}`};
   }}catch(e){return{error:e.message};}
 }
 serve(async(req)=>{
@@ -136,17 +93,25 @@ serve(async(req)=>{
     const sb=createClient(SU,SK);
     const{data:robot}=await sb.from("robots").select("*").eq("id",robot_id).single();
     if(!robot)return new Response(JSON.stringify({error:"Robot not found"}),{status:404,headers:{...CH,"Content-Type":"application/json"}});
+    
+    // Phase 7: Filter tools by robot capabilities
+    const caps = robot.capabilities || [];
+    const robotTools = caps.length > 0 ? ALL_TOOLS.filter(t => caps.includes(t.name)) : ALL_TOOLS;
+    
+    // Add web search tool (available to all robots, budgeted)
+    const apiTools = [...robotTools, {type: "web_search_20250305", name: "web_search", max_uses: 8}];
+    
     const sp=await bp(robot,user_id,message,sb);
     let msgs=[...(history||[]).slice(-20),{role:"user",content:message}];
     let ft="";const tc=[];const ar=[];let ti=0,to=0;
     for(let i=0;i<MI;i++){
-      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":AK,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:robot.model||"claude-sonnet-4-6",max_tokens:2048,system:sp,tools,messages:msgs})});
+      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":AK,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:robot.model||"claude-sonnet-4-6",max_tokens:2048,system:sp,tools:apiTools,messages:msgs})});
       if(!r.ok)throw new Error(`API ${r.status}: ${await r.text()}`);
       const res=await r.json();ti+=res.usage?.input_tokens||0;to+=res.usage?.output_tokens||0;
       if(res.stop_reason==="end_turn"){ft=res.content.filter(c=>c.type==="text").map(c=>c.text).join("");break;}
       if(res.stop_reason==="tool_use"){const tr=[];for(const b of res.content){if(b.type==="tool_use"){const result=await et(b.name,b.input,user_id,robot_id,sb);tc.push({tool:b.name,input:b.input,result});
         if(result.success&&result.artifact)ar.push(result.artifact);if(result.success&&result.task)ar.push({type:"task",title:result.task.name,id:result.task.id});
-        if(result.success&&result.deal)ar.push({type:"deal",title:result.deal.address||result.deal.message,id:result.deal.id});
+        if(result.success&&result.deal)ar.push({type:"deal",title:result.deal.address||result.message,id:result.deal.id});
         tr.push({type:"tool_result",tool_use_id:b.id,content:JSON.stringify(result)});}}msgs=[...msgs,{role:"assistant",content:res.content},{role:"user",content:tr}];continue;}
       ft=res.content.filter(c=>c.type==="text").map(c=>c.text).join("")||"Done.";break;
     }
