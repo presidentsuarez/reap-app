@@ -23,6 +23,16 @@ const getTierRank = (tier) => TIER_RANK[(tier || "starter").toLowerCase()] || 1;
 // ── Google Maps loader ──
 const GOOGLE_MAPS_KEY = "AIzaSyCsxeRs8DmPGdyt8DLHbDVjEdr0hF6MTVE";
 const STREET_VIEW_KEY = "AIzaSyBwEzMkQVeMtBo7BCcjU6XTIPjG2o-McoU";
+
+// API Usage Logger — tracks all external API calls for cost monitoring
+const logApiUsage = (service, endpoint, userEmail, dealId, costEstimate) => {
+  try {
+    supabase.from("api_usage_log").insert({
+      service, endpoint, user_email: userEmail || null,
+      deal_id: dealId || null, cost_estimate: costEstimate || 0,
+    }).then(() => {});
+  } catch (e) { /* silent */ }
+};
 let googleMapsLoading = false;
 let googleMapsLoaded = false;
 const loadGoogleMaps = () => new Promise((resolve, reject) => {
@@ -55,6 +65,7 @@ const geocodeAndStore = async (dealId, address, city, state, zip) => {
     ]);
     const lat = result.lat();
     const lng = result.lng();
+    logApiUsage("Google Maps", "Geocoding", null, dealId, 0.005);
     if (dealId) {
       supabase.from("deals").update({ latitude: lat, longitude: lng }).eq("id", dealId).then(() => {});
     }
@@ -1480,7 +1491,7 @@ function DealCard({ deal, onSelect }) {
       {/* Street View Image */}
       <div style={{ width: "100%", height: 140, background: "#f1f5f9", position: "relative", overflow: "hidden" }}>
         {streetViewSrc ? (
-          <img src={streetViewSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
+          <img src={streetViewSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "relative", zIndex: 1 }} onLoad={() => logApiUsage("Google Maps", "Street View Static", null, deal._id, 0.007)} onError={e => { e.target.style.display = "none"; }} loading="lazy" />
         ) : null}
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
           <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -10729,6 +10740,20 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
   const [financialsMsg, setFinancialsMsg] = useState("");
   const [platformStats, setPlatformStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [perfSub, setPerfSub] = useState("platform");
+  const [apiUsage, setApiUsage] = useState(null);
+  const [apiLoadingLocal, setApiLoadingLocal] = useState(false);
+  const [apiDays, setApiDays] = useState(30);
+
+  // Load API usage when sub-tab is active
+  useEffect(() => {
+    if (activeTab !== "performance" || perfSub !== "api") return;
+    setApiLoadingLocal(true);
+    supabase.rpc("admin_get_api_usage", { days_back: apiDays }).then(({ data }) => {
+      if (data) setApiUsage(data);
+      setApiLoadingLocal(false);
+    });
+  }, [activeTab, perfSub, apiDays]);
   const [supportTickets, setSupportTickets] = useState([]);
   const [supportLoading, setSupportLoading] = useState(false);
   const [newTicket, setNewTicket] = useState({ subject: "", description: "", category: "general", priority: "medium" });
@@ -11276,9 +11301,9 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
 
         {/* ── PERFORMANCE TAB (Admin Only) ── */}
         {activeTab === "performance" && isAdmin && (() => {
-          if (statsLoading) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Loading platform stats...</div>;
-          if (!platformStats) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>No stats available</div>;
-          const s = platformStats;
+
+
+          const s = platformStats || {};
           const StatCard = ({ label, value, sub, color }) => (
             <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: 0, left: 0, width: 3, height: "100%", background: color || "#16a34a" }} />
@@ -11287,28 +11312,78 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
               {sub && <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>{sub}</p>}
             </div>
           );
+
           return (
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Platform Performance</h2>
-              <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 20px" }}>REAP platform metrics — real-time</p>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
-                <StatCard label="Total Users" value={s.total_users} sub={s.users_last_7d + " last 7d"} color="#3b82f6" />
-                <StatCard label="Confirmed" value={s.confirmed_users} sub={s.unconfirmed_users + " unconfirmed"} color="#22c55e" />
-                <StatCard label="Subscribed" value={s.subscribed_users} sub={s.active_subscriptions + " active subs"} color="#d97706" />
-                <StatCard label="Active Trials" value={s.active_promo_trials} sub={s.total_promo_redemptions + " total redeemed"} color="#7c3aed" />
+              <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: "1px solid #e2e8f0" }}>
+                <button onClick={() => setPerfSub("platform")} style={{ background: "transparent", border: "none", borderBottom: perfSub === "platform" ? "2px solid #16a34a" : "2px solid transparent", padding: "10px 20px", color: perfSub === "platform" ? "#16a34a" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: -1 }}>Platform Stats</button>
+                <button onClick={() => setPerfSub("api")} style={{ background: "transparent", border: "none", borderBottom: perfSub === "api" ? "2px solid #16a34a" : "2px solid transparent", padding: "10px 20px", color: perfSub === "api" ? "#16a34a" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: -1 }}>API Usage</button>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
-                <StatCard label="Starter Tier" value={s.starter_users} color="#16a34a" />
-                <StatCard label="Pro Tier" value={s.pro_users} color="#d97706" />
-                <StatCard label="Team Tier" value={s.team_users} color="#7c3aed" />
-                <StatCard label="Enterprise" value={s.enterprise_users} color="#0891b2" />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10 }}>
-                <StatCard label="Total Deals" value={s.total_deals} sub={s.deals_last_30d + " last 30d"} color="#3b82f6" />
-                <StatCard label="Total Contacts" value={s.total_contacts} color="#f59e0b" />
-                <StatCard label="Organizations" value={s.total_orgs} sub={s.total_org_members + " members"} color="#8b5cf6" />
-                <StatCard label="New Users (30d)" value={s.users_last_30d} sub={s.users_last_7d + " last 7d"} color="#06b6d4" />
-              </div>
+
+              {perfSub === "api" ? (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>API Usage & Costs</h2>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {[7, 30, 90].map(d => <button key={d} onClick={() => setApiDays(d)} style={{ padding: "4px 10px", fontSize: 11, fontWeight: apiDays === d ? 700 : 500, color: apiDays === d ? "#16a34a" : "#64748b", background: apiDays === d ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (apiDays === d ? "#bbf7d0" : "#e2e8f0"), borderRadius: 6, cursor: "pointer" }}>{d}d</button>)}
+                    </div>
+                  </div>
+                  {apiLoadingLocal ? <p style={{ color: "#94a3b8", textAlign: "center", padding: 40 }}>Loading...</p> : (
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+                        <StatCard label="Total API Calls" value={(apiUsage?.total_calls || 0).toLocaleString()} sub={"Last " + apiDays + " days"} color="#3b82f6" />
+                        <StatCard label="Estimated Cost" value={"$" + parseFloat(apiUsage?.total_cost || 0).toFixed(2)} sub={"Last " + apiDays + " days"} color="#16a34a" />
+                        <StatCard label="Services" value={(apiUsage?.by_service || []).length} sub="Active integrations" color="#d97706" />
+                      </div>
+                      <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>Service Integrations</h3>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 20 }}>
+                        {[["Google Maps", "Geocoding, Maps JS", "#4285f4", "M"], ["Google Street View", "Static API", "#34a853", "S"], ["Anthropic (Claude)", "AI Research, Comps", "#d97706", "A"], ["SendGrid", "Email (SMTP)", "#1a82e2", "E"], ["Supabase", "Database, Auth", "#3ecf8e", "D"], ["Stripe", "Payments", "#635bff", "P"]].map(([name, desc, color, icon]) => {
+                          const usage = (apiUsage?.by_service || []).find(s => s.service === name);
+                          return <div key={name} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, display: "flex", gap: 12 }}>
+                            <div style={{ width: 36, height: 36, borderRadius: 8, background: color + "15", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ fontSize: 14, fontWeight: 700, color }}>{icon}</span></div>
+                            <div><p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 2px" }}>{name}</p><p style={{ fontSize: 10, color: "#94a3b8", margin: "0 0 4px" }}>{desc}</p><span style={{ fontSize: 11, color: "#334155", fontWeight: 600, fontFamily: "'DM Mono', monospace" }}>{usage ? usage.calls + " calls · $" + parseFloat(usage.cost).toFixed(2) : "0 calls"}</span></div>
+                          </div>;
+                        })}
+                      </div>
+                      {(apiUsage?.by_endpoint || []).length > 0 && <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden", marginBottom: 20 }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ background: "#f8fafc" }}>{["Service", "Endpoint", "Calls", "Cost"].map(h => <th key={h} style={{ padding: "8px 14px", fontSize: 9, color: "#94a3b8", fontWeight: 700, textAlign: h === "Calls" || h === "Cost" ? "right" : "left", letterSpacing: "0.06em", textTransform: "uppercase" }}>{h}</th>)}</tr></thead>
+                        <tbody>{(apiUsage.by_endpoint || []).map((ep, i) => <tr key={i} style={{ borderTop: "1px solid #f1f5f9" }}><td style={{ padding: "8px 14px", fontSize: 12, color: "#334155" }}>{ep.service}</td><td style={{ padding: "8px 14px", fontSize: 12, color: "#64748b" }}>{ep.endpoint}</td><td style={{ padding: "8px 14px", fontSize: 12, fontFamily: "'DM Mono', monospace", textAlign: "right" }}>{ep.calls}</td><td style={{ padding: "8px 14px", fontSize: 12, fontFamily: "'DM Mono', monospace", textAlign: "right" }}>${parseFloat(ep.cost).toFixed(3)}</td></tr>)}</tbody></table>
+                      </div>}
+                      <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 8px" }}>API Keys</h3>
+                      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+                        {[["Google Maps", GOOGLE_MAPS_KEY.slice(0,12) + "..." + GOOGLE_MAPS_KEY.slice(-4)], ["Street View", STREET_VIEW_KEY.slice(0,12) + "..." + STREET_VIEW_KEY.slice(-4)], ["Supabase", "cpgwnrpaflaftlxrzlar"], ["SendGrid", "smtp.sendgrid.net:587"], ["Anthropic", "Not configured"], ["Stripe", "Not configured"]].map(([k, v], i) => <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "8px 14px", borderTop: i ? "1px solid #f1f5f9" : "none" }}><span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}>{k}</span><span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>{v}</span></div>)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Platform Performance</h2>
+                  <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 20px" }}>REAP platform metrics — real-time</p>
+                  {statsLoading ? <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Loading...</div> : !platformStats ? <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>No data</div> : (
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+                        <StatCard label="Total Users" value={s.total_users} sub={s.users_last_7d + " last 7d"} color="#3b82f6" />
+                        <StatCard label="Confirmed" value={s.confirmed_users} sub={s.unconfirmed_users + " unconfirmed"} color="#22c55e" />
+                        <StatCard label="Subscribed" value={s.subscribed_users} sub={s.active_subscriptions + " active subs"} color="#d97706" />
+                        <StatCard label="Active Trials" value={s.active_promo_trials} sub={s.total_promo_redemptions + " total redeemed"} color="#7c3aed" />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+                        <StatCard label="Starter" value={s.starter_users} color="#16a34a" />
+                        <StatCard label="Pro" value={s.pro_users} color="#d97706" />
+                        <StatCard label="Team" value={s.team_users} color="#7c3aed" />
+                        <StatCard label="Enterprise" value={s.enterprise_users} color="#0891b2" />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10 }}>
+                        <StatCard label="Total Deals" value={s.total_deals} sub={s.deals_last_30d + " last 30d"} color="#3b82f6" />
+                        <StatCard label="Total Contacts" value={s.total_contacts} color="#f59e0b" />
+                        <StatCard label="Organizations" value={s.total_orgs} sub={s.total_org_members + " members"} color="#8b5cf6" />
+                        <StatCard label="New Users (30d)" value={s.users_last_30d} sub={s.users_last_7d + " last 7d"} color="#06b6d4" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })()}
