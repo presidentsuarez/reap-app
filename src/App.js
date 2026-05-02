@@ -7720,6 +7720,12 @@ function RobotsView({ session, isMobile }) {
   const [tasks, setTasks] = useState([]);
   const [artifacts, setArtifacts] = useState([]);
   const [convoId, setConvoId] = useState(null);
+  const [threads, setThreads] = useState([]);
+  const [activeThreadId, setActiveThreadId] = useState(null);
+  const [showThreads, setShowThreads] = useState(false);
+  const [threadSearch, setThreadSearch] = useState("");
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState(null);
   const [rightTab, setRightTab] = useState("tasks");
   const [reviewDraft, setReviewDraft] = useState(null);
   const [draftEdited, setDraftEdited] = useState("");
@@ -7751,12 +7757,19 @@ function RobotsView({ session, isMobile }) {
     });
   }, []);
 
+  const loadThreads = async (robotId) => {
+    const { data } = await supabase.from("robot_conversations").select("id, thread_name, channel_type, status, created_at, updated_at, messages").eq("user_id", session?.user?.id).eq("robot_id", robotId).order("updated_at", { ascending: false });
+    if (data) setThreads(data);
+    return data;
+  };
+
   useEffect(() => {
     if (!selectedRobot) return;
-    // Load conversation
-    supabase.from("robot_conversations").select("*").eq("user_id", session?.user?.id).eq("robot_id", selectedRobot.id).eq("channel_type", "workspace").maybeSingle().then(({ data }) => {
-      if (data) { setMessages(data.messages || []); setConvoId(data.id); }
-      else { setMessages([]); setConvoId(null); }
+    // Load all threads for this robot
+    loadThreads(selectedRobot.id).then(allThreads => {
+      const active = allThreads?.find(t => t.status === "active" && t.channel_type === "workspace");
+      if (active) { setMessages(active.messages || []); setConvoId(active.id); setActiveThreadId(active.id); }
+      else { setMessages([]); setConvoId(null); setActiveThreadId(null); }
     });
     // Load tasks
     supabase.from("robot_tasks").select("*").eq("user_id", session?.user?.id).order("created_at", { ascending: false }).then(({ data }) => { if (data) setTasks(data); });
@@ -7785,7 +7798,7 @@ function RobotsView({ session, isMobile }) {
       const response = await fetch("https://cpgwnrpaflaftlxrzlar.supabase.co/functions/v1/robot-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (await supabase.auth.getSession()).data.session?.access_token },
-        body: JSON.stringify({ robot_id: selectedRobot.id, user_id: session?.user?.id, message: userMsg, history }),
+        body: JSON.stringify({ robot_id: selectedRobot.id, user_id: session?.user?.id, message: userMsg, history, conversation_id: convoId || null }),
       });
       const data = await response.json();
       newTurn.assistant_response = data.response || "I couldn't process that request.";
@@ -7804,8 +7817,14 @@ function RobotsView({ session, isMobile }) {
 
     // Reload conversation from DB (edge function persists it)
     try {
-      const { data: convo } = await supabase.from("robot_conversations").select("*").eq("user_id", session?.user?.id).eq("robot_id", selectedRobot.id).eq("channel_type", "workspace").maybeSingle();
-      if (convo) { setMessages(convo.messages || []); setConvoId(convo.id); }
+      if (convoId) {
+        const { data: convo } = await supabase.from("robot_conversations").select("*").eq("id", convoId).single();
+        if (convo) setMessages(convo.messages || []);
+      } else {
+        const { data: convo } = await supabase.from("robot_conversations").select("*").eq("user_id", session?.user?.id).eq("robot_id", selectedRobot.id).eq("channel_type", "workspace").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+        if (convo) { setMessages(convo.messages || []); setConvoId(convo.id); setActiveThreadId(convo.id); }
+      }
+      loadThreads(selectedRobot.id);
     } catch (e) { console.error("Reload convo:", e); }
 
     setSending(false);
@@ -7953,7 +7972,77 @@ function RobotsView({ session, isMobile }) {
               <p style={{ fontSize: 14, fontWeight: 700, color: "#fff", margin: 0 }}>{r.name}</p>
               <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: 0 }}>{r.role}</p>
             </div>
-            <button onClick={clearChat} style={{ padding: "6px 12px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 11, cursor: "pointer" }}>Clear chat</button>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => setShowAnalytics(!showAnalytics)} style={{ padding: "6px 10px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: showAnalytics ? "rgba(22,163,74,0.15)" : "transparent", color: showAnalytics ? "#16a34a" : "rgba(255,255,255,0.4)", fontSize: 10, cursor: "pointer" }} title="Analytics">📊</button>
+              <button onClick={() => setShowThreads(!showThreads)} style={{ padding: "6px 10px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: showThreads ? "rgba(59,130,246,0.15)" : "transparent", color: showThreads ? "#3b82f6" : "rgba(255,255,255,0.4)", fontSize: 10, cursor: "pointer" }} title="Threads">{threads.length} 💬</button>
+              <button onClick={async () => {
+                const name = window.prompt("Thread name:", "New Thread");
+                if (!name) return;
+                const { data } = await supabase.from("robot_conversations").insert({ user_id: session?.user?.id, robot_id: selectedRobot.id, channel_type: "workspace", messages: [], thread_name: name, status: "active" }).select().single();
+                if (data) { setConvoId(data.id); setActiveThreadId(data.id); setMessages([]); loadThreads(selectedRobot.id); }
+              }} style={{ padding: "6px 10px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 10, cursor: "pointer" }} title="New Thread">+ New</button>
+              <button onClick={clearChat} style={{ padding: "6px 10px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 10, cursor: "pointer" }} title="Clear">🗑</button>
+            </div>
+          </div>
+        )}
+
+        {/* Thread List */}
+        {showThreads && (
+          <div style={{ padding: "8px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)", maxHeight: 200, overflow: "auto" }}>
+            <input value={threadSearch} onChange={e => setThreadSearch(e.target.value)} placeholder="Search threads..." style={{ width: "100%", padding: "6px 10px", fontSize: 11, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: "rgba(255,255,255,0.04)", color: "#fff", marginBottom: 6, boxSizing: "border-box", outline: "none" }} />
+            {threads.filter(t => !threadSearch || (t.thread_name || "").toLowerCase().includes(threadSearch.toLowerCase()) || (t.messages || []).some(m => (m.user_message || "").toLowerCase().includes(threadSearch.toLowerCase()))).map(t => (
+              <button key={t.id} onClick={() => { setConvoId(t.id); setActiveThreadId(t.id); setMessages(t.messages || []); setShowThreads(false); }} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", border: "none", borderRadius: 6, background: t.id === activeThreadId ? "rgba(22,163,74,0.15)" : "transparent", cursor: "pointer", marginBottom: 2, textAlign: "left" }}>
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: t.id === activeThreadId ? "#16a34a" : "#fff" }}>{t.thread_name || "Untitled"}</span>
+                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", marginLeft: 8 }}>{(t.messages || []).length} msgs</span>
+                </div>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.15)" }}>{t.updated_at ? new Date(t.updated_at).toLocaleDateString() : ""}</span>
+                  {t.status === "archived" && <span style={{ fontSize: 8, padding: "1px 4px", borderRadius: 3, background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.2)" }}>archived</span>}
+                  <button onClick={async (e) => { e.stopPropagation(); await supabase.from("robot_conversations").update({ status: t.status === "archived" ? "active" : "archived" }).eq("id", t.id); loadThreads(selectedRobot.id); }} style={{ padding: "2px 4px", border: "none", background: "transparent", color: "rgba(255,255,255,0.2)", fontSize: 9, cursor: "pointer" }}>{t.status === "archived" ? "↩" : "📦"}</button>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Analytics Panel */}
+        {showAnalytics && (
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)" }}>
+            <h3 style={{ fontSize: 12, fontWeight: 700, color: "#fff", margin: "0 0 12px" }}>Robot Analytics</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              {(() => {
+                const allMsgs = threads.flatMap(t => t.messages || []);
+                const totalTurns = allMsgs.length;
+                const totalTools = allMsgs.reduce((s, m) => s + (m.tool_calls?.length || 0), 0);
+                const totalArtifacts = allMsgs.reduce((s, m) => s + (m.artifacts?.length || 0), 0);
+                const robotCounts = {};
+                robots.forEach(r => { robotCounts[r.name] = threads.filter(t => t.messages?.length > 0).length; });
+                return [
+                  ["Total Turns", totalTurns, "#3b82f6"],
+                  ["Tool Calls", totalTools, "#f59e0b"],
+                  ["Artifacts", totalArtifacts, "#16a34a"],
+                  ["Threads", threads.length, "#7c3aed"],
+                ].map(([label, val, color], i) => (
+                  <div key={i} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: 10, position: "relative", overflow: "hidden" }}>
+                    <div style={{ position: "absolute", top: 0, left: 0, width: 2, height: "100%", background: color }} />
+                    <p style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>{label}</p>
+                    <p style={{ fontSize: 18, fontWeight: 700, color: "#fff", fontFamily: "'DM Mono', monospace", margin: 0 }}>{val}</p>
+                  </div>
+                ));
+              })()}
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", margin: "0 0 4px" }}>Tools per robot:</p>
+              <div style={{ display: "flex", gap: 8 }}>
+                {robots.map(bot => (
+                  <span key={bot.id} style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
+                    <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: bot.avatar_color, marginRight: 4 }} />
+                    {bot.name}: {(bot.capabilities || []).length || "all"} tools
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
