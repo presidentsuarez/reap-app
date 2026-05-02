@@ -7721,6 +7721,8 @@ function RobotsView({ session, isMobile }) {
   const [artifacts, setArtifacts] = useState([]);
   const [convoId, setConvoId] = useState(null);
   const [rightTab, setRightTab] = useState("tasks");
+  const [reviewDraft, setReviewDraft] = useState(null);
+  const [draftEdited, setDraftEdited] = useState("");
   const [showKB, setShowKB] = useState(false);
   const [kbTab, setKbTab] = useState("soul");
   const [soul, setSoul] = useState(null);
@@ -7788,10 +7790,9 @@ function RobotsView({ session, isMobile }) {
       newTurn.assistant_response = data.response || "I couldn't process that request.";
       newTurn.tool_calls = data.tool_calls || [];
       newTurn.artifacts = data.artifacts || [];
-      // Refresh tasks if any were created
-      if (data.tool_calls?.some(tc => tc.tool === "assign_task")) {
-        supabase.from("robot_tasks").select("*").eq("user_id", session?.user?.id).order("created_at", { ascending: false }).then(({ data: t }) => { if (t) setTasks(t); });
-      }
+      // Refresh tasks and artifacts after response
+      supabase.from("robot_tasks").select("*").eq("user_id", session?.user?.id).order("created_at", { ascending: false }).then(({ data: t }) => { if (t) setTasks(t); });
+      supabase.from("robot_artifacts").select("*").eq("user_id", session?.user?.id).eq("robot_id", selectedRobot?.id).order("created_at", { ascending: false }).then(({ data: a }) => { if (a) setArtifacts(a); });
     } catch (e) {
       newTurn.assistant_response = "Error connecting to AI: " + e.message + ". Please check your Anthropic API key configuration.";
       newTurn.error = true;
@@ -7980,6 +7981,17 @@ function RobotsView({ session, isMobile }) {
                   <div style={{ maxWidth: "70%", padding: "10px 14px", borderRadius: "14px 14px 4px 14px", background: "#16a34a", color: "#fff", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{turn.user_message}</div>
                 </div>
               )}
+              {/* Tool call indicators */}
+              {turn.tool_calls?.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6, paddingLeft: 36 }}>
+                  {turn.tool_calls.map((tc, j) => (
+                    <span key={j} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 5, border: "1px dashed rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.3)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                      {tc.tool}
+                    </span>
+                  ))}
+                </div>
+              )}
               {/* Assistant response */}
               {turn.assistant_response && (
                 <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
@@ -7987,6 +7999,18 @@ function RobotsView({ session, isMobile }) {
                     <span style={{ fontSize: 9, fontWeight: 700, color: "#fff" }}>{r?.name?.slice(0, 2).toUpperCase()}</span>
                   </div>
                   <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: "14px 14px 14px 4px", background: "rgba(255,255,255,0.06)", color: "#e2e8f0", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap", border: turn.error ? "1px solid rgba(220,38,38,0.3)" : "none" }}>{turn.assistant_response}</div>
+                </div>
+              )}
+              {/* Artifact cards */}
+              {turn.artifacts?.length > 0 && (
+                <div style={{ paddingLeft: 36, display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+                  {turn.artifacts.map((art, j) => (
+                    <div key={j} onClick={() => { if (art.type !== "task") { supabase.from("robot_artifacts").select("*").eq("id", art.id).single().then(({data}) => { if (data) { setReviewDraft(data); setDraftEdited(data.payload?.body || ""); setRightTab("drafts"); } }); } }} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, background: art.type === "task" ? "rgba(22,163,74,0.1)" : "rgba(59,130,246,0.1)", border: "1px solid " + (art.type === "task" ? "rgba(22,163,74,0.2)" : "rgba(59,130,246,0.2)"), cursor: art.type === "task" ? "default" : "pointer", maxWidth: "70%" }}>
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={art.type === "task" ? "#22c55e" : "#3b82f6"} strokeWidth={2}>{art.type === "task" ? <><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></> : <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></>}</svg>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: art.type === "task" ? "#22c55e" : "#3b82f6" }}>{art.title || art.type}</span>
+                      {art.type !== "task" && <span style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>click to review</span>}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -8022,12 +8046,33 @@ function RobotsView({ session, isMobile }) {
                 </div>
               ))
             ) : (
-              artifacts.length === 0 ? (
+              reviewDraft ? (
+                <div>
+                  <button onClick={() => setReviewDraft(null)} style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", background: "none", border: "none", cursor: "pointer", marginBottom: 8, padding: 0 }}>← back to list</button>
+                  <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: "#3b82f6", letterSpacing: "0.06em", textTransform: "uppercase" }}>{reviewDraft.artifact_type?.replace("_", " ")}</span>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: "#fff", margin: "4px 0" }}>{reviewDraft.title}</p>
+                    {reviewDraft.payload?.to && <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: "0 0 4px" }}>To: {reviewDraft.payload.to}</p>}
+                    {reviewDraft.payload?.subject && <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: "0 0 4px" }}>Subject: {reviewDraft.payload.subject}</p>}
+                    {reviewDraft.payload?.to_name && <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: "0 0 4px" }}>To: {reviewDraft.payload.to_name} {reviewDraft.payload.to_number || ""}</p>}
+                  </div>
+                  <textarea value={draftEdited} onChange={e => setDraftEdited(e.target.value)} rows={8} style={{ width: "100%", padding: 10, fontSize: 12, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, background: "rgba(255,255,255,0.04)", color: "#fff", fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box", resize: "vertical", lineHeight: 1.6 }} />
+                  {draftEdited !== (reviewDraft.payload?.body || "") && <p style={{ fontSize: 9, color: "#f59e0b", margin: "4px 0" }}>Edited — changes will be saved</p>}
+                  <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                    <button onClick={async () => { await supabase.from("robot_artifacts").update({ status: "cancelled" }).eq("id", reviewDraft.id); setReviewDraft(null); const { data } = await supabase.from("robot_artifacts").select("*").eq("user_id", session?.user?.id).eq("robot_id", selectedRobot?.id).eq("status", "draft").order("created_at", { ascending: false }); if (data) setArtifacts(data); }} style={{ flex: 1, padding: "8px", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 6, background: "transparent", color: "#ef4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Discard</button>
+                    <button onClick={async () => { const updated = { ...reviewDraft.payload, body: draftEdited }; await supabase.from("robot_artifacts").update({ payload: updated, status: "approved" }).eq("id", reviewDraft.id); if (draftEdited !== (reviewDraft.payload?.body || "")) { await supabase.from("robot_feedback_events").insert({ user_id: session?.user?.id, robot_id: selectedRobot?.id, artifact_id: reviewDraft.id, event_type: "artifact_edited", verdict: "edited", original_content: reviewDraft.payload?.body, edited_content: draftEdited }); } setReviewDraft(null); const { data } = await supabase.from("robot_artifacts").select("*").eq("user_id", session?.user?.id).eq("robot_id", selectedRobot?.id).eq("status", "draft").order("created_at", { ascending: false }); if (data) setArtifacts(data); }} style={{ flex: 2, padding: "8px", border: "none", borderRadius: 6, background: "#16a34a", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Approve Draft</button>
+                  </div>
+                </div>
+              ) : artifacts.length === 0 ? (
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", textAlign: "center", padding: 30 }}>No drafts yet</p>
-              ) : artifacts.map(a => (
-                <div key={a.id} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: 10, marginBottom: 6 }}>
-                  <p style={{ fontSize: 12, fontWeight: 600, color: "#fff", margin: "0 0 3px" }}>{a.title || a.artifact_type}</p>
+              ) : artifacts.filter(a => a.status === "draft").map(a => (
+                <div key={a.id} onClick={() => { setReviewDraft(a); setDraftEdited(a.payload?.body || ""); }} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: 10, marginBottom: 6, cursor: "pointer" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "#fff", margin: 0 }}>{a.title || a.artifact_type}</p>
+                    <span style={{ fontSize: 8, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(59,130,246,0.15)", color: "#3b82f6" }}>DRAFT</span>
+                  </div>
                   {a.summary && <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: 0 }}>{a.summary}</p>}
+                  <p style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", margin: "4px 0 0" }}>{new Date(a.created_at).toLocaleString()}</p>
                 </div>
               ))
             )}
