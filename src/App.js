@@ -7721,7 +7721,26 @@ function RobotsView({ session, isMobile }) {
   const [artifacts, setArtifacts] = useState([]);
   const [convoId, setConvoId] = useState(null);
   const [rightTab, setRightTab] = useState("tasks");
+  const [showKB, setShowKB] = useState(false);
+  const [kbTab, setKbTab] = useState("soul");
+  const [soul, setSoul] = useState(null);
+  const [styleRules, setStyleRules] = useState([]);
+  const [kbMemories, setKbMemories] = useState([]);
+  const [exemplars, setExemplars] = useState([]);
+  const [kbLoading, setKbLoading] = useState(false);
+  const [kbMsg, setKbMsg] = useState("");
   const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    if (!showKB) return;
+    setKbLoading(true);
+    Promise.all([
+      supabase.from("org_soul").select("*").eq("user_id", session?.user?.id).eq("active", true).maybeSingle().then(({data}) => { if (data) setSoul(data); }),
+      supabase.from("robot_style_guide").select("*").eq("user_id", session?.user?.id).order("importance", {ascending: false}).then(({data}) => { if (data) setStyleRules(data); }),
+      supabase.from("robot_memories").select("*").eq("user_id", session?.user?.id).order("importance", {ascending: false}).then(({data}) => { if (data) setKbMemories(data); }),
+      supabase.from("robot_exemplars").select("*").eq("user_id", session?.user?.id).order("importance", {ascending: false}).then(({data}) => { if (data) setExemplars(data); }),
+    ]).finally(() => setKbLoading(false));
+  }, [showKB]);
 
   useEffect(() => {
     supabase.from("robots").select("*").eq("user_id", session?.user?.id).eq("status", "active").order("created_at").then(({ data }) => {
@@ -7820,9 +7839,107 @@ function RobotsView({ session, isMobile }) {
             </button>
           ))}
         </div>
+        <div style={{ padding: "12px 8px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button onClick={() => setShowKB(!showKB)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "none", borderRadius: 10, background: showKB ? "rgba(22,163,74,0.15)" : "transparent", cursor: "pointer", textAlign: "left" }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={showKB ? "#16a34a" : "rgba(255,255,255,0.35)"} strokeWidth={1.8}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            <span style={{ fontSize: 12, fontWeight: 600, color: showKB ? "#16a34a" : "rgba(255,255,255,0.4)" }}>Knowledge Base</span>
+          </button>
+        </div>
       </div>
 
-      {/* CENTER — Chat */}
+      {/* KNOWLEDGE BASE VIEW */}
+      {showKB ? (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "#0a0f1a" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#fff", margin: 0 }}>Knowledge Base</h2>
+            <button onClick={() => setShowKB(false)} style={{ padding: "6px 12px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 11, cursor: "pointer" }}>← Back to Chat</button>
+          </div>
+          <div style={{ display: "flex", gap: 0, borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "0 20px" }}>
+            {["soul", "style", "memories", "exemplars"].map(t => (
+              <button key={t} onClick={() => setKbTab(t)} style={{ background: "transparent", border: "none", borderBottom: kbTab === t ? "2px solid #16a34a" : "2px solid transparent", padding: "10px 16px", color: kbTab === t ? "#16a34a" : "rgba(255,255,255,0.35)", fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: -1, textTransform: "capitalize" }}>{t === "soul" ? "Org Soul" : t}</button>
+            ))}
+          </div>
+          <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
+            {kbLoading ? <p style={{ color: "rgba(255,255,255,0.3)", textAlign: "center", padding: 40 }}>Loading...</p> :
+
+            kbTab === "soul" && soul ? (
+              <div>
+                {[["Org Name", "org_name"], ["Mission", "mission"], ["Vision", "vision"], ["Origin Story", "origin_story"]].map(([label, field]) => (
+                  <div key={field} style={{ marginBottom: 16 }}>
+                    <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", marginBottom: 4, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</label>
+                    <textarea value={soul[field] || ""} onChange={e => setSoul({...soul, [field]: e.target.value})} rows={field === "origin_story" ? 4 : 2} style={{ width: "100%", padding: "10px 12px", fontSize: 13, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, background: "rgba(255,255,255,0.04)", color: "#fff", fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box", resize: "vertical" }} />
+                  </div>
+                ))}
+                <h3 style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "20px 0 10px" }}>Values</h3>
+                {(soul.values || []).map((v, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                    <input value={v.value || ""} onChange={e => { const vals = [...soul.values]; vals[i] = {...vals[i], value: e.target.value}; setSoul({...soul, values: vals}); }} placeholder="Value" style={{ flex: 1, padding: "8px 10px", fontSize: 12, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: "rgba(255,255,255,0.04)", color: "#fff", boxSizing: "border-box" }} />
+                    <input value={v.description || ""} onChange={e => { const vals = [...soul.values]; vals[i] = {...vals[i], description: e.target.value}; setSoul({...soul, values: vals}); }} placeholder="Description" style={{ flex: 2, padding: "8px 10px", fontSize: 12, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: "rgba(255,255,255,0.04)", color: "#fff", boxSizing: "border-box" }} />
+                  </div>
+                ))}
+                <button onClick={async () => { const { id, created_at, ...payload } = soul; payload.updated_at = new Date().toISOString(); await supabase.from("org_soul").update(payload).eq("id", soul.id); setKbMsg("Saved!"); setTimeout(() => setKbMsg(""), 2000); }} style={{ marginTop: 16, padding: "10px 24px", border: "none", borderRadius: 8, background: "#16a34a", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Save Soul</button>
+                {kbMsg && <span style={{ marginLeft: 12, fontSize: 12, color: "#22c55e" }}>{kbMsg}</span>}
+              </div>
+            ) :
+
+            kbTab === "style" ? (
+              <div>
+                {styleRules.map((r, i) => (
+                  <div key={r.id} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: 14, marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{r.rule_title}</span>
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.08)" }}>{r.channel}</span>
+                    </div>
+                    <p style={{ fontSize: 11, color: "#22c55e", margin: "0 0 2px" }}>DO: {r.do_text}</p>
+                    <p style={{ fontSize: 11, color: "#ef4444", margin: 0 }}>DON'T: {r.dont_text}</p>
+                  </div>
+                ))}
+              </div>
+            ) :
+
+            kbTab === "memories" ? (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{kbMemories.length} memories</span>
+                  <button onClick={async () => { const { data } = await supabase.from("robot_memories").insert({ user_id: session?.user?.id, category: "general", title: "New Memory", content: "", importance: 5 }).select().single(); if (data) setKbMemories([data, ...kbMemories]); }} style={{ padding: "4px 12px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, background: "transparent", color: "#16a34a", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>+ Add Memory</button>
+                </div>
+                {kbMemories.map(m => (
+                  <div key={m.id} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: 14, marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{m.title}</span>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)" }}>used {m.use_count || 0}x</span>
+                        <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)" }}>{m.category}</span>
+                        <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)" }}>imp: {m.importance}</span>
+                      </div>
+                    </div>
+                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, lineHeight: 1.5 }}>{m.content}</p>
+                  </div>
+                ))}
+              </div>
+            ) :
+
+            kbTab === "exemplars" ? (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{exemplars.length} exemplars</span>
+                </div>
+                {exemplars.length === 0 ? <p style={{ color: "rgba(255,255,255,0.2)", textAlign: "center", padding: 40 }}>No exemplars yet. Save great robot outputs as exemplars from the chat.</p> :
+                  exemplars.map(e => (
+                    <div key={e.id} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: 14, marginBottom: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{e.title}</span>
+                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", margin: "4px 0 0" }}>{e.why_its_good || "Gold standard example"}</p>
+                    </div>
+                  ))
+                }
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) :
+
+      /* CENTER — Chat */
+      (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* Header */}
         {r && (
@@ -7886,8 +8003,9 @@ function RobotsView({ session, isMobile }) {
         </div>
       </div>
 
+      )}
       {/* RIGHT PANE — Tasks & Drafts (desktop only) */}
-      {!isMobile && (
+      {!isMobile && !showKB && (
         <div style={{ width: 280, flexShrink: 0, borderLeft: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", background: "#0f1520" }}>
           <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             <button onClick={() => setRightTab("tasks")} style={{ flex: 1, padding: "12px", border: "none", borderBottom: rightTab === "tasks" ? "2px solid #16a34a" : "2px solid transparent", background: "transparent", color: rightTab === "tasks" ? "#16a34a" : "rgba(255,255,255,0.35)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Tasks ({tasks.filter(t => t.status === "open").length})</button>
