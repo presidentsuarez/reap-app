@@ -8672,6 +8672,150 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
                 </div>
 
                 {underwriting === 0 && offers === 0 && <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "20px 0", background: "#fffbeb", borderRadius: 10, border: "1px solid #fef3c7", marginTop: 16 }}>Milestone dates (underwriting, offer, under contract, closed) will populate as deals move through stages going forward. Historical deals won't have these dates until they're updated.</p>}
+
+                {/* Generate Report Button */}
+                <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
+                  <button onClick={async () => {
+                    const btn = document.getElementById("scorecard-gen-btn");
+                    if (btn) { btn.textContent = "Generating AI Summary..."; btn.disabled = true; }
+
+                    // Call Anthropic for AI summary via edge function
+                    let aiSummary = "";
+                    try {
+                      const token = (await supabase.auth.getSession()).data.session?.access_token;
+                      const { data: atlasBot } = await supabase.from("robots").select("id").eq("name", "Atlas").eq("user_id", session?.user?.id).maybeSingle();
+                      const robotId = atlasBot?.id || "";
+                      const summaryPrompt = `Analyze this pipeline scorecard data and provide: 1) A 2-3 sentence executive summary, 2) Key strengths (what's working), 3) Areas for improvement, 4) Specific suggestions to improve conversion rates and deal flow.
+
+DATA:
+- Period: ${scorecardRange === "ytd" ? "Year to Date" : scorecardRange === "custom" ? customStart + " to " + (customEnd || "today") : scorecardRange}
+- Leads Generated: ${inRange.length} (${mlsLeads} MLS, ${manualLeads} manual)
+- Underwritten: ${underwriting} (${uwRate.toFixed(1)}% conversion from leads)
+- Offers Made: ${offers} (${offerRate.toFixed(1)}% conversion from UW)
+- Under Contract: ${underContract}
+- Closed: ${closed} (${closeRate.toFixed(1)}% close rate)
+- Pipeline Value: $${rangeValue.toLocaleString()}
+- Active Deals: ${activeInRange.length}
+- Avg Deal Size: $${activeInRange.length > 0 ? Math.round(rangeValue / activeInRange.length).toLocaleString() : 0}
+- Deals/Day: ${(inRange.length / days).toFixed(1)}
+- Top Lead Sources: ${personSorted.slice(0, 3).map(([e, c]) => e.split("@")[0] + ": " + c).join(", ")}
+
+Be concise, data-driven, and actionable. Format with clear sections.`;
+
+                      if (robotId) {
+                        const resp = await fetch("https://cpgwnrpaflaftlxrzlar.supabase.co/functions/v1/robot-chat", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+                          body: JSON.stringify({ robot_id: robotId, user_id: session?.user?.id, message: summaryPrompt, history: [] }),
+                        });
+                        const data = await resp.json();
+                        aiSummary = data.response || "";
+                      }
+                    } catch (e) { console.error("AI summary:", e); aiSummary = "AI summary unavailable."; }
+
+                    if (btn) { btn.textContent = "Building PDF..."; }
+
+                    // Build PDF using jsPDF
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+                    const W = 612, H = 792, M = 50;
+                    let y = 50;
+
+                    // Header
+                    doc.setFillColor(15, 23, 42); doc.rect(0, 0, W, 80, "F");
+                    doc.setTextColor(255); doc.setFontSize(22); doc.setFont("helvetica", "bold");
+                    doc.text("REAP Pipeline Scorecard", M, 35);
+                    doc.setFontSize(10); doc.setFont("helvetica", "normal");
+                    const periodLabel = scorecardRange === "ytd" ? "Year to Date" : scorecardRange === "custom" ? (customStart + " to " + (customEnd || "today")) : scorecardRange === "7d" ? "This Week" : scorecardRange === "14d" ? "Last 2 Weeks" : scorecardRange === "30d" ? "This Month" : "Quarter";
+                    doc.text(`Period: ${periodLabel}  |  Generated: ${new Date().toLocaleDateString()}  |  Tampa Development Group`, M, 55);
+                    doc.setTextColor(22, 163, 74); doc.text("app.getreap.ai", M, 70);
+                    y = 100;
+
+                    // KPI Section
+                    doc.setTextColor(15, 23, 42); doc.setFontSize(14); doc.setFont("helvetica", "bold");
+                    doc.text("Key Metrics", M, y); y += 20;
+                    doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.setTextColor(71, 85, 105);
+
+                    const kpis = [
+                      ["Leads Generated", inRange.length, mlsLeads + " MLS / " + manualLeads + " manual"],
+                      ["Underwritten", underwriting, uwRate.toFixed(1) + "% conversion"],
+                      ["Offers Made", offers, offerRate.toFixed(1) + "% from UW"],
+                      ["Under Contract", underContract, ""],
+                      ["Closed", closed, closeRate.toFixed(1) + "% close rate"],
+                      ["Pipeline Value", "$" + rangeValue.toLocaleString(), ""],
+                      ["Avg Deal Size", activeInRange.length > 0 ? "$" + Math.round(rangeValue / activeInRange.length).toLocaleString() : "—", ""],
+                      ["Deals / Day", (inRange.length / days).toFixed(1), ""],
+                    ];
+                    kpis.forEach(([label, val, sub]) => {
+                      doc.setFont("helvetica", "normal"); doc.setTextColor(100, 116, 139);
+                      doc.text(label, M, y);
+                      doc.setFont("helvetica", "bold"); doc.setTextColor(15, 23, 42);
+                      doc.text(String(val), M + 140, y);
+                      if (sub) { doc.setFont("helvetica", "normal"); doc.setTextColor(148, 163, 184); doc.text(sub, M + 240, y); }
+                      y += 16;
+                    });
+                    y += 10;
+
+                    // Conversion Funnel
+                    doc.setFontSize(14); doc.setFont("helvetica", "bold"); doc.setTextColor(15, 23, 42);
+                    doc.text("Conversion Funnel", M, y); y += 20;
+                    const funnelData = [["Leads", inRange.length], ["Underwriting", underwriting], ["Offers", offers], ["Under Contract", underContract], ["Closed", closed]];
+                    const funnelColors = [[59,130,246],[124,58,237],[245,158,11],[8,145,178],[22,163,74]];
+                    const maxFunnel = Math.max(inRange.length, 1);
+                    funnelData.forEach(([label, count], i) => {
+                      const barW = (count / maxFunnel) * 300;
+                      doc.setFillColor(...funnelColors[i]); doc.roundedRect(M + 110, y - 8, Math.max(barW, 2), 12, 2, 2, "F");
+                      doc.setFont("helvetica", "normal"); doc.setTextColor(71, 85, 105); doc.setFontSize(9);
+                      doc.text(label, M, y);
+                      doc.setFont("helvetica", "bold"); doc.text(String(count), M + 420, y);
+                      const pct = inRange.length > 0 ? (count / inRange.length * 100).toFixed(0) + "%" : "0%";
+                      doc.setFont("helvetica", "normal"); doc.setTextColor(148, 163, 184); doc.text(pct, M + 460, y);
+                      y += 18;
+                    });
+                    y += 10;
+
+                    // Leads by person
+                    doc.setFontSize(14); doc.setFont("helvetica", "bold"); doc.setTextColor(15, 23, 42);
+                    doc.text("Leads by Person", M, y); y += 18;
+                    doc.setFontSize(9);
+                    personSorted.slice(0, 8).forEach(([email, count]) => {
+                      doc.setFont("helvetica", "normal"); doc.setTextColor(71, 85, 105);
+                      doc.text(email.split("@")[0], M, y);
+                      doc.setFont("helvetica", "bold"); doc.text(String(count), M + 200, y);
+                      y += 14;
+                    });
+                    y += 10;
+
+                    // AI Summary (page 2 if needed)
+                    if (aiSummary) {
+                      if (y > H - 250) { doc.addPage(); y = 50; }
+                      doc.setFillColor(240, 253, 244); doc.roundedRect(M - 10, y - 15, W - 2 * M + 20, 20, 4, 4, "F");
+                      doc.setFontSize(14); doc.setFont("helvetica", "bold"); doc.setTextColor(22, 163, 74);
+                      doc.text("AI Analysis & Recommendations", M, y); y += 20;
+                      doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(51, 65, 85);
+                      const lines = doc.splitTextToSize(aiSummary, W - 2 * M);
+                      lines.forEach(line => {
+                        if (y > H - 40) { doc.addPage(); y = 50; }
+                        doc.text(line, M, y); y += 13;
+                      });
+                    }
+
+                    // Footer
+                    const totalPages = doc.internal.getNumberOfPages();
+                    for (let p = 1; p <= totalPages; p++) {
+                      doc.setPage(p);
+                      doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(148, 163, 184);
+                      doc.text("REAP — Real Estate Analytics Platform — app.getreap.ai", M, H - 20);
+                      doc.text(`Page ${p} of ${totalPages}`, W - M - 50, H - 20);
+                    }
+
+                    doc.save(`REAP_Scorecard_${periodLabel.replace(/\s/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`);
+                    if (btn) { btn.textContent = "Generate Report"; btn.disabled = false; }
+                  }} id="scorecard-gen-btn" style={{ padding: "12px 28px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 2px 12px rgba(22,163,74,0.35)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    Generate Report
+                  </button>
+                </div>
               </div>
             );
           })()}
