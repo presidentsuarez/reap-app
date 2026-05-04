@@ -8516,22 +8516,24 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
       </div>
 
       {dashTab === "scorecard" && canSeeScorecard ? (
-        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 12px" : "24px 32px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "12px 10px" : "24px 32px" }}>
           {/* Time range toggle */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Performance Scorecard</h2>
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-              {[["7d", "This Week"], ["14d", "2 Weeks"], ["30d", "This Month"], ["90d", "Quarter"], ["ytd", "YTD"], ["custom", "Custom"]].map(([key, label]) => (
-                <button key={key} onClick={() => setScorecardRange(key)} style={{ padding: "5px 12px", fontSize: 11, fontWeight: scorecardRange === key ? 700 : 500, color: scorecardRange === key ? "#16a34a" : "#64748b", background: scorecardRange === key ? "#f0fdf4" : "#fff", border: "1px solid " + (scorecardRange === key ? "#bbf7d0" : "#e2e8f0"), borderRadius: 6, cursor: "pointer" }}>{label}</button>
-              ))}
-              {scorecardRange === "custom" && (
-                <div style={{ display: "flex", gap: 4, alignItems: "center", marginLeft: 4 }}>
-                  <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ padding: "4px 8px", fontSize: 11, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Sans', sans-serif", color: "#334155" }} />
-                  <span style={{ fontSize: 10, color: "#94a3b8" }}>to</span>
-                  <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ padding: "4px 8px", fontSize: 11, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Sans', sans-serif", color: "#334155" }} />
-                </div>
-              )}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <h2 style={{ fontSize: isMobile ? 14 : 16, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Scorecard</h2>
             </div>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {[["7d", "This Week"], ["14d", "2 Weeks"], ["30d", "Month"], ["90d", "Quarter"], ["ytd", "YTD"], ["custom", "Custom"]].map(([key, label]) => (
+                <button key={key} onClick={() => setScorecardRange(key)} style={{ padding: isMobile ? "5px 10px" : "5px 12px", fontSize: isMobile ? 10 : 11, fontWeight: scorecardRange === key ? 700 : 500, color: scorecardRange === key ? "#16a34a" : "#64748b", background: scorecardRange === key ? "#f0fdf4" : "#fff", border: "1px solid " + (scorecardRange === key ? "#bbf7d0" : "#e2e8f0"), borderRadius: 6, cursor: "pointer" }}>{label}</button>
+              ))}
+            </div>
+            {scorecardRange === "custom" && (
+              <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
+                <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ flex: 1, padding: "6px 8px", fontSize: 11, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Sans', sans-serif", color: "#334155" }} />
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>to</span>
+                <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ flex: 1, padding: "6px 8px", fontSize: 11, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Sans', sans-serif", color: "#334155" }} />
+              </div>
+            )}
           </div>
 
           {(() => {
@@ -8580,28 +8582,28 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
             const rangeValue = activeInRange.reduce((s, d) => s + (num(d.offer) > 0 ? num(d.offer) : 0), 0);
 
             const StatBox = ({ label, value, sub, color }) => (
-              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, position: "relative", overflow: "hidden" }}>
+              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: isMobile ? 8 : 12, padding: isMobile ? 10 : 16, position: "relative", overflow: "hidden" }}>
                 <div style={{ position: "absolute", top: 0, left: 0, width: 3, height: "100%", background: color || "#16a34a" }} />
-                <p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 4px" }}>{label}</p>
-                <p style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "0 0 2px" }}>{value}</p>
-                {sub && <p style={{ fontSize: 10, color: "#94a3b8", margin: 0 }}>{sub}</p>}
+                <p style={{ fontSize: isMobile ? 8 : 9, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 2px" }}>{label}</p>
+                <p style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "0 0 1px" }}>{value}</p>
+                {sub && <p style={{ fontSize: isMobile ? 9 : 10, color: "#94a3b8", margin: 0 }}>{sub}</p>}
               </div>
             );
 
             return (
               <div>
                 {/* KPI Row */}
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10, marginBottom: 24 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: isMobile ? 6 : 10, marginBottom: isMobile ? 12 : 24 }}>
                   <StatBox label="Leads Generated" value={inRange.length} sub={`${mlsLeads} MLS · ${manualLeads} manual`} color="#3b82f6" />
-                  <StatBox label="Underwritten" value={underwriting} sub={underwriting > 0 ? `${uwRate.toFixed(0)}% conversion` : "no date tracking yet"} color="#7c3aed" />
-                  <StatBox label="Offers Made" value={offers} sub={offers > 0 ? `${offerRate.toFixed(0)}% from UW` : "no date tracking yet"} color="#f59e0b" />
+                  <StatBox label="Underwritten" value={underwriting} sub={underwriting > 0 ? `${uwRate.toFixed(0)}% conv.` : "no dates yet"} color="#7c3aed" />
+                  <StatBox label="Offers Made" value={offers} sub={offers > 0 ? `${offerRate.toFixed(0)}% from UW` : "no dates yet"} color="#f59e0b" />
                   <StatBox label="Under Contract" value={underContract} color="#0891b2" />
                   <StatBox label="Closed" value={closed} sub={closed > 0 ? `${closeRate.toFixed(0)}% close rate` : "—"} color="#16a34a" />
                 </div>
 
                 {/* Conversion Funnel */}
-                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 20, marginBottom: 24 }}>
-                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>Conversion Funnel</h3>
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: isMobile ? 8 : 12, padding: isMobile ? 12 : 20, marginBottom: isMobile ? 12 : 24 }}>
+                  <h3 style={{ fontSize: isMobile ? 10 : 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 10px" }}>Conversion Funnel</h3>
                   {[
                     ["Leads", inRange.length, "#3b82f6", 100],
                     ["Underwriting", underwriting, "#7c3aed", inRange.length > 0 ? (underwriting / inRange.length * 100) : 0],
@@ -8609,8 +8611,8 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
                     ["Under Contract", underContract, "#0891b2", inRange.length > 0 ? (underContract / inRange.length * 100) : 0],
                     ["Closed", closed, "#16a34a", inRange.length > 0 ? (closed / inRange.length * 100) : 0],
                   ].map(([label, count, color, pct], i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                      <span style={{ fontSize: 12, color: "#334155", fontWeight: 500, minWidth: 110 }}>{label}</span>
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, marginBottom: isMobile ? 6 : 10 }}>
+                      <span style={{ fontSize: isMobile ? 10 : 12, color: "#334155", fontWeight: 500, minWidth: isMobile ? 70 : 110 }}>{label}</span>
                       <div style={{ flex: 1, height: 10, borderRadius: 5, background: "#f1f5f9", overflow: "hidden" }}>
                         <div style={{ width: Math.max(pct, 1) + "%", height: "100%", borderRadius: 5, background: color, transition: "width 0.3s" }} />
                       </div>
@@ -8621,9 +8623,9 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
                 </div>
 
                 {/* Leads by Person + Source */}
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 24 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 8 : 16, marginBottom: isMobile ? 12 : 24 }}>
                   {/* By Person */}
-                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: isMobile ? 8 : 12, padding: isMobile ? 10 : 16 }}>
                     <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 12px" }}>Leads by Person</h3>
                     {personSorted.length === 0 ? <p style={{ fontSize: 12, color: "#94a3b8" }}>No leads in this period</p> :
                       personSorted.map(([email, count]) => {
@@ -8661,10 +8663,10 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
                 </div>
 
                 {/* Pipeline Value in Period */}
-                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
-                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 8px" }}>Period Summary</h3>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12 }}>
-                    <div><p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, margin: "0 0 2px", textTransform: "uppercase" }}>Pipeline Value</p><p style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmtK(rangeValue)}</p></div>
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: isMobile ? 8 : 12, padding: isMobile ? 10 : 16 }}>
+                  <h3 style={{ fontSize: isMobile ? 10 : 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 6px" }}>Period Summary</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: isMobile ? 8 : 12 }}>
+                    <div><p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, margin: "0 0 2px", textTransform: "uppercase" }}>Pipeline Value</p><p style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmtK(rangeValue)}</p></div>
                     <div><p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, margin: "0 0 2px", textTransform: "uppercase" }}>Avg Deal Size</p><p style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{activeInRange.length > 0 ? fmtK(rangeValue / activeInRange.length) : "—"}</p></div>
                     <div><p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, margin: "0 0 2px", textTransform: "uppercase" }}>Deals / Day</p><p style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{(inRange.length / days).toFixed(1)}</p></div>
                     <div><p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, margin: "0 0 2px", textTransform: "uppercase" }}>Lead→Close</p><p style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{inRange.length > 0 ? (closed / inRange.length * 100).toFixed(1) + "%" : "—"}</p></div>
