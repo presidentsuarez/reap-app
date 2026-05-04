@@ -8382,10 +8382,15 @@ function OnboardingScreen({ userName, onComplete, onCreateDeal }) {
    DASHBOARD VIEW
    ═══════════════════════════════════════════════════════════ */
 
-function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
+function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
   const [statusFilter, setStatusFilter] = useState("All");
   const [sortField, setSortField] = useState("reapScore");
   const [sortDir, setSortDir] = useState("desc");
+  const [dashTab, setDashTab] = useState("dashboard");
+  const [scorecardRange, setScorecardRange] = useState("7d");
+
+  const userEmail = session?.user?.email?.toLowerCase() || "";
+  const canSeeScorecard = [PLATFORM_ADMIN_EMAIL.toLowerCase(), "admin@thesuarezcapital.com"].includes(userEmail);
 
   const num = (v) => {
     if (!v && v !== 0) return NaN;
@@ -8500,7 +8505,159 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
           <h1 style={{ fontSize: isMobile ? 17 : 20, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0, letterSpacing: "-0.02em" }}>Pipeline Dashboard</h1>
           <p style={{ fontSize: isMobile ? 11 : 12, color: "#94a3b8", margin: "3px 0 0", fontFamily: "'DM Sans', sans-serif" }}>{deals.length} deals · as of today</p>
         </div>
+        {canSeeScorecard && (
+          <div style={{ display: "flex", gap: 0, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+            <button onClick={() => setDashTab("dashboard")} style={{ padding: "6px 14px", border: "none", background: dashTab === "dashboard" ? "#0f172a" : "#fff", color: dashTab === "dashboard" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Dashboard</button>
+            <button onClick={() => setDashTab("scorecard")} style={{ padding: "6px 14px", border: "none", borderLeft: "1px solid #e2e8f0", background: dashTab === "scorecard" ? "#0f172a" : "#fff", color: dashTab === "scorecard" ? "#fff" : "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Scorecard</button>
+          </div>
+        )}
       </div>
+
+      {dashTab === "scorecard" && canSeeScorecard ? (
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 12px" : "24px 32px" }}>
+          {/* Time range toggle */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Performance Scorecard</h2>
+            <div style={{ display: "flex", gap: 4 }}>
+              {[["7d", "This Week"], ["14d", "2 Weeks"], ["30d", "This Month"], ["90d", "Quarter"]].map(([key, label]) => (
+                <button key={key} onClick={() => setScorecardRange(key)} style={{ padding: "5px 12px", fontSize: 11, fontWeight: scorecardRange === key ? 700 : 500, color: scorecardRange === key ? "#16a34a" : "#64748b", background: scorecardRange === key ? "#f0fdf4" : "#fff", border: "1px solid " + (scorecardRange === key ? "#bbf7d0" : "#e2e8f0"), borderRadius: 6, cursor: "pointer" }}>{label}</button>
+              ))}
+            </div>
+          </div>
+
+          {(() => {
+            const days = parseInt(scorecardRange);
+            const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+            const inRange = deals.filter(d => d.date && new Date(d.date) >= cutoff);
+            const activeInRange = inRange.filter(d => d.status !== "Dead");
+
+            // Leads generated
+            const newLeads = inRange.filter(d => d.status === "New" || new Date(d.date) >= cutoff).length;
+            const mlsLeads = inRange.filter(d => d.source === "MLS Feed").length;
+            const manualLeads = inRange.filter(d => d.source === "REAP App").length;
+            const otherLeads = inRange.length - mlsLeads - manualLeads;
+
+            // Stage progression (deals that moved TO this stage in the period)
+            const underwriting = deals.filter(d => d.underwritingDate && new Date(d.underwritingDate) >= cutoff).length;
+            const offers = deals.filter(d => d.offerDate && new Date(d.offerDate) >= cutoff).length;
+            const underContract = deals.filter(d => d.underContractDate && new Date(d.underContractDate) >= cutoff).length;
+            const closed = deals.filter(d => d.closedDate && new Date(d.closedDate) >= cutoff).length;
+
+            // Leads by person
+            const byPerson = {};
+            inRange.forEach(d => {
+              const who = d.assigneeEmail || d.user || "Unknown";
+              byPerson[who] = (byPerson[who] || 0) + 1;
+            });
+            const personSorted = Object.entries(byPerson).sort((a, b) => b[1] - a[1]);
+
+            // Conversion rates
+            const totalActive = deals.filter(d => d.status !== "Dead").length;
+            const uwRate = totalActive > 0 ? (underwriting / Math.max(newLeads, 1) * 100) : 0;
+            const offerRate = underwriting > 0 ? (offers / Math.max(underwriting, 1) * 100) : 0;
+            const closeRate = offers > 0 ? (closed / Math.max(offers, 1) * 100) : 0;
+
+            // Pipeline value of deals in range
+            const rangeValue = activeInRange.reduce((s, d) => s + (num(d.offer) > 0 ? num(d.offer) : 0), 0);
+
+            const StatBox = ({ label, value, sub, color }) => (
+              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", top: 0, left: 0, width: 3, height: "100%", background: color || "#16a34a" }} />
+                <p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 4px" }}>{label}</p>
+                <p style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: "0 0 2px" }}>{value}</p>
+                {sub && <p style={{ fontSize: 10, color: "#94a3b8", margin: 0 }}>{sub}</p>}
+              </div>
+            );
+
+            return (
+              <div>
+                {/* KPI Row */}
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10, marginBottom: 24 }}>
+                  <StatBox label="Leads Generated" value={inRange.length} sub={`${mlsLeads} MLS · ${manualLeads} manual`} color="#3b82f6" />
+                  <StatBox label="Underwritten" value={underwriting} sub={underwriting > 0 ? `${uwRate.toFixed(0)}% conversion` : "no date tracking yet"} color="#7c3aed" />
+                  <StatBox label="Offers Made" value={offers} sub={offers > 0 ? `${offerRate.toFixed(0)}% from UW` : "no date tracking yet"} color="#f59e0b" />
+                  <StatBox label="Under Contract" value={underContract} color="#0891b2" />
+                  <StatBox label="Closed" value={closed} sub={closed > 0 ? `${closeRate.toFixed(0)}% close rate` : "—"} color="#16a34a" />
+                </div>
+
+                {/* Conversion Funnel */}
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 20, marginBottom: 24 }}>
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 16px" }}>Conversion Funnel</h3>
+                  {[
+                    ["Leads", inRange.length, "#3b82f6", 100],
+                    ["Underwriting", underwriting, "#7c3aed", inRange.length > 0 ? (underwriting / inRange.length * 100) : 0],
+                    ["Offers", offers, "#f59e0b", inRange.length > 0 ? (offers / inRange.length * 100) : 0],
+                    ["Under Contract", underContract, "#0891b2", inRange.length > 0 ? (underContract / inRange.length * 100) : 0],
+                    ["Closed", closed, "#16a34a", inRange.length > 0 ? (closed / inRange.length * 100) : 0],
+                  ].map(([label, count, color, pct], i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                      <span style={{ fontSize: 12, color: "#334155", fontWeight: 500, minWidth: 110 }}>{label}</span>
+                      <div style={{ flex: 1, height: 10, borderRadius: 5, background: "#f1f5f9", overflow: "hidden" }}>
+                        <div style={{ width: Math.max(pct, 1) + "%", height: "100%", borderRadius: 5, background: color, transition: "width 0.3s" }} />
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", minWidth: 32, textAlign: "right" }}>{count}</span>
+                      <span style={{ fontSize: 10, color: "#94a3b8", minWidth: 36, textAlign: "right" }}>{pct.toFixed(0)}%</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Leads by Person + Source */}
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 24 }}>
+                  {/* By Person */}
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+                    <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 12px" }}>Leads by Person</h3>
+                    {personSorted.length === 0 ? <p style={{ fontSize: 12, color: "#94a3b8" }}>No leads in this period</p> :
+                      personSorted.map(([email, count]) => {
+                        const max = personSorted[0][1];
+                        return (
+                          <div key={email} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                            <span style={{ fontSize: 11, color: "#334155", fontWeight: 500, minWidth: isMobile ? 80 : 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email.split("@")[0]}</span>
+                            <div style={{ flex: 1, height: 8, borderRadius: 4, background: "#f1f5f9", overflow: "hidden" }}>
+                              <div style={{ width: (count / max * 100) + "%", height: "100%", borderRadius: 4, background: "linear-gradient(90deg, #16a34a, #22c55e)" }} />
+                            </div>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", minWidth: 28, textAlign: "right" }}>{count}</span>
+                          </div>
+                        );
+                      })
+                    }
+                  </div>
+
+                  {/* By Source */}
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+                    <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 12px" }}>Lead Source</h3>
+                    {[["MLS Feed", mlsLeads, "#3b82f6"], ["REAP App", manualLeads, "#16a34a"], ["Other", otherLeads, "#94a3b8"]].filter(([_, c]) => c > 0).map(([src, count, color]) => (
+                      <div key={src} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                        <div style={{ width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 12, color: "#334155", fontWeight: 500, flex: 1 }}>{src}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace" }}>{count}</span>
+                        <span style={{ fontSize: 10, color: "#94a3b8", minWidth: 32, textAlign: "right" }}>{inRange.length > 0 ? Math.round(count / inRange.length * 100) : 0}%</span>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", height: 8, marginTop: 8 }}>
+                      {[["MLS Feed", mlsLeads, "#3b82f6"], ["REAP App", manualLeads, "#16a34a"], ["Other", otherLeads, "#cbd5e1"]].filter(([_, c]) => c > 0).map(([src, count, color]) => (
+                        <div key={src} style={{ width: (count / Math.max(inRange.length, 1) * 100) + "%", background: color }} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pipeline Value in Period */}
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+                  <h3 style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 8px" }}>Period Summary</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12 }}>
+                    <div><p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, margin: "0 0 2px", textTransform: "uppercase" }}>Pipeline Value</p><p style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{fmtK(rangeValue)}</p></div>
+                    <div><p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, margin: "0 0 2px", textTransform: "uppercase" }}>Avg Deal Size</p><p style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{activeInRange.length > 0 ? fmtK(rangeValue / activeInRange.length) : "—"}</p></div>
+                    <div><p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, margin: "0 0 2px", textTransform: "uppercase" }}>Deals / Day</p><p style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{(inRange.length / days).toFixed(1)}</p></div>
+                    <div><p style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, margin: "0 0 2px", textTransform: "uppercase" }}>Lead→Close</p><p style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Mono', monospace", margin: 0 }}>{inRange.length > 0 ? (closed / inRange.length * 100).toFixed(1) + "%" : "—"}</p></div>
+                  </div>
+                </div>
+
+                {underwriting === 0 && offers === 0 && <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "20px 0", background: "#fffbeb", borderRadius: 10, border: "1px solid #fef3c7", marginTop: 16 }}>Milestone dates (underwriting, offer, under contract, closed) will populate as deals move through stages going forward. Historical deals won't have these dates until they're updated.</p>}
+              </div>
+            );
+          })()}
+        </div>
+      ) : (
 
       <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 12px" : "24px 32px" }}>
 
@@ -8769,6 +8926,7 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile }) {
         )}
       </div>
       </div>
+      )}
     </div>
   );
 }
@@ -20224,7 +20382,7 @@ export default function ReapApp() {
                   <SubTabBar tabs={realEstateTabs} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto", minHeight: 0, WebkitOverflowScrolling: "touch" }}>
                     {realEstateTab === "dashboard"
-                      ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} />
+                      ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={true} session={session} />
                       : realEstateTab === "portfolios"
                       ? <PortfolioView deals={deals} isMobile={true} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setRealEstateTab("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
                       : realEstateTab === "mls"
@@ -20269,7 +20427,7 @@ export default function ReapApp() {
                   <SubTabBar tabs={realEstateTabs} active={realEstateTab} onChange={(tab) => { setRealEstateTab(tab); if (tab === "mls") setMlsTab("feed"); updateHash("realestate/" + tab); }} title="Real Estate" />
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {realEstateTab === "dashboard"
-                      ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
+                      ? <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} />
                       : realEstateTab === "portfolios"
                       ? <PortfolioView deals={deals} isMobile={false} session={session} teamEmails={teamEmails} onSelectDeal={function(deal) { setRealEstateTab("pipeline"); setTimeout(function() { handleSelectDeal(deal); }, 50); }} pendingPortfolioId={pendingPortfolioId} onClearPendingPortfolio={function() { setPendingPortfolioId(null); }} onHashUpdate={updateHash} />
                       : realEstateTab === "mls"
@@ -20323,7 +20481,7 @@ export default function ReapApp() {
               ? <AssignmentsView session={session} isMobile={false} orgData={orgData} orgMembers={orgMembers} teamEmails={teamEmails} />
               : activeNav === "robots"
               ? <RobotsView session={session} isMobile={false} />
-              : <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} />
+              : <DashboardView deals={deals} loading={loading} onSelectDeal={(deal) => { setActiveNav("realestate"); setRealEstateTab("pipeline"); setTimeout(() => handleSelectDeal(deal), 50); }} isMobile={false} session={session} />
           )}
         </div>
 
