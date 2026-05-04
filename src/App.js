@@ -263,12 +263,63 @@ function PhotoLightbox({ photos, initialIndex, onClose }) {
   );
 }
 
-function LoadingSpinner() {
+const RE_QUOTES = [
+  "Every great portfolio started with one deal.",
+  "The best investment on earth is earth.",
+  "Don't wait to buy real estate — buy real estate and wait.",
+  "In real estate, you make your money when you buy.",
+  "The deals are in the data.",
+  "Underwrite the downside. The upside takes care of itself.",
+  "Speed wins in this market.",
+  "Your pipeline is your future.",
+  "Due diligence today, dividends tomorrow.",
+  "Build wealth brick by brick.",
+  "The numbers don't lie — trust the analysis.",
+  "Fortune favors the prepared investor.",
+];
+
+function LoadingSpinner({ message }) {
+  const [quoteIdx, setQuoteIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setQuoteIdx(i => (i + 1) % RE_QUOTES.length), 3500);
+    return () => clearInterval(t);
+  }, []);
+
   return (
-    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, background: "#f8fafc" }}>
-      <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-      <p style={{ color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading deals...</p>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 20, background: "#f8fafc", minHeight: 200 }}>
+      {/* Stacking bricks animation */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, position: "relative", height: 60 }}>
+        <div style={{ display: "flex", gap: 3 }}>
+          <div style={{ width: 28, height: 12, borderRadius: 2, background: "#16a34a", animation: "brickDrop 1.8s ease-in-out infinite", animationDelay: "0.6s", opacity: 0 }} />
+          <div style={{ width: 28, height: 12, borderRadius: 2, background: "#15803d", animation: "brickDrop 1.8s ease-in-out infinite", animationDelay: "0.8s", opacity: 0 }} />
+        </div>
+        <div style={{ display: "flex", gap: 3 }}>
+          <div style={{ width: 20, height: 12, borderRadius: 2, background: "#22c55e", animation: "brickDrop 1.8s ease-in-out infinite", animationDelay: "0.2s", opacity: 0 }} />
+          <div style={{ width: 28, height: 12, borderRadius: 2, background: "#16a34a", animation: "brickDrop 1.8s ease-in-out infinite", animationDelay: "0.4s", opacity: 0 }} />
+          <div style={{ width: 20, height: 12, borderRadius: 2, background: "#22c55e", animation: "brickDrop 1.8s ease-in-out infinite", animationDelay: "0.6s", opacity: 0 }} />
+        </div>
+        <div style={{ display: "flex", gap: 3 }}>
+          <div style={{ width: 28, height: 12, borderRadius: 2, background: "#15803d", animation: "brickDrop 1.8s ease-in-out infinite", animationDelay: "0s", opacity: 0 }} />
+          <div style={{ width: 28, height: 12, borderRadius: 2, background: "#16a34a", animation: "brickDrop 1.8s ease-in-out infinite", animationDelay: "0.1s", opacity: 0 }} />
+          <div style={{ width: 28, height: 12, borderRadius: 2, background: "#15803d", animation: "brickDrop 1.8s ease-in-out infinite", animationDelay: "0.3s", opacity: 0 }} />
+        </div>
+      </div>
+
+      {message && <p style={{ color: "#334155", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", margin: 0 }}>{message}</p>}
+
+      {/* Rotating quote */}
+      <p style={{ color: "#94a3b8", fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontStyle: "italic", textAlign: "center", maxWidth: 300, margin: 0, transition: "opacity 0.5s", lineHeight: 1.5 }}>
+        "{RE_QUOTES[quoteIdx]}"
+      </p>
+
+      <style>{`
+        @keyframes brickDrop {
+          0% { opacity: 0; transform: translateY(-15px); }
+          20% { opacity: 1; transform: translateY(0); }
+          80% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
@@ -1413,7 +1464,7 @@ function DealOfferingsTab({ deal, isMobile, userEmail, onUpdateDeal }) {
 
       {/* Offerings List */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: 40, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>Loading offerings...</div>
+        <LoadingSpinner message="Loading offerings" />
       ) : offerings.length === 0 ? (
         <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>
           <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 16 }}><path d="M12 2v20M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6"/></svg>
@@ -2238,7 +2289,7 @@ function PipelineView({ deals, loading, error, onRetry, onSelectDeal, onNewDeal,
             {/* Loading / geocoding overlay */}
             {(mapLoading || geocodingProgress) && (
               <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 10, padding: "8px 16px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
-                <div style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                <div style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTopColor: "#16a34a", borderRadius: "50%", animation: "brickDrop 1.8s ease-in-out infinite" }} />
                 <span style={{ fontSize: 11, color: "#475569", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{geocodingProgress || "Loading map..."}</span>
               </div>
             )}
@@ -2456,7 +2507,7 @@ function TasksTab({ entityType, entityId, orgId, userEmail, orgMembers, isMobile
 
       {/* Task List */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading tasks...</div>
+        <LoadingSpinner message="Loading tasks" />
       ) : tasks.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
           <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} style={{ margin: "0 auto 8px", display: "block", opacity: 0.5 }}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -2745,7 +2796,7 @@ function AssignmentsView({ session, isMobile, orgData, orgMembers, teamEmails })
 
       {/* Priority groups */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: 48, color: "#94a3b8", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>Loading assignments...</div>
+        <LoadingSpinner message="Loading assignments" />
       ) : filtered.length === 0 ? (
         <div style={{ textAlign: "center", padding: 48 }}>
           <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={1.5} style={{ margin: "0 auto 12px", display: "block", opacity: 0.4 }}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -3090,7 +3141,7 @@ function FinancingRequestsPanel({ dealAddress, dealData, financingType, orgId, u
       )}
 
       {/* Comparison Table by Status Groups */}
-      {loading ? <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13 }}>Loading...</div>
+      {loading ? <LoadingSpinner />
       : requests.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
           <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>
@@ -5454,7 +5505,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
 
             {summaryLoading && (
               <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: "48px 40px", textAlign: "center" }}>
-                <div style={{ width: 40, height: 40, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, margin: "0 auto" }} />
                 <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", margin: "0 0 4px" }}>Generating Executive Summary...</p>
                 <p style={{ fontSize: 12, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>AI is analyzing deal metrics. This takes 10-15 seconds.</p>
               </div>
@@ -5552,7 +5603,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
             {/* Activity timeline */}
             {activitiesLoading ? (
               <div style={{ textAlign: "center", padding: 40 }}>
-                <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, margin: "0 auto" }} />
               </div>
             ) : activities.length === 0 ? (
               <div style={{ textAlign: "center", padding: "40px 20px", background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0" }}>
@@ -6034,7 +6085,7 @@ function DealDetailView({ deal, onBack, onEdit, isMobile, userEmail, onUpdateDea
 
             {updatesLoading ? (
               <div style={{ textAlign: "center", padding: 40 }}>
-                <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, margin: "0 auto" }} />
               </div>
             ) : updates.length === 0 ? (
               <div style={{ textAlign: "center", padding: 40, background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0" }}>
@@ -6424,7 +6475,7 @@ function InvestorPortalView({ investorProfile, onSignOut }) {
       <div style={{ maxWidth: 960, margin: "0 auto", padding: isMobile ? "20px 16px" : "28px 40px" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: 60 }}>
-            <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, margin: "0 auto" }} />
             <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 16 }}>Loading your portfolio...</p>
           </div>
         ) : selectedDeal ? (
@@ -8492,7 +8543,7 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
 
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", gap: 12 }}>
-      <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, margin: "0 auto" }} />
       <div style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Loading dashboard…</div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
@@ -9584,7 +9635,7 @@ function ContactsDashboardView({ session, isMobile, teamEmails: teamEmailsProp, 
 
   if (loading) return (
     <div style={{ padding: 40, textAlign: "center" }}>
-      <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, margin: "0 auto" }} />
     </div>
   );
 
@@ -10867,7 +10918,7 @@ function PortfolioView({ deals, isMobile, onSelectDeal, session, pendingPortfoli
       <div style={{ padding: isMobile ? "16px" : "24px 32px" }}>
         {portfoliosLoading ? (
           <div style={{ padding: 60, textAlign: "center" }}>
-            <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, margin: "0 auto" }} />
             <p style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Loading portfolios...</p>
           </div>
         ) : portfolios.length === 0 ? (
@@ -11326,7 +11377,7 @@ function MarketIntelligenceView({ deals, isMobile, session, teamEmails: teamEmai
 
   if (marketsLoading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", gap: 12 }}>
-      <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, margin: "0 auto" }} />
       <div style={{ fontSize: 13, color: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}>Loading market intelligence…</div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
@@ -12211,7 +12262,7 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
                 <div>
                   <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: "0 0 4px" }}>Platform Performance</h2>
                   <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 20px" }}>REAP platform metrics — real-time</p>
-                  {statsLoading ? <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Loading...</div> : !platformStats ? <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>No data</div> : (
+                  {statsLoading ? <LoadingSpinner /> : !platformStats ? <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>No data</div> : (
                     <div>
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
                         <StatCard label="Total Users" value={s.total_users} sub={s.users_last_7d + " last 7d"} color="#3b82f6" />
@@ -12241,7 +12292,7 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
 
         {/* ── FINANCIALS TAB ── */}
         {activeTab === "financials" && (() => {
-          if (financialsLoading) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Loading financials...</div>;
+          if (financialsLoading) return <LoadingSpinner message="Loading financials" />;
           if (!financials) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Unable to load financials</div>;
 
           const saveFinancials = async () => {
@@ -12410,7 +12461,7 @@ function ProfileView({ session, isMobile, isSubscribed, trialDaysLeft, onCheckou
             </div>
           );
 
-          if (presetsLoading) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Loading presets...</div>;
+          if (presetsLoading) return <LoadingSpinner message="Loading presets" />;
 
           return (
             <div>
@@ -13848,7 +13899,7 @@ function MLSFeedView({ session, isMobile, deals, onAddToPipeline, onShowUpload, 
               <div ref={mlsMapRef} style={{ width: "100%", height: "100%", minHeight: isMobile ? 300 : 500 }} />
               {(mlsMapLoading || mlsGeoProgress) && (
                 <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 10, padding: "8px 16px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
-                  <div style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                  <div style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTopColor: "#16a34a", borderRadius: "50%", animation: "brickDrop 1.8s ease-in-out infinite" }} />
                   <span style={{ fontSize: 11, color: "#475569", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{mlsGeoProgress || "Loading map..."}</span>
                 </div>
               )}
@@ -14996,7 +15047,7 @@ function MarketplaceListingsView({ deals, isMobile, session, userEmail, updateHa
             <div ref={mapRef} style={{ width: "100%", height: "100%", minHeight: isMobile ? 300 : 500 }} />
             {mapLoading && (
               <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 10, padding: "8px 16px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
-                <div style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTopColor: "#16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                <div style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTopColor: "#16a34a", borderRadius: "50%", animation: "brickDrop 1.8s ease-in-out infinite" }} />
                 <span style={{ fontSize: 11, color: "#475569", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Loading map...</span>
               </div>
             )}
@@ -15623,7 +15674,7 @@ function EducationView({ session, isMobile, activeTab, onTabChange, updateHash, 
             </div>
 
             {libraryLoading ? (
-              <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>Loading...</div>
+              <LoadingSpinner />
             ) : libraryItems.length === 0 ? (
               <div style={{ textAlign: "center", padding: 60 }}>
                 <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 12 }}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
@@ -15675,7 +15726,7 @@ function EducationView({ session, isMobile, activeTab, onTabChange, updateHash, 
                 </div>
 
                 {coursesLoading ? (
-                  <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>Loading...</div>
+                  <LoadingSpinner />
                 ) : courses.length === 0 ? (
                   <div style={{ textAlign: "center", padding: 60 }}>
                     <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 12 }}><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -15727,7 +15778,7 @@ function EducationView({ session, isMobile, activeTab, onTabChange, updateHash, 
             <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 20px", fontFamily: "'DM Sans', sans-serif" }}>Track your learning journey</p>
 
             {progressLoading || coursesLoading ? (
-              <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>Loading...</div>
+              <LoadingSpinner />
             ) : courses.length === 0 ? (
               <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontSize: 15, fontFamily: "'DM Sans', sans-serif" }}>No courses available yet.</div>
             ) : (
@@ -16916,7 +16967,7 @@ function ContactInvestmentsTab({ contactId, deals, orgId, userEmail, isMobile })
             </div>
           )}
 
-          {loading ? <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13 }}>Loading...</div>
+          {loading ? <LoadingSpinner />
           : investments.length === 0 ? (
             <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
               <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -17020,7 +17071,7 @@ function ContactInvestmentsTab({ contactId, deals, orgId, userEmail, isMobile })
             </div>
           )}
 
-          {distLoading ? <div style={{ textAlign: "center", padding: 32, color: "#94a3b8", fontSize: 13 }}>Loading...</div>
+          {distLoading ? <LoadingSpinner />
           : distributions.length === 0 ? (
             <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
               <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -17364,7 +17415,7 @@ function ContactDetailView({ contact, onBack, onEdit, isMobile, deals, funds, in
             )}
 
             {companiesLoading ? (
-              <div style={{ textAlign: "center", padding: 30, color: "#94a3b8", fontSize: 13 }}>Loading...</div>
+              <LoadingSpinner />
             ) : linkedCompanies.length === 0 ? (
               <div style={{ textAlign: "center", padding: 30 }}>
                 <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth={1.5} style={{ marginBottom: 8 }}><path d="M3 21h18M3 7v14M21 7v14M6 21V10h4v11M14 21V10h4v11M10 7l2-4 2 4"/></svg>
@@ -18158,7 +18209,7 @@ function InvestorDetailView({ investor, activities, onBack, onEdit, onLogActivit
             {/* Auto-logged communications */}
             <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 8 }}>Communications Log <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} /></div>
             {commsLoading ? (
-              <div style={{ textAlign: "center", padding: 20, color: "#94a3b8", fontSize: 13 }}>Loading...</div>
+              <LoadingSpinner />
             ) : commsLog.length > 0 ? (
               <div style={{ marginBottom: 24 }}>
                 {commsLog.map((c, i) => {
@@ -20364,7 +20415,7 @@ export default function ReapApp() {
 
   if (authLoading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
-      <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #16a34a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, margin: "0 auto" }} />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
