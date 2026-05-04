@@ -19762,7 +19762,21 @@ export default function ReapApp() {
     setLoading(true);
     setError(null);
     try {
-      const { data: rows, error: fetchErr, status: dealStatus } = await supabase.from("deals").select("*").order("date_added", { ascending: false });
+      // Fetch ALL deals (Supabase defaults to 1000, so paginate)
+      let allRows = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: rows, error: fetchErr } = await supabase.from("deals").select("*").order("date_added", { ascending: false }).range(from, from + pageSize - 1);
+        if (fetchErr) { console.error("[REAP Deals] Fetch error:", fetchErr.message); break; }
+        if (rows) allRows = allRows.concat(rows);
+        if (!rows || rows.length < pageSize) break;
+        from += pageSize;
+      }
+      const rows = allRows;
+      const fetchErr = null;
+      const dealStatus = 200;
+      console.log("[REAP Deals] Fetch:", rows?.length, "rows total");
       console.log("[REAP Deals] Fetch:", rows?.length, "rows, status:", dealStatus, "error:", fetchErr?.message || "none", fetchErr?.code || "", fetchErr?.details || "");
       if (fetchErr) throw new Error(fetchErr.message);
 
