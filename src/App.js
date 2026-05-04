@@ -8388,6 +8388,8 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
   const [sortDir, setSortDir] = useState("desc");
   const [dashTab, setDashTab] = useState("dashboard");
   const [scorecardRange, setScorecardRange] = useState("7d");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
 
   const userEmail = session?.user?.email?.toLowerCase() || "";
   const canSeeScorecard = [PLATFORM_ADMIN_EMAIL.toLowerCase(), "admin@thesuarezcapital.com"].includes(userEmail);
@@ -8518,17 +8520,34 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
           {/* Time range toggle */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'Playfair Display', serif", margin: 0 }}>Performance Scorecard</h2>
-            <div style={{ display: "flex", gap: 4 }}>
-              {[["7d", "This Week"], ["14d", "2 Weeks"], ["30d", "This Month"], ["90d", "Quarter"]].map(([key, label]) => (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+              {[["7d", "This Week"], ["14d", "2 Weeks"], ["30d", "This Month"], ["90d", "Quarter"], ["ytd", "YTD"], ["custom", "Custom"]].map(([key, label]) => (
                 <button key={key} onClick={() => setScorecardRange(key)} style={{ padding: "5px 12px", fontSize: 11, fontWeight: scorecardRange === key ? 700 : 500, color: scorecardRange === key ? "#16a34a" : "#64748b", background: scorecardRange === key ? "#f0fdf4" : "#fff", border: "1px solid " + (scorecardRange === key ? "#bbf7d0" : "#e2e8f0"), borderRadius: 6, cursor: "pointer" }}>{label}</button>
               ))}
+              {scorecardRange === "custom" && (
+                <div style={{ display: "flex", gap: 4, alignItems: "center", marginLeft: 4 }}>
+                  <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ padding: "4px 8px", fontSize: 11, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Sans', sans-serif", color: "#334155" }} />
+                  <span style={{ fontSize: 10, color: "#94a3b8" }}>to</span>
+                  <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ padding: "4px 8px", fontSize: 11, border: "1px solid #e2e8f0", borderRadius: 6, fontFamily: "'DM Sans', sans-serif", color: "#334155" }} />
+                </div>
+              )}
             </div>
           </div>
 
           {(() => {
-            const days = parseInt(scorecardRange);
-            const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
-            const inRange = deals.filter(d => d.date && new Date(d.date) >= cutoff);
+            let cutoff, endDate = new Date(), days;
+            if (scorecardRange === "ytd") {
+              cutoff = new Date(new Date().getFullYear(), 0, 1);
+              days = Math.ceil((endDate - cutoff) / (1000 * 60 * 60 * 24));
+            } else if (scorecardRange === "custom" && customStart) {
+              cutoff = new Date(customStart + "T00:00:00");
+              endDate = customEnd ? new Date(customEnd + "T23:59:59") : new Date();
+              days = Math.max(1, Math.ceil((endDate - cutoff) / (1000 * 60 * 60 * 24)));
+            } else {
+              days = parseInt(scorecardRange);
+              cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+            }
+            const inRange = deals.filter(d => d.date && new Date(d.date) >= cutoff && new Date(d.date) <= endDate);
             const activeInRange = inRange.filter(d => d.status !== "Dead");
 
             // Leads generated
@@ -8538,10 +8557,10 @@ function DashboardView({ deals, loading, onSelectDeal, isMobile, session }) {
             const otherLeads = inRange.length - mlsLeads - manualLeads;
 
             // Stage progression (deals that moved TO this stage in the period)
-            const underwriting = deals.filter(d => d.underwritingDate && new Date(d.underwritingDate) >= cutoff).length;
-            const offers = deals.filter(d => d.offerDate && new Date(d.offerDate) >= cutoff).length;
-            const underContract = deals.filter(d => d.underContractDate && new Date(d.underContractDate) >= cutoff).length;
-            const closed = deals.filter(d => d.closedDate && new Date(d.closedDate) >= cutoff).length;
+            const underwriting = deals.filter(d => d.underwritingDate && new Date(d.underwritingDate) >= cutoff && new Date(d.underwritingDate) <= endDate).length;
+            const offers = deals.filter(d => d.offerDate && new Date(d.offerDate) >= cutoff && new Date(d.offerDate) <= endDate).length;
+            const underContract = deals.filter(d => d.underContractDate && new Date(d.underContractDate) >= cutoff && new Date(d.underContractDate) <= endDate).length;
+            const closed = deals.filter(d => d.closedDate && new Date(d.closedDate) >= cutoff && new Date(d.closedDate) <= endDate).length;
 
             // Leads by person
             const byPerson = {};
